@@ -13,11 +13,11 @@
 | M4 | 播放状态、可靠性测试和日志 |
 | M5 | Windows x64 安装包验收 |
 
-M1 分支已实现 Rust 状态快照与桌面界面。前端生产构建已通过，Windows 原生运行验收待完成。[M1 验收记录](docs/acceptance/m1.md) · [第一阶段架构](docs/architecture/HongGuoRust-Phase1-Plan.md) · [许可证评估](docs/architecture/licensing.md)
+M1 分支已实现 Rust 状态快照与桌面界面。Windows runner 已编译并启动桌面窗口，验证了真实 IPC 和正常关闭。[M1 验收记录](docs/acceptance/m1.md) · [第一阶段架构](docs/architecture/HongGuoRust-Phase1-Plan.md) · [许可证评估](docs/architecture/licensing.md)
 
 ## Windows 开发构建
 
-准备 VS 2022 的 C++ 桌面开发工具及 Windows SDK、Rust stable MSVC x64、Node.js 24 LTS（也支持 22.12 以上的 22 LTS）和 WebView2 Runtime。安装详情与首次生成 Cargo.lock 的步骤见验收记录。在 M1 分支的项目根目录执行：
+准备 VS 2022 的 C++ 桌面开发工具及 Windows SDK、Rust stable MSVC x64、Node.js 24 LTS（也支持 22.12 以上的 22 LTS）和 WebView2 Runtime。项目已提交 npm 和 Cargo 锁文件。在项目根目录执行以下命令。
 
 ```powershell
 cargo install tauri-cli --version 2.11.4 --locked
@@ -29,7 +29,7 @@ npm run tauri -- dev
 构建并运行桌面可执行文件：
 
 ```powershell
-npm run tauri -- build --no-bundle
+npm run tauri -- build --no-bundle -- --locked
 .\src-tauri\target\release\hongguorust.exe
 ```
 
