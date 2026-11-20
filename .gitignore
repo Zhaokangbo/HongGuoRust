@@ -1,4 +1,6 @@
 node_modules/
+.work/
+portable-history/
 dist/
 target/
 src-tauri/gen/
