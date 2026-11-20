@@ -2,22 +2,11 @@
 import ctypes as c
 import sys
 import os
-import re
 import time
 import wave
 from array import array
 from pathlib import Path
 
-# FFmpeg embeds its av*_configuration output even when statically linked.
-image = Path(sys.argv[1]).read_bytes()
-configs = {s.decode("ascii") for s in re.findall(rb"[ -~]{100,}", image)
-           if b"--" in s and b"--enable-version3" in s}
-if not configs:
-    raise RuntimeError("No embedded FFmpeg configure string found")
-for config in sorted(configs):
-    print("FFmpeg configure", config)
-    if "--enable-gpl" in config or "--enable-nonfree" in config:
-        raise RuntimeError("Unexpected FFmpeg licensing configuration")
 dll_directory = os.add_dll_directory(str(Path(sys.argv[1]).resolve().parent))
 
 mpv = c.CDLL(sys.argv[1])
@@ -52,7 +41,12 @@ try:
         if not value:
             raise RuntimeError("Missing property " + key)
         try:
-            print(key, c.string_at(value).decode())
+            text = c.string_at(value).decode()
+            print(key, text)
+            if key == "mpv-configuration" and "-Dgpl=false" not in text:
+                raise RuntimeError("Unexpected mpv configuration")
+            if key == "ffmpeg-version" and "7ddf7bc8a" not in text:
+                raise RuntimeError("Unexpected libmpv FFmpeg revision")
         finally:
             free(value)
     if len(sys.argv) == 4:

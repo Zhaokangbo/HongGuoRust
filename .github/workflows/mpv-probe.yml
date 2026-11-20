@@ -26,6 +26,7 @@ jobs:
         run: |
           $native = "$env:RUNNER_TEMP/mpv"
           ./scripts/prepare-mpv-msvc.ps1 -Destination $native
+          ./scripts/check-ffmpeg-build.ps1
           python scripts/probe-mpv.py "$native/libmpv-2.dll"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           "MPV_RUNTIME_DIR=$native" >> $env:GITHUB_ENV
