@@ -10,32 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  inspect-lock-artifact:
-    if: github.event_name == 'pull_request' && github.head_ref == 'fix/m1-validation'
-    runs-on: windows-2022
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          artifact-ids: '14633178770'
-          run-id: '44748009479'
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/m1-lock
-      - name: Read Windows-generated Cargo.lock
-        shell: python
-        env:
-          LOCK_DIR: ${{ runner.temp }}/m1-lock
-        run: |
-          import base64, gzip, hashlib, os
-          from pathlib import Path
-          lock, = Path(os.environ["LOCK_DIR"]).rglob("Cargo.lock")
-          data = lock.read_bytes()
-          print("LOCK_SHA256=" + hashlib.sha256(data).hexdigest())
-          encoded = base64.b64encode(gzip.compress(data)).decode("ascii")
-          for index in range(0, len(encoded), 1000):
-              print("LOCK_CHUNK=" + encoded[index:index + 1000])
   desktop:
     runs-on: windows-2022
     timeout-minutes: 60
@@ -64,22 +38,21 @@ jobs:
       - run: ./scripts/check-windows.ps1
       - run: npm ci
       - run: npm run build
-      - name: Resolve missing initial lockfile
-        if: hashFiles('src-tauri/Cargo.lock') == ''
-        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cargo-lock
-          path: src-tauri/Cargo.lock
-          if-no-files-found: error
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-      - run: cargo tauri build --no-bundle -- --locked
-      - name: Verify live IPC and normal process exit
-        shell: powershell
-        run: ./scripts/smoke-windows.ps1
-      - name: Require committed lockfiles
+      - name: Verify committed dependencies
         run: |
           git ls-files --error-unmatch package-lock.json src-tauri/Cargo.lock
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 | Out-Null
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - run: cargo tauri build --no-bundle -- --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HongGuoRust-M1-windows-x64
+          path: src-tauri/target/release/hongguorust.exe
+          if-no-files-found: error
+      - name: Verify live IPC and normal process exit
+        shell: powershell
+        run: ./scripts/smoke-windows.ps1
+      - name: Check for dependency drift
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
