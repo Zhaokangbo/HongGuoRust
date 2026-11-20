@@ -3,8 +3,18 @@
 mod commands;
 mod player;
 
+#[cfg(all(windows, feature = "mpv-probe"))]
+mod probe;
+
+#[cfg(all(windows, feature = "mpv-probe"))]
+fn main() {
+    probe::run();
+}
+
+#[cfg(not(all(windows, feature = "mpv-probe")))]
 use player::state::PlayerState;
 
+#[cfg(not(all(windows, feature = "mpv-probe")))]
 fn main() {
     tauri::Builder::default()
         .manage(PlayerState::default())

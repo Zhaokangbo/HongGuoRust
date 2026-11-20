@@ -1,51 +1,56 @@
-name: Windows M2 dependency probe
+name: Windows M2 playback probe
 on:
   push:
     branches: ['feat/m2-player']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  provenance:
+  playback:
     runs-on: windows-2022
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
       - run: npm ci
-      - name: Record dependency advisories
+      - run: npm audit --audit-level=high
+      - run: npm audit --omit=dev
+      - run: npm run build
+      - name: Inspect native formatting
         run: |
-          npm audit --json > audit-all.json
-          npm audit --omit=dev --json > audit-production.json
-          foreach ($path in 'audit-all.json','audit-production.json') {
-            $report = Get-Content -Raw $path | ConvertFrom-Json
-            if ($null -eq $report.metadata.vulnerabilities) { throw "No advisory report from $path" }
-            Write-Output $path
-            $report.vulnerabilities | ConvertTo-Json -Depth 12
-            $report.metadata.vulnerabilities | ConvertTo-Json
-          }
-          exit 0
-      - name: Resolve probe dependency graph
-        run: |
-          cargo metadata --manifest-path src-tauri/Cargo.toml --features mpv-probe --format-version 1 > "$env:RUNNER_TEMP/metadata.json"
+          cargo fmt --manifest-path src-tauri/Cargo.toml
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          git diff -U3 -- src-tauri/Cargo.lock
-          $pkg = (Get-Content -Raw "$env:RUNNER_TEMP/metadata.json" | ConvertFrom-Json).packages
-          foreach ($crate in @($pkg | Where-Object name -like 'libmpv2*')) {
-            Write-Output "$($crate.name) $($crate.version) license=$($crate.license)"
-            $root = Split-Path $crate.manifest_path
-            if (Test-Path "$root/build.rs") { Get-Content "$root/build.rs" }
-          }
-          npm install --save-dev --save-exact --package-lock-only vite@6.4.6
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          git diff -U3 -- package.json package-lock.json
-      - name: Verify and inspect the native runtime
+          git diff -- src-tauri/src
+      - name: Prepare verified runtime and MSVC import library
         run: |
-          ./scripts/get-mpv.ps1 -Destination "$env:RUNNER_TEMP/mpv"
-          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-          $vs = & $vswhere -latest -products * -property installationPath
-          $dump = Get-ChildItem "$vs/VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe" | Select-Object -Last 1
-          & $dump.FullName /dependents "$env:RUNNER_TEMP/mpv/libmpv-2.dll"
-          Get-WindowsFeature Server-Media-Foundation
-          python scripts/probe-mpv.py "$env:RUNNER_TEMP/mpv/libmpv-2.dll"
+          $native = "$env:RUNNER_TEMP/mpv"
+          ./scripts/prepare-mpv-msvc.ps1 -Destination $native
+          python scripts/probe-mpv.py "$native/libmpv-2.dll"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "LIB=$native;$env:LIB" >> $env:GITHUB_ENV
+          $native >> $env:GITHUB_PATH
+      - uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: windows-m2-debug-${{ hashFiles('src-tauri/Cargo.lock') }}-v1
+      - name: Build and test the probe
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --features mpv-probe --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo build --manifest-path src-tauri/Cargo.toml --features custom-protocol,mpv-probe --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HongGuoRust-M2-A-x64
+          path: src-tauri/target/debug/hongguorust.exe
+          if-no-files-found: error
+      - name: Test embedded pixels and playing-window close
+        run: |
+          python -m pip install imageio-ffmpeg==0.6.0 pillow==12.2.0
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/smoke-player.py src-tauri/target/debug/hongguorust.exe

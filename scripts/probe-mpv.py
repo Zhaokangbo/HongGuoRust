@@ -1,6 +1,10 @@
 """Inspect the exact runtime downloaded by get-mpv.ps1 on Windows."""
 import ctypes as c
 import sys
+import os
+from pathlib import Path
+
+dll_directory = os.add_dll_directory(str(Path(sys.argv[1]).resolve().parent))
 
 mpv = c.CDLL(sys.argv[1])
 def bind(name, result, *args):

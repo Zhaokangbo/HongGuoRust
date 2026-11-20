@@ -1,5 +1,8 @@
 export interface PlayerSnapshot {
-  state: "Idle";
+  state: "Idle" | "Loading" | "Playing" | "Ended" | "Error";
+  probe?: boolean;
+  filename?: string;
+  error?: string;
   revision: number;
   sessionId: number | null;
   appVersion: string;

@@ -23,3 +23,9 @@ button { background: #a0e9cd; color: #14271e; border: 0; border-radius: 4px; pad
 footer { justify-content: space-between; }
 dl { display: flex; gap: 10px; align-items: baseline; margin: 0; font-size: 13px; }
 dt { color: #a9b7af; } dd { margin: 0; font-family: Consolas, monospace; }
+.probe-controls { height: 96px; padding: 8px 18px; display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; }
+.probe-actions { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; min-width: 0; }
+.probe-actions button { flex: none; }
+.probe-actions button:disabled { opacity: .55; }
+.probe-actions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-actions [role=alert] { color: #ffb7a8; }
