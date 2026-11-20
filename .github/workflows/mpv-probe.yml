@@ -26,6 +26,7 @@ jobs:
         run: |
           $native = "$env:RUNNER_TEMP/mpv"
           ./scripts/prepare-mpv-msvc.ps1 -Destination $native
+          $env:PATH = "$native;$env:PATH"
           ./scripts/check-ffmpeg-build.ps1
           python scripts/probe-mpv.py "$native/libmpv-2.dll"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
@@ -49,6 +50,13 @@ jobs:
           if-no-files-found: error
       - name: Test embedded pixels and playing-window close
         run: |
+          foreach ($name in 'AudioEndpointBuilder','Audiosrv') {
+            $service = Get-Service $name -ErrorAction SilentlyContinue
+            if ($service -and $service.Status -ne 'Running') {
+              try { Start-Service $name -ErrorAction Stop } catch { Write-Output "Audio service $name unavailable: $_" }
+            }
+          }
+          Get-Service AudioEndpointBuilder,Audiosrv -ErrorAction SilentlyContinue | Format-Table Name,Status
           python -m pip install imageio-ffmpeg==0.6.0 pillow==12.2.0 PyAudioWPatch==0.2.12.8
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/smoke-player.py src-tauri/target/debug/hongguorust.exe

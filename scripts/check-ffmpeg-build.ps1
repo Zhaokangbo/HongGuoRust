@@ -10,8 +10,8 @@ try {
   $exe = @(Get-ChildItem $tmp -Filter ffmpeg.exe -Recurse -File)
   if ($exe.Count -ne 1) { throw 'Expected one companion FFmpeg executable' }
   $config = (& $exe[0].FullName -version 2>&1) -join [Environment]::NewLine
-  if ($LASTEXITCODE) { throw 'Companion FFmpeg version check failed' }
   Write-Output $config
+  if ($LASTEXITCODE) { throw "Companion FFmpeg -version exited $LASTEXITCODE" }
   if ($config -notmatch '7ddf7bc8a' -or $config -notmatch '--enable-version3' -or
       $config -match '--enable-(gpl|nonfree)') { throw 'Unexpected FFmpeg build configuration' }
   $license = (& $exe[0].FullName -hide_banner -L 2>&1) -join [Environment]::NewLine
