@@ -31,9 +31,13 @@ impl Probe {
     fn start(&self, file: PathBuf) -> Result<(), String> {
         engine::local_mp4(&file)?;
         let mut worker = self.worker.lock().unwrap();
-        if self.closing.load(Ordering::Acquire) { return Err("Window is closing".into()); }
+        if self.closing.load(Ordering::Acquire) {
+            return Err("Window is closing".into());
+        }
         self.cancelled.store(true, Ordering::Release);
-        if let Some(old) = worker.take() { old.join().map_err(|_| "Playback worker panicked")?; }
+        if let Some(old) = worker.take() {
+            old.join().map_err(|_| "Playback worker panicked")?;
+        }
         self.cancelled.store(false, Ordering::Release);
         let snapshot = Arc::clone(&self.snapshot);
         let cancelled = Arc::clone(&self.cancelled);
@@ -72,7 +76,9 @@ impl Probe {
     fn halt(&self) -> Result<(), String> {
         let mut worker = self.worker.lock().unwrap();
         self.cancelled.store(true, Ordering::Release);
-        if let Some(w) = worker.take() { w.join().map_err(|_| "Playback worker panicked")?; }
+        if let Some(w) = worker.take() {
+            w.join().map_err(|_| "Playback worker panicked")?;
+        }
         let mut s = self.snapshot.lock().unwrap();
         s.state = "Idle";
         s.revision += 1;
@@ -96,25 +102,35 @@ async fn open_local(window: WebviewWindow) -> Result<(), String> {
             window.state::<Probe>().start(path)?;
         }
         Ok(())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 async fn stop(window: WebviewWindow) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || window.state::<Probe>().halt())
-        .await.map_err(|e| e.to_string())?
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let main = app.get_webview_window("main").ok_or("Missing main window")?;
+            let main = app
+                .get_webview_window("main")
+                .ok_or("Missing main window")?;
             let host = window::create(&main)?;
             app.manage(Probe {
                 host,
                 snapshot: Arc::new(Mutex::new(Snapshot {
-                    probe: true, state: "Idle", revision: 0, session_id: None,
-                    app_version: env!("CARGO_PKG_VERSION"), filename: None, error: None,
+                    probe: true,
+                    state: "Idle",
+                    revision: 0,
+                    session_id: None,
+                    app_version: env!("CARGO_PKG_VERSION"),
+                    filename: None,
+                    error: None,
                 })),
                 cancelled: Arc::new(AtomicBool::new(false)),
                 worker: Mutex::new(None),
@@ -129,7 +145,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|win, event| {
-            let Some(probe) = win.try_state::<Probe>() else { return };
+            let Some(probe) = win.try_state::<Probe>() else {
+                return;
+            };
             match event {
                 WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                     if let (Ok(hwnd), Ok(scale)) = (win.hwnd(), win.scale_factor()) {
@@ -141,8 +159,12 @@ pub fn run() {
                     if !probe.closing.swap(true, Ordering::AcqRel) {
                         let win = win.clone();
                         tauri::async_runtime::spawn_blocking(move || {
-                            if let Err(error) = win.state::<Probe>().halt() { eprintln!("{error}"); }
-                            if let Err(error) = win.destroy() { eprintln!("{error}"); }
+                            if let Err(error) = win.state::<Probe>().halt() {
+                                eprintln!("{error}");
+                            }
+                            if let Err(error) = win.destroy() {
+                                eprintln!("{error}");
+                            }
                         });
                     }
                 }

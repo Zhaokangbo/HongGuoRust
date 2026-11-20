@@ -8,7 +8,10 @@ pub fn local_mp4(path: &Path) -> Result<&str, String> {
     if !path.is_absolute() || name.starts_with(r"\\") || !path.is_file() {
         return Err("Select a file on a local drive".into());
     }
-    if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mp4")) {
+    if !path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("mp4"))
+    {
         return Err("Select an MP4 file".into());
     }
     Ok(name)
@@ -34,13 +37,19 @@ pub fn play(
         init.set_option("audio-file-auto", "no")?;
         init.set_option("vo", "gpu-next,gpu,direct3d")?;
         Ok(())
-    }).map_err(|e| e.to_string())?;
-    mpv.command("loadfile", &[path]).map_err(|e| e.to_string())?;
+    })
+    .map_err(|e| e.to_string())?;
+    mpv.command("loadfile", &[path])
+        .map_err(|e| e.to_string())?;
     while !cancelled.load(Ordering::Acquire) {
         match mpv.wait_event(0.05) {
             Some(Ok(Event::PlaybackRestart)) => {
-                println!("playback-restart {} ms; vo={:?} ao={:?}", started.elapsed().as_millis(),
-                    mpv.get_property::<String>("current-vo"), mpv.get_property::<String>("current-ao"));
+                println!(
+                    "playback-restart {} ms; vo={:?} ao={:?}",
+                    started.elapsed().as_millis(),
+                    mpv.get_property::<String>("current-vo"),
+                    mpv.get_property::<String>("current-ao")
+                );
                 playing();
             }
             Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => break,
@@ -49,4 +58,27 @@ pub fn play(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_file_selection_keeps_unicode_and_rejects_other_types() {
+        let dir = std::env::temp_dir().join(format!("hongguorust-m2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let valid = dir.join("视频 A.MP4");
+        let other = dir.join("clip.mkv");
+        std::fs::write(&valid, []).unwrap();
+        std::fs::write(&other, []).unwrap();
+        assert_eq!(local_mp4(&valid).unwrap(), valid.to_str().unwrap());
+        assert!(local_mp4(&other).is_err());
+        assert!(local_mp4(&dir.join("absent.mp4")).is_err());
+        assert!(local_mp4(Path::new("relative.mp4")).is_err());
+        assert!(local_mp4(Path::new(r"\\server\media\clip.mp4")).is_err());
+        std::fs::remove_file(valid).unwrap();
+        std::fs::remove_file(other).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
 }

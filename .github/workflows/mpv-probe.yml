@@ -21,17 +21,14 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm audit --omit=dev
       - run: npm run build
-      - name: Inspect native formatting
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          git diff -- src-tauri/src
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Prepare verified runtime and MSVC import library
         run: |
           $native = "$env:RUNNER_TEMP/mpv"
           ./scripts/prepare-mpv-msvc.ps1 -Destination $native
           python scripts/probe-mpv.py "$native/libmpv-2.dll"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "MPV_RUNTIME_DIR=$native" >> $env:GITHUB_ENV
           "LIB=$native;$env:LIB" >> $env:GITHUB_ENV
           $native >> $env:GITHUB_PATH
       - uses: actions/cache@v4
@@ -51,6 +48,6 @@ jobs:
           if-no-files-found: error
       - name: Test embedded pixels and playing-window close
         run: |
-          python -m pip install imageio-ffmpeg==0.6.0 pillow==12.2.0
+          python -m pip install imageio-ffmpeg==0.6.0 pillow==12.2.0 PyAudioWPatch==0.2.12.8
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/smoke-player.py src-tauri/target/debug/hongguorust.exe

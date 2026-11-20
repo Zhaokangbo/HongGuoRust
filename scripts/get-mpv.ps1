@@ -8,7 +8,11 @@ try {
   $archive = Join-Path $tempDir 'dev.7z'
   Invoke-WebRequest $source -OutFile $archive
   if ((Get-FileHash $archive).Hash -ne $expected) { throw 'libmpv archive SHA-256 mismatch' }
-  & 7z x $archive "-o$tempDir" -y | Out-Null
+  if (Get-Command 7z -ErrorAction SilentlyContinue) {
+    & 7z x $archive "-o$tempDir" -y | Out-Null
+  } else {
+    & tar.exe -xf $archive -C $tempDir.FullName
+  }
   if ($LASTEXITCODE) { throw 'libmpv extraction failed' }
   $dll = @(Get-ChildItem $tempDir -Filter libmpv-2.dll -File -Recurse)
   if ($dll.Count -ne 1) { throw 'Expected exactly one libmpv-2.dll' }
