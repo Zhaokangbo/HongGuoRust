@@ -10,6 +10,32 @@ permissions:
   contents: read
 
 jobs:
+  inspect-lock-artifact:
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/m1-validation'
+    runs-on: windows-2022
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '14633178770'
+          run-id: '44748009479'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/m1-lock
+      - name: Read Windows-generated Cargo.lock
+        shell: python
+        env:
+          LOCK_DIR: ${{ runner.temp }}/m1-lock
+        run: |
+          import base64, gzip, hashlib, os
+          from pathlib import Path
+          lock, = Path(os.environ["LOCK_DIR"]).rglob("Cargo.lock")
+          data = lock.read_bytes()
+          print("LOCK_SHA256=" + hashlib.sha256(data).hexdigest())
+          encoded = base64.b64encode(gzip.compress(data)).decode("ascii")
+          for index in range(0, len(encoded), 1000):
+              print("LOCK_CHUNK=" + encoded[index:index + 1000])
   desktop:
     runs-on: windows-2022
     timeout-minutes: 60
