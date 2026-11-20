@@ -19,11 +19,22 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Install Rust tooling
+      - name: Install Rust toolchain
         run: |
           rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cargo install tauri-cli --version 2.11.4 --locked
+      - name: Install verified Tauri CLI 2.11.4
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'cargo-tauri.zip'
+          $cli = Join-Path $env:RUNNER_TEMP 'tauri-cli'
+          Invoke-WebRequest 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.4/cargo-tauri-x86_64-pc-windows-msvc.zip' -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne '0743e30a661a35d63339b24cf63828f97ba5389a1d7f13b368a542794dd0a3f3') {
+            throw 'Tauri CLI archive checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath $cli
+          $binary = @(Get-ChildItem $cli -Recurse -Filter cargo-tauri.exe -File)
+          if ($binary.Count -ne 1) { throw 'Expected one cargo-tauri.exe in the verified archive' }
+          $binary[0].DirectoryName >> $env:GITHUB_PATH
       - run: ./scripts/check-windows.ps1
       - run: npm ci
       - run: npm run build
