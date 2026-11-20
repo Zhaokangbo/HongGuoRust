@@ -11,8 +11,13 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 
+[target.'cfg(windows)'.dependencies]
+libmpv2 = { version = "=7.0.1", optional = true, default-features = false }
+windows-sys = { version = "=0.61.2", optional = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls_Dialogs", "Win32_Graphics_Gdi", "Win32_System_SystemInformation"] }
+
 [dev-dependencies]
 serde_json = "1"
 
 [features]
+mpv-probe = ["dep:libmpv2", "dep:windows-sys"]
 custom-protocol = ["tauri/custom-protocol"]

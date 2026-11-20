@@ -12,6 +12,7 @@ try {
   if ($LASTEXITCODE) { throw 'libmpv extraction failed' }
   $dll = @(Get-ChildItem $tempDir -Filter libmpv-2.dll -File -Recurse)
   if ($dll.Count -ne 1) { throw 'Expected exactly one libmpv-2.dll' }
+  if ((Get-FileHash $dll[0].FullName).Hash -ne 'df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e7913') { throw 'Unexpected libmpv DLL' }
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
   Copy-Item -LiteralPath $dll[0].FullName -Destination $Destination
   Write-Output "Archive SHA256 $expected"
