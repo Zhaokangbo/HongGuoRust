@@ -29,10 +29,31 @@ try {
     } while ($missing.Count -and [DateTime]::UtcNow -lt $deadline)
     if ($missing.Count) { throw "Window is missing expected accessible text: $($missing -join ', ')" }
     Write-Output "PASS: desktop window shows connected, Idle and version $version"
+
+    # Capture this window's process tree before closing it. Other WebView2 clients
+    # on the desktop may legitimately outlive our application.
+    $processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId)
+    $parents = @($process.Id)
+    $children = @(while ($parents.Count) {
+        $parents = @($processes | Where-Object { $_.ParentProcessId -in $parents } |
+            Select-Object -ExpandProperty ProcessId)
+        foreach ($childId in $parents) {
+            $child = Get-Process -Id $childId -ErrorAction SilentlyContinue
+            if ($child -and !$child.HasExited) { $child }
+        }
+    })
     if (!$process.CloseMainWindow()) { throw 'Window rejected the close request' }
     if (!$process.WaitForExit(10000)) { throw 'Process remained alive after normal window close' }
     if ($process.ExitCode -ne 0) { throw "Abnormal exit: $($process.ExitCode)" }
     Write-Output 'PASS: normal last-window close, process exit 0'
+    $exitDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    foreach ($child in $children) {
+        $remaining = [Math]::Max(0, [int]($exitDeadline - [DateTime]::UtcNow).TotalMilliseconds)
+        if (!$child.HasExited -and !$child.WaitForExit($remaining)) {
+            throw "Child process remained after close: $($child.ProcessName) (PID $($child.Id))"
+        }
+    }
+    Write-Output "PASS: no surviving processes among $($children.Count) observed descendants"
 } finally {
     if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
     $process.Dispose()

@@ -56,3 +56,23 @@ jobs:
         run: ./scripts/smoke-windows.ps1
       - name: Check for dependency drift
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+
+  tag-m1:
+    needs: desktop
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[phase1-m1]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag the validated main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="repos/$GITHUB_REPOSITORY/git"
+          existing=$(gh api "$api/matching-refs/tags/phase1-m1" --jq '.[] | select(.ref == "refs/tags/phase1-m1") | .object.sha')
+          if [[ -n "$existing" ]]; then
+            [[ "$existing" == "$GITHUB_SHA" ]] || { echo 'phase1-m1 already points to another commit'; exit 1; }
+            exit 0
+          fi
+          gh api --method POST "$api/refs" -f ref=refs/tags/phase1-m1 -f sha="$GITHUB_SHA"
