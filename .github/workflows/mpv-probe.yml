@@ -1,0 +1,32 @@
+name: Windows M2 dependency probe
+on:
+  push:
+    branches: ['feat/m2-player']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  provenance:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - name: Record dependency advisories
+        run: |
+          npm audit --json > audit-all.json
+          npm audit --omit=dev --json > audit-production.json
+          foreach ($path in 'audit-all.json','audit-production.json') {
+            $report = Get-Content -Raw $path | ConvertFrom-Json
+            if ($null -eq $report.metadata.vulnerabilities) { throw "No advisory report from $path" }
+            Write-Output $path
+            $report.vulnerabilities | ConvertTo-Json -Depth 12
+            $report.metadata.vulnerabilities | ConvertTo-Json
+          }
+          exit 0
+      - name: Verify and inspect the native runtime
+        run: |
+          ./scripts/get-mpv.ps1 -Destination "$env:RUNNER_TEMP/mpv"
+          python scripts/probe-mpv.py "$env:RUNNER_TEMP/mpv/libmpv-2.dll"
