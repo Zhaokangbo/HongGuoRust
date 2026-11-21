@@ -6,7 +6,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
-main { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+main { min-height: 100vh; display: grid; grid-template-rows: 66px 1fr 96px; }
 header, footer { display: flex; align-items: center; gap: 24px; padding: 18px 28px; }
 header { justify-content: space-between; }
 h1 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 20px; letter-spacing: -.04em; }
@@ -14,12 +14,13 @@ h1 i { height: 18px; width: 6px; border-radius: 2px; background: #a0e9cd; transf
 .connection { color: #c6d0ca; font-size: 13px; }
 .connection::before { content: ""; display: inline-block; width: 7px; height: 7px; background: currentColor; border-radius: 50%; margin-right: 7px; }
 .online { color: #a0e9cd; }
-.viewport { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0 18px; padding: 32px; border: 1px solid #2c3b34; border-radius: 8px; background: #0b110f; }
-h2 { font-size: 18px; font-weight: 500; margin: 18px 0 0; }
-.screen { width: 58px; height: 40px; border: 2px solid #53685e; border-radius: 6px; display: grid; place-items: center; }
-.screen i { border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent #8ba398; }
-p { color: #c0c9c3; text-align: center; overflow-wrap: anywhere; }
 button { background: #a0e9cd; color: #14271e; border: 0; border-radius: 4px; padding: 7px 14px; cursor: pointer; }
 footer { justify-content: space-between; }
 dl { display: flex; gap: 10px; align-items: baseline; margin: 0; font-size: 13px; }
 dt { color: #a9b7af; } dd { margin: 0; font-family: Consolas, monospace; }
+.player-controls { height: 96px; padding: 8px 18px; display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; }
+.player-actions { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; min-width: 0; }
+.player-actions button { flex: none; }
+.player-actions button:disabled { opacity: .55; }
+.player-actions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-actions [role=alert] { color: #ffb7a8; }
