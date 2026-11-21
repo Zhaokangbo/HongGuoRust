@@ -1,7 +1,7 @@
 use super::controls::PlayerControl;
 use super::source::MediaSource;
 use super::state::Failure;
-use libmpv2::{events::Event, Mpv};
+use libmpv2::{events::Event, mpv_end_file_reason, Mpv};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -52,6 +52,19 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
         code,
         message,
     }
+}
+
+/// A successful EndFile event is not necessarily a natural EOF.
+/// libmpv2 reports a non-zero playback error as Err before this function.
+fn classify_end_reason(reason: libmpv2::EndFileReason) -> Result<Observation, Failure> {
+    if reason == mpv_end_file_reason::Eof {
+        return Ok(Observation::End);
+    }
+    Err(Failure {
+        stage: "playback",
+        code: format!("unexpected_end_reason_{reason}"),
+        message: "Playback stopped without natural EOF (native stop, quit or unsupported redirect)".into(),
+    })
 }
 
 impl Engine {
@@ -135,7 +148,12 @@ impl Engine {
         match self.mpv.wait_event(0.025) {
             Some(Ok(Event::FileLoaded)) => Ok(Some(Observation::Loaded)),
             Some(Ok(Event::PlaybackRestart)) => Ok(Some(Observation::Restart)),
-            Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => Ok(Some(Observation::End)),
+            Some(Ok(Event::EndFile(reason))) => classify_end_reason(reason).map(Some),
+            Some(Ok(Event::Shutdown)) => Err(Failure {
+                stage: "playback",
+                code: "unexpected_shutdown".into(),
+                message: "libmpv shut down unexpectedly".into(),
+            }),
             Some(Err(e)) => Err(native_error("playback", e)),
             _ => {
                 // Native mpv property distinguishes network cache suspension
@@ -163,6 +181,22 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_natural_eof_reaches_ended() {
+        assert!(matches!(
+            classify_end_reason(mpv_end_file_reason::Eof),
+            Ok(Observation::End)
+        ));
+        for reason in [
+            mpv_end_file_reason::Stop,
+            mpv_end_file_reason::Quit,
+            mpv_end_file_reason::Error,
+            mpv_end_file_reason::Redirect,
+        ] {
+            assert!(classify_end_reason(reason).is_err());
+        }
+    }
 
     #[test]
     fn local_file_selection_keeps_unicode_and_rejects_other_types() {
