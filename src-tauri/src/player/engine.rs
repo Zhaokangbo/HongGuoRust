@@ -45,7 +45,11 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
     } else {
         e.to_string()
     };
-    Failure { stage, code, message }
+    Failure {
+        stage,
+        code,
+        message,
+    }
 }
 
 impl Engine {

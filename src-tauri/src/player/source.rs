@@ -94,10 +94,7 @@ mod tests {
 
     #[test]
     fn accepts_public_https_and_rejects_invalid_or_private_urls() {
-        assert!(public_https_url(
-            "https://samplelib.com/lib/preview/mp4/sample-20s.mp4"
-        )
-        .is_ok());
+        assert!(public_https_url("https://samplelib.com/lib/preview/mp4/sample-20s.mp4").is_ok());
         for url in [
             "http://cdn.example.com/movie.mp4",
             "https://localhost/movie.mp4",
