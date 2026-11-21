@@ -5,7 +5,8 @@
       "nsis"
     ],
     "resources": {
-      "resources/libmpv-2.dll": "libmpv-2.dll"
+      "resources/libmpv-2.dll": "libmpv-2.dll",
+      "resources/vulkan-1.dll": "vulkan-1.dll"
     },
     "windows": {
       "webviewInstallMode": {

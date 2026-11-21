@@ -72,8 +72,11 @@ jobs:
       - name: Assert native runtime never entered git tracking
         shell: pwsh
         run: |
-          if (Test-Path 'src-tauri/resources/libmpv-2.dll') {
-            throw 'Untracked DLL staging left behind after package step'
+          if (Test-Path 'src-tauri/resources/libmpv-2.dll' -PathType Leaf) {
+            throw 'Untracked libmpv staging left behind after package step'
+          }
+          if (Test-Path 'src-tauri/resources/vulkan-1.dll' -PathType Leaf) {
+            throw 'Untracked Vulkan loader staging left behind after package step'
           }
           git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

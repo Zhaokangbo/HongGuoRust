@@ -11,6 +11,7 @@ $expectedHash = 'df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e791
 $dir = Join-Path $env:RUNNER_TEMP ('HongGuoRustM5Smoke-' + [guid]::NewGuid().ToString('N'))
 $exe = Join-Path $dir 'hongguorust.exe'
 $dll = Join-Path $dir 'libmpv-2.dll'
+$vulkan = Join-Path $dir 'vulkan-1.dll'
 $installed = $false
 $uninstalled = $false
 
@@ -49,6 +50,10 @@ try {
     $hash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($hash -ne $expectedHash) { throw "Installed libmpv DLL hash mismatch: $hash" }
     Write-Host "PASS: installed EXE and verified libmpv-2.dll SHA256=$hash"
+    if (!(Test-Path -LiteralPath $vulkan -PathType Leaf)) {
+        throw "Installed app has no private vulkan-1.dll: $vulkan"
+    }
+    Write-Host "PASS: app-local Vulkan loader SHA256=$((Get-FileHash -LiteralPath $vulkan -Algorithm SHA256).Hash)"
 
     # The preexisting M1 UI automation asserts Rust IPC and normal process exit.
     try {
@@ -79,6 +84,7 @@ try {
     }
     if (Test-Path -LiteralPath $exe) { throw 'Uninstaller left application EXE behind' }
     if (Test-Path -LiteralPath $dll) { throw 'Uninstaller left app-private libmpv DLL behind' }
+    if (Test-Path -LiteralPath $vulkan) { throw 'Uninstaller left app-private Vulkan DLL behind' }
     $uninstalled = $true
     Write-Host 'PASS: NSIS silent install, app IPC, DLL SHA-256 and uninstall'
 } finally {
