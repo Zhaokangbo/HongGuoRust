@@ -1,5 +1,5 @@
 export interface PlayerSnapshot {
-  state: "Idle" | "Loading" | "Playing" | "Paused" | "Ended" | "Error";
+  state: "Idle" | "Loading" | "Playing" | "Paused" | "Buffering" | "Ended" | "Error";
   filename?: string;
   error?: { stage: string; code: string; message: string };
   revision: number;
