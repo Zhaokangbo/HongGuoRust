@@ -159,7 +159,7 @@ impl Engine {
             Some(Ok(Event::FileLoaded)) => {
                 self.file_loaded = true;
                 Ok(Some(Observation::Loaded))
-            },
+            }
             Some(Ok(Event::PlaybackRestart)) => Ok(Some(Observation::Restart)),
             Some(Ok(Event::EndFile(reason))) => classify_end_reason(reason),
             Some(Ok(Event::Shutdown)) => Err(Failure {
@@ -174,8 +174,7 @@ impl Engine {
                 // A remote MP4 may take time to open: do not make repeated
                 // synchronous property calls while libmpv is still loading
                 // its network stream, or query cache state on every event.
-                if self.file_loaded
-                    && self.cache_checked_at.elapsed() >= Duration::from_millis(200)
+                if self.file_loaded && self.cache_checked_at.elapsed() >= Duration::from_millis(200)
                 {
                     self.cache_checked_at = Instant::now();
                     if let Ok(waiting) = self.mpv.get_property::<bool>("paused-for-cache") {
