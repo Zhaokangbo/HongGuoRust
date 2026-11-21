@@ -11,7 +11,8 @@
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "typecheck": "tsc --noEmit",
     "test:discovery": "node --experimental-strip-types --test tests/discovery.test.mjs",
-    "build": "npm run typecheck && npm run test:discovery && vite build",
+    "test:episode-queue": "node --experimental-strip-types --test tests/episode-queue.test.mjs",
+    "build": "npm run typecheck && npm run test:discovery && npm run test:episode-queue && vite build",
     "tauri": "cargo tauri"
   },
   "dependencies": {

@@ -16,7 +16,7 @@
 | M7 | 播放历史、断点续播、收藏夹与进度可视化（已合入） |
 | M8–M14 | 搜索与列表 → 合法 Provider 扩展 → 短剧业务闭环 → 播放体验 → 稳定性 → 发布 → 长期扩展，详见 [产品路线图](docs/roadmap.md) |
 
-目前 Windows 客户端由 Rust 独占 libmpv 会话，支持本地 MP4、用户提供的公开 HTTPS MP4、暂停/继续、Seek、倍速、音量和全屏，并具备面向缓冲的七态播放状态机。运行未安装版仍需要配套 `libmpv-2.dll`。M5 源码及本机安装验收已完成，但**仍未完成干净 Windows 10/11 环境验收及第三方依赖对应源码/许可证合规，不发布公开安装器**；公开分发阻断项见 [Issue #7](https://github.com/Zhaokangbo/HongGuoRust/issues/7)。M6–M8 已合入本地媒体库、观看历史、断点续播、收藏、搜索排序及自动连播；M9-A 已完成演示/本地媒体统一 Content Provider 注册与搜索；M9-B1 已完成请求超时、取消与错误恢复；M9-B2 已完成用户自有 JSON 媒体清单 Provider，M9 阶段既定功能均已验收合并。M10-A 正在实现首页与分类发现。详见 [M4 验收](docs/acceptance/m4.md)、[M5 打包验收](docs/acceptance/m5.md)、[本机启动说明](docs/acceptance/run-windows.md)、[许可证评估](docs/architecture/licensing.md)。
+目前 Windows 客户端由 Rust 独占 libmpv 会话，支持本地 MP4、用户提供的公开 HTTPS MP4、暂停/继续、Seek、倍速、音量和全屏，并具备面向缓冲的七态播放状态机。运行未安装版仍需要配套 `libmpv-2.dll`。M5 源码及本机安装验收已完成，但**仍未完成干净 Windows 10/11 环境验收及第三方依赖对应源码/许可证合规，不发布公开安装器**；公开分发阻断项见 [Issue #7](https://github.com/Zhaokangbo/HongGuoRust/issues/7)。M6–M8 已合入本地媒体库、观看历史、断点续播、收藏、搜索排序及自动连播；M9-A 已完成演示/本地媒体统一 Content Provider 注册与搜索；M9-B1 已完成请求超时、取消与错误恢复；M9-B2 已完成用户自有 JSON 媒体清单 Provider，M9 阶段既定功能均已验收合并。M10-A 首页与分类发现已通过 Windows 11/11 项实机验收并合入 main；M10-B 正在开发显式上一集/下一集切换与自然完播提示。详见 [M4 验收](docs/acceptance/m4.md)、[M5 打包验收](docs/acceptance/m5.md)、[本机启动说明](docs/acceptance/run-windows.md)、[许可证评估](docs/architecture/licensing.md)。
 
 ## Windows 开发构建
 

@@ -9,7 +9,7 @@ import { DiscoveryHome } from "./DiscoveryHome";
 
 interface Props {
   onBack: () => Promise<void>;
-  onPlay: (seriesId: string, episodeId: string) => Promise<boolean>;
+  onPlay: (seriesId: string, episodeId: string, detail: SeriesDetail) => Promise<boolean>;
   onPlayLocal: (id: number, orderedIds: number[], origin: string) => Promise<boolean>;
   playerError: string;
 }
@@ -221,9 +221,13 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   }
 
   async function play(seriesId: string, episodeId: string) {
+    if (!detail || detail.series.id !== seriesId) {
+      setError("选集数据已失效，请重新进入详情");
+      return;
+    }
     setWorking(true);
     try {
-      await onPlay(seriesId, episodeId);
+      await onPlay(seriesId, episodeId, detail);
     } finally {
       setWorking(false);
     }
@@ -322,9 +326,9 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <div className="catalog-detail-body">
         <div className="catalog-meta">{detail.series.genre} · {detail.series.badge}</div>
         <p>{detail.series.description}</p>
-        <h3>选集 <span>共 {detail.episodes.length} 集</span></h3>
+        <h3>选集 <span>共 {detail.episodes.length} 集 · 点击播放后可在底部切换上一集/下一集</span></h3>
         <div className="catalog-episodes">
-          {detail.episodes.map(episode =>
+          {[...detail.episodes].sort((a, b) => a.number - b.number).map(episode =>
             <button key={episode.id} type="button" disabled={working}
               onClick={() => void play(detail.series.id, episode.id)}>
               <strong>{episode.number.toString().padStart(2, "0")}</strong>
