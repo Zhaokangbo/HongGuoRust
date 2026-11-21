@@ -61,7 +61,7 @@ impl From<&StoredMedia> for LocalMedia {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned(),
-            available: item.path.is_file(),
+            available: crate::player::engine::local_mp4(&item.path).is_ok(),
         }
     }
 }
@@ -113,14 +113,6 @@ fn store_data(path: &Path, data: &LibraryData) -> Result<(), String> {
     Ok(())
 }
 
-fn is_valid_mp4(path: &Path) -> bool {
-    path.is_file()
-        && path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("mp4"))
-}
-
 impl LocalLibrary {
     pub fn new() -> Self {
         let location = std::env::var_os("LOCALAPPDATA")
@@ -163,10 +155,12 @@ impl LocalLibrary {
 
     pub fn add(&self, selected: PathBuf) -> Result<LocalMedia, String> {
         self.ready()?;
-        let path = fs::canonicalize(selected).map_err(|e| e.to_string())?;
-        if !is_valid_mp4(&path) {
-            return Err("请选择真实存在的本地 MP4 文件".into());
-        }
+        // Keep the user-selected DOS path. Windows canonicalize() can return a
+        // verbatim \\?\ prefix, which the existing M2 local_mp4 guard rejects.
+        // Canonicalization is used only for stable duplicate identity.
+        let path = selected;
+        crate::player::engine::local_mp4(&path)?;
+        let identity = fs::canonicalize(&path).map_err(|e| e.to_string())?;
         let title = path
             .file_stem()
             .unwrap_or_default()
@@ -177,6 +171,8 @@ impl LocalLibrary {
             item.path
                 .to_string_lossy()
                 .eq_ignore_ascii_case(&path.to_string_lossy())
+                || fs::canonicalize(&item.path)
+                    .is_ok_and(|existing| existing == identity)
         }) {
             return Ok(LocalMedia::from(existing));
         }
@@ -217,9 +213,8 @@ impl LocalLibrary {
             .ok_or("媒体条目不存在")?
             .path
             .clone();
-        if !is_valid_mp4(&path) {
-            return Err("文件不存在或已不是 MP4，请检查原始文件位置".into());
-        }
+        crate::player::engine::local_mp4(&path)
+            .map_err(|_| "文件不存在、不是 MP4 或不是支持的本地盘文件".to_owned())?;
         Ok(path)
     }
 }
