@@ -2,7 +2,7 @@ use super::controls::PlayerControl;
 use super::source::MediaSource;
 use super::state::Failure;
 use libmpv2::{events::Event, mpv_end_file_reason, Mpv};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub fn local_mp4(path: &Path) -> Result<&str, String> {
@@ -75,6 +75,25 @@ fn classify_end_reason(reason: libmpv2::EndFileReason) -> Result<Option<Observat
     })
 }
 
+/// Opt-in native mpv diagnostics for network failures. The log may contain
+/// full media URLs (including signed query strings), so never enable it by
+/// default or upload the raw file without reviewing secrets first.
+fn optional_mpv_diagnostic_path(session: u64) -> Option<String> {
+    if std::env::var("HONGGUORUST_MPV_DEBUG").ok().as_deref() != Some("1") {
+        return None;
+    }
+    let root = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("HongGuoRust")
+        .join("logs");
+    if std::fs::create_dir_all(&root).is_err() {
+        return None;
+    }
+    let path = root.join(format!("mpv-{}-{session}.log", std::process::id()));
+    Some(path.to_string_lossy().into_owned())
+}
+
 impl Engine {
     pub fn load(
         host: isize,
@@ -95,7 +114,12 @@ impl Engine {
             MediaSource::Https(url) => url.clone(),
         };
         let local = matches!(source, MediaSource::Local(_));
+        let diagnostic = optional_mpv_diagnostic_path(session);
         let mpv = Mpv::with_initializer(|init| {
+            if let Some(path) = diagnostic.as_deref() {
+                init.set_option("log-file", path)?;
+                init.set_option("msg-level", "all=v")?;
+            }
             init.set_option("wid", host as i64)?;
             init.set_option("load-scripts", false)?;
             init.set_option("ytdl", false)?;
@@ -110,6 +134,9 @@ impl Engine {
             Ok(())
         })
         .map_err(|e| native_error("initialize", e))?;
+        if let Some(path) = diagnostic.as_deref() {
+            tracing::info!(session_id=session, native_log=%path, "opt-in libmpv diagnostic enabled");
+        }
         mpv.command("loadfile", &[name.as_str()])
             .map_err(|e| native_error("loadfile", e))?;
         Ok(Self {
