@@ -1,6 +1,11 @@
 //! Content-provider boundary for M6. No scraping and no third-party credentials.
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
+mod local;
+mod registry;
+
+pub use registry::{CatalogService, ProviderInfo, SearchPage};
+
 use serde::Serialize;
 
 const PREVIEW_MP4: &str = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
@@ -15,6 +20,7 @@ pub struct Series {
     pub badge: String,
     pub artwork: String,
     pub episode_count: usize,
+    pub provider_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -33,10 +39,19 @@ pub struct SeriesDetail {
     pub episodes: Vec<Episode>,
 }
 
+/// Provider implementations describe content; only PlayerService owns libmpv.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MediaTarget {
+    Https(String),
+    LocalLibrary(u64),
+}
+
 pub trait ContentProvider: Send + Sync {
-    fn search(&self, query: &str) -> Vec<Series>;
-    fn detail(&self, series_id: &str) -> Option<SeriesDetail>;
-    fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<String, String>;
+    fn id(&self) -> &'static str;
+    fn name(&self) -> &'static str;
+    fn search(&self, query: &str) -> Result<Vec<Series>, String>;
+    fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String>;
+    fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String>;
 }
 
 #[derive(Default)]
@@ -92,6 +107,7 @@ impl DemoDefinition {
             badge: self.badge.into(),
             artwork: self.artwork.into(),
             episode_count: self.episodes,
+            provider_id: "demo".into(),
         }
     }
 
@@ -106,9 +122,17 @@ impl DemoDefinition {
 }
 
 impl ContentProvider for LocalDemoProvider {
-    fn search(&self, query: &str) -> Vec<Series> {
+    fn id(&self) -> &'static str {
+        "demo"
+    }
+
+    fn name(&self) -> &'static str {
+        "演示内容"
+    }
+
+    fn search(&self, query: &str) -> Result<Vec<Series>, String> {
         let term = query.trim().to_lowercase();
-        DEMOS
+        Ok(DEMOS
             .iter()
             .filter(|item| {
                 term.is_empty()
@@ -117,21 +141,21 @@ impl ContentProvider for LocalDemoProvider {
                     || item.genre.to_lowercase().contains(&term)
             })
             .map(DemoDefinition::summary)
-            .collect()
+            .collect())
     }
 
-    fn detail(&self, series_id: &str) -> Option<SeriesDetail> {
-        DEMOS
+    fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String> {
+        Ok(DEMOS
             .iter()
             .find(|item| item.id == series_id)
             .map(|item| SeriesDetail {
                 series: item.summary(),
                 episodes: (0..item.episodes).map(|i| item.episode(i)).collect(),
-            })
+            }))
     }
 
-    fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<String, String> {
-        let details = self.detail(series_id).ok_or("Unknown demo series")?;
+    fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String> {
+        let details = self.detail(series_id)?.ok_or("Unknown demo series")?;
         if !details
             .episodes
             .iter()
@@ -140,51 +164,21 @@ impl ContentProvider for LocalDemoProvider {
             return Err("Unknown demo episode".into());
         }
         // Never accept caller-supplied media URLs through the catalog API.
-        crate::player::source::public_https_url(PREVIEW_MP4)
-    }
-}
-
-pub struct CatalogService {
-    provider: Box<dyn ContentProvider>,
-}
-
-impl Default for CatalogService {
-    fn default() -> Self {
-        Self {
-            provider: Box::new(LocalDemoProvider),
-        }
-    }
-}
-
-impl CatalogService {
-    pub fn search(&self, query: Option<&str>) -> Result<Vec<Series>, String> {
-        let query = query.unwrap_or("").trim();
-        if query.len() > 128 {
-            return Err("Search text is too long".into());
-        }
-        Ok(self.provider.search(query))
-    }
-
-    pub fn detail(&self, id: &str) -> Result<SeriesDetail, String> {
-        self.provider.detail(id).ok_or("Series not found".into())
-    }
-
-    pub fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<String, String> {
-        self.provider.resolve_episode(series_id, episode_id)
+        crate::player::source::public_https_url(PREVIEW_MP4).map(MediaTarget::Https)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CatalogService, ContentProvider, LocalDemoProvider, PREVIEW_MP4};
+    use super::{CatalogService, ContentProvider, LocalDemoProvider, MediaTarget, PREVIEW_MP4};
 
     #[test]
     fn catalogue_supports_search_and_stable_details() {
         let provider = LocalDemoProvider;
-        assert_eq!(provider.search("").len(), 3);
-        assert_eq!(provider.search("城市").len(), 1);
-        assert_eq!(provider.search("完全不存在").len(), 0);
-        let details = provider.detail("forest-demo").expect("forest demo");
+        assert_eq!(provider.search("").unwrap().len(), 3);
+        assert_eq!(provider.search("城市").unwrap().len(), 1);
+        assert_eq!(provider.search("完全不存在").unwrap().len(), 0);
+        let details = provider.detail("forest-demo").unwrap().expect("forest demo");
         assert_eq!(details.series.episode_count, details.episodes.len());
         assert_eq!(details.episodes[0].id, "ep-01");
     }
@@ -194,7 +188,7 @@ mod tests {
         let provider = LocalDemoProvider;
         assert_eq!(
             provider.resolve_episode("forest-demo", "ep-01").unwrap(),
-            PREVIEW_MP4
+            MediaTarget::Https(PREVIEW_MP4.into())
         );
         assert!(provider.resolve_episode("forest-demo", "ep-99").is_err());
         assert!(provider.resolve_episode("missing", "ep-01").is_err());
