@@ -2,9 +2,9 @@ use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::history::{finish, HistorySession};
 use super::provider_history::{finish_provider, ProviderHistorySession};
-use crate::catalog::progress::ProviderProgressStore;
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
+use crate::catalog::progress::ProviderProgressStore;
 use crate::local_library::LocalLibrary;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -53,7 +53,11 @@ pub struct PlayerService {
 }
 
 impl PlayerService {
-    pub fn new(host: isize, library: Arc<LocalLibrary>, provider_progress: Arc<ProviderProgressStore>) -> std::io::Result<Self> {
+    pub fn new(
+        host: isize,
+        library: Arc<LocalLibrary>,
+        provider_progress: Arc<ProviderProgressStore>,
+    ) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(Shared::default()));
         let shared = Arc::clone(&state);
@@ -90,12 +94,27 @@ impl PlayerService {
     }
 
     /// Called only after CatalogService validated the selected episode and URL.
-    pub fn open_catalog_https(&self, url: String, series_id: String, episode_id: String) -> Result<u64, String> {
+    pub fn open_catalog_https(
+        &self,
+        url: String,
+        series_id: String,
+        episode_id: String,
+    ) -> Result<u64, String> {
         let source = MediaSource::https(url.clone())?;
-        let resume_at = self.provider_progress.resume_point(&series_id, &episode_id, &url)?;
-        self.open_source(source, None, None, Some(ProviderPlayback {
-            series_id, episode_id, source: url, resume_at,
-        }))
+        let resume_at = self
+            .provider_progress
+            .resume_point(&series_id, &episode_id, &url)?;
+        self.open_source(
+            source,
+            None,
+            None,
+            Some(ProviderPlayback {
+                series_id,
+                episode_id,
+                source: url,
+                resume_at,
+            }),
+        )
     }
 
     fn open_source(
@@ -228,8 +247,13 @@ fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) 
     }
 }
 
-fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
-    library: Arc<LocalLibrary>, provider_progress: Arc<ProviderProgressStore>) {
+fn run(
+    host: isize,
+    rx: Receiver<Command>,
+    state: Arc<Mutex<Shared>>,
+    library: Arc<LocalLibrary>,
+    provider_progress: Arc<ProviderProgressStore>,
+) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
     let mut history: Option<HistorySession> = None;
@@ -275,9 +299,15 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
                         );
                         engine = Some(player);
                         history = library_id.map(|key| HistorySession::new(id, key, resume_at));
-                        provider_history = provider.map(|key| ProviderHistorySession::new(
-                            id, key.series_id, key.episode_id, key.source, key.resume_at,
-                        ));
+                        provider_history = provider.map(|key| {
+                            ProviderHistorySession::new(
+                                id,
+                                key.series_id,
+                                key.episode_id,
+                                key.source,
+                                key.resume_at,
+                            )
+                        });
                     }
                     Err(e) => failed(&state, id, e),
                 }
@@ -330,7 +360,9 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
                     }
                     if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
                         match request {
-                            PlayerControl::SeekAbsolute(sec) => active.seeked(&provider_progress, sec),
+                            PlayerControl::SeekAbsolute(sec) => {
+                                active.seeked(&provider_progress, sec)
+                            }
                             PlayerControl::Pause(true) => active.save(&provider_progress, false),
                             _ => {}
                         }
@@ -361,13 +393,18 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
                                 }
                             }
                         }
-                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id)
+                        {
                             if let Some(sec) = active.resume_at.take() {
                                 if let Err(e) = current.control(PlayerControl::SeekAbsolute(sec)) {
                                     tracing::warn!(session_id = id, error = %e.message, "provider resume seek failed");
                                 } else {
                                     active.seeked(&provider_progress, sec);
-                                    info!(session_id = id, position_sec = sec, "provider resume seek accepted");
+                                    info!(
+                                        session_id = id,
+                                        position_sec = sec,
+                                        "provider resume seek accepted"
+                                    );
                                 }
                             }
                         }
@@ -378,7 +415,8 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             active.started(&library);
                         }
-                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id)
+                        {
                             active.started(&provider_progress);
                         }
                     }
@@ -432,7 +470,8 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             active.progress(&library, position, duration);
                         }
-                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id)
+                        {
                             active.progress(&provider_progress, position, duration);
                         }
                     }
