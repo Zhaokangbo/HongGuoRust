@@ -1,4 +1,4 @@
-import type { LocalMedia, Series, SeriesDetail } from "./types";
+import type { CatalogProvider, CatalogSearchPage, LocalMedia, Series, SeriesDetail } from "./types";
 
 function desktopInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const core = window.__TAURI__?.core;
@@ -8,6 +8,18 @@ function desktopInvoke<T>(command: string, args?: Record<string, unknown>): Prom
 
 export function searchCatalog(query: string): Promise<Series[]> {
   return desktopInvoke<Series[]>("catalog_search", { query });
+}
+
+export function listCatalogSources(): Promise<CatalogProvider[]> {
+  return desktopInvoke<CatalogProvider[]>("catalog_sources");
+}
+
+export function searchCatalogPage(
+  query: string, sourceId: string, offset = 0, limit = 24,
+): Promise<CatalogSearchPage> {
+  return desktopInvoke<CatalogSearchPage>("catalog_search_page", {
+    query, sourceId, offset, limit,
+  });
 }
 
 export function getCatalogSeries(seriesId: string): Promise<SeriesDetail> {

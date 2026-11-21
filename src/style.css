@@ -144,3 +144,11 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 }
 .playlist-auto-next input { width: 14px; height: 14px; accent-color: #a0e9cd; }
 .playlist-auto-error { font-size: 11px; color: #ffb7a8; flex: 0 1 220px; white-space: normal; }
+
+/* M9-A: one catalog UI for isolated demo and user-owned local Providers. */
+.catalog-source-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 17px 0 0; }
+.catalog-source-tools label, .catalog-source-tools span { color: #afc2b7; font-size: 12px; }
+.catalog-source-tools select { min-width: 146px; background: #192820; border: 1px solid #587467; color: #eff8f0; padding: 7px 9px; border-radius: 5px; }
+.catalog-source-tools button { padding: 7px 10px; }
+.catalog-pagination { margin-top: 17px; display: flex; gap: 15px; align-items: center; color: #a5c5b1; font-size: 12px; }
+.catalog-pagination button { padding: 7px 15px; }
