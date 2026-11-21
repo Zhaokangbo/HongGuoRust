@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Installer,
-    [string]$AuditReport
+    [string]$AuditReport,
+    [string]$CandidateCommit
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -86,7 +87,14 @@ try {
         )
         $auditEvidence = [ordered]@{
             schema_version = 1
-            candidate_commit = $env:GITHUB_SHA
+            # PR workflows check out a synthetic merge commit by default.
+            # The feature branch HEAD is the candidate's true source revision.
+            candidate_commit = if (![string]::IsNullOrWhiteSpace($CandidateCommit)) {
+                $CandidateCommit
+            } else {
+                $env:GITHUB_SHA
+            }
+            workflow_checkout_sha = $env:GITHUB_SHA
             installer_name = (Split-Path -Leaf $setup)
             installer_sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
             installed_files = $inventory
