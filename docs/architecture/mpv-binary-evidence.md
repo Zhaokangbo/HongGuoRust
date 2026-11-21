@@ -22,6 +22,27 @@
 - From `mpv-configure-out.log`: Meson `gpl: false`, `libmpv: true`, `cplayer: false`. The configure output identifies FFmpeg libraries and their API versions. These are observed build settings, not a legal conclusion.
 - The separate Windows-only app-private Vulkan loader is built from explicitly pinned Khronos source by our own M5 script, not sourced from the mpv archive.
 
+## Configured dependency inventory (2026-11-21)
+
+The retained upstream `64-lgpl_logs` artifact contains `ffmpeg-configure-out.log`.
+It reports **37 enabled external libraries** and **14 hardware acceleration
+providers**, recorded verbatim as names in
+[`ffmpeg-config-inventory.json`](ffmpeg-config-inventory.json).
+The list includes `libaom`, `libdav1d`, `libmp3lame`,
+`libplacebo`, `libopenmpt`, `openssl`, `libass`, and `libjxl`;
+hardware providers include platform APIs and headers, not just libraries.
+
+**Critical distinction:** an enabled configure feature is not evidence that
+the corresponding library's code was actually linked into `libmpv-2.dll`.
+Conversely, this list is not a complete list of code that was linked.
+Individual source revision, license, attribution, static-linking and LGPL
+relink conditions are **not yet confirmed**.
+
+A dedicated M5 CI preflight checks identity, unique names, exact counts and
+the still-pending review flag. The generated binary-free audit JSON includes
+a SHA-256 of the inventory and these counts; this is an **evidence
+traceability gate, not a license approval gate**.
+
 ## Open blockers for redistribution
 
 1. Preserve **exact** corresponding source archives/build recipes (including shinchiro/mpv-winbuild-cmake revision, toolchain and relevant patches), and account for static FFmpeg dependencies and any LGPL relink/replace requirements.

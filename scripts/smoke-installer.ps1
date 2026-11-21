@@ -122,6 +122,11 @@ try {
         } else {
             $env:GITHUB_SHA
         }
+        # The upstream inventory is configured-feature evidence, not proof
+        # of actual linkage or binary redistribution compliance.
+        $inventoryPath = Join-Path $PSScriptRoot '../docs/architecture/ffmpeg-config-inventory.json'
+        $upstreamInventory = Get-Content -LiteralPath $inventoryPath -Raw -Encoding utf8 | ConvertFrom-Json
+        $inventoryHash = (Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash.ToLowerInvariant()
         $auditEvidence = [ordered]@{
             schema_version = 1
             candidate_commit = $sourceCommit
@@ -135,6 +140,10 @@ try {
             clean_windows_10_11_verified = $false
             redistribution_provenance_reviewed = $false
             distribution_authorized = $false
+            upstream_inventory_sha256 = $inventoryHash
+            upstream_configured_external_library_count = @($upstreamInventory.ffmpeg.external_libraries).Count
+            upstream_configured_hardware_provider_count = @($upstreamInventory.ffmpeg.hardware_acceleration_providers).Count
+            upstream_license_audit_status = $upstreamInventory.audit.status
             note = 'Hosted runner evidence only; not clean-machine or third-party redistribution acceptance.'
         }
     }
