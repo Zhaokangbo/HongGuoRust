@@ -1,4 +1,5 @@
 use crate::catalog::request::DEFAULT_TIMEOUT_MS;
+use crate::catalog::progress::{ProviderEpisodeProgress, ProviderProgressStore};
 use crate::catalog::{
     CatalogService, MediaTarget, OwnedManifestStore, ProviderInfo, SearchPage, Series, SeriesDetail,
 };
@@ -152,10 +153,35 @@ pub fn catalog_play_episode(
     series_id: String,
     episode_id: String,
 ) -> Result<u64, String> {
+    let scoped_series_id = catalog.detail(&series_id)?.series.id;
     match catalog.resolve_episode(&series_id, &episode_id)? {
-        MediaTarget::Https(url) => player.open_https(url),
+        MediaTarget::Https(url) => player.open_catalog_https(url, scoped_series_id, episode_id),
         MediaTarget::LocalLibrary(id) => player.open_library(id),
     }
+}
+
+/// Only return bookmarks whose provider target still resolves to the same media.
+/// The frontend never receives the media source URL or its fingerprint.
+#[tauri::command]
+pub fn catalog_episode_progress(
+    catalog: State<'_, CatalogService>,
+    progress: State<'_, Arc<ProviderProgressStore>>,
+    series_id: String,
+) -> Result<Vec<ProviderEpisodeProgress>, String> {
+    let detail = catalog.detail(&series_id)?;
+    let mut result = Vec::new();
+    for episode in &detail.episodes {
+        match catalog.resolve_episode(&detail.series.id, &episode.id) {
+            Ok(MediaTarget::Https(url)) => {
+                if let Some(record) = progress.get(&detail.series.id, &episode.id, &url)? {
+                    result.push(record);
+                }
+            }
+            Ok(MediaTarget::LocalLibrary(_)) => {}
+            Err(_) => { /* missing or invalid source cannot return a stale bookmark */ }
+        }
+    }
+    Ok(result)
 }
 
 #[tauri::command]
