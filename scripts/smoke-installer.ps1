@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory)][string]$Installer,
     [string]$AuditReport,
     [string]$CandidateCommit,
-    [switch]$VerifyPlayback
+    [switch]$VerifyPlayback,
+    [switch]$AuditNativeImports
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -11,6 +12,9 @@ if ($env:OS -ne 'Windows_NT') { throw 'NSIS smoke requires Windows' }
 
 $setup = (Resolve-Path -LiteralPath $Installer).Path
 $expectedHash = 'df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e7913'
+if ($AuditNativeImports -and [string]::IsNullOrWhiteSpace($AuditReport)) {
+    throw '-AuditNativeImports requires -AuditReport so results can be preserved'
+}
 # RUNNER_TEMP exists on GitHub Actions but not on a normal Windows desktop.
 # Keep local smoke tests runnable without requiring the CI environment.
 $smokeRoot = if (![string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -and
@@ -27,6 +31,7 @@ $installed = $false
 $uninstalled = $false
 $auditEvidence = $null
 $playbackVerified = $false
+$nativeImportsVerified = $false
 
 function Run-Nsis([string]$file, [string[]]$arguments, [string]$stage) {
     $proc = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -Wait
@@ -140,6 +145,8 @@ try {
             required_legal_files_verified = $true
             installed_playback_smoke_requested = [bool]$VerifyPlayback
             installed_playback_smoke_verified = $false
+            native_pe_imports_audit_requested = [bool]$AuditNativeImports
+            native_pe_imports_audit_verified = $false
             required_legal_file_names = @($legalSources.Keys)
             clean_windows_10_11_verified = $false
             redistribution_provenance_reviewed = $false
@@ -150,6 +157,24 @@ try {
             upstream_license_audit_status = $upstreamInventory.audit.status
             note = 'Hosted runner evidence only; not clean-machine or third-party redistribution acceptance.'
         }
+    }
+
+    # PE import tables enumerate dynamic DLL imports only, including delayed
+    # imports. They cannot identify statically linked FFmpeg or mpv components
+    # and cannot establish that Windows 10/11 provides every imported DLL.
+    if ($AuditNativeImports) {
+        $python = Get-Command python -ErrorAction Stop
+        $importOutput = & $python.Source "$PSScriptRoot/audit-pe-imports.py" $exe $dll $vulkan
+        if ($LASTEXITCODE -ne 0) {
+            throw "Installed candidate PE import audit failed (exit $LASTEXITCODE)"
+        }
+        $importReport = $importOutput | ConvertFrom-Json
+        if (@($importReport.binaries).Count -ne 3) {
+            throw 'PE audit did not report all three installed executable modules'
+        }
+        $auditEvidence['native_pe_import_report'] = $importReport
+        $nativeImportsVerified = $true
+        Write-Host 'PASS: audited x64 PE direct/delay-load DLL imports for installed EXE and both native DLLs'
     }
 
     # The preexisting M1 UI automation asserts Rust IPC and normal process exit.
@@ -213,6 +238,7 @@ try {
     Write-Host 'PASS: NSIS silent install, app IPC, DLL SHA-256 and uninstall'
     if ($auditEvidence) {
         $auditEvidence['installed_playback_smoke_verified'] = $playbackVerified
+        $auditEvidence['native_pe_imports_audit_verified'] = $nativeImportsVerified
         $reportPath = [IO.Path]::GetFullPath($AuditReport)
         $reportDir = Split-Path -Parent $reportPath
         New-Item -ItemType Directory -Path $reportDir -Force | Out-Null

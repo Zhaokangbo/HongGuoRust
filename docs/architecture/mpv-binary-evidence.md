@@ -13,6 +13,7 @@
 
 ## Exact source commits and observed configuration
 
+- shinchiro/mpv-winbuild-cmake build recipe checkout: [`7e36e1eab5094a642c5a3c1771551f06b5ec3224`](https://github.com/shinchiro/mpv-winbuild-cmake/commit/7e36e1eab5094a642c5a3c1771551f06b5ec3224), recorded by the 2026-11-20 LGPL x64 runner (`git log -1 --format=%H` after checkout). The workflow subsequently patched its build recipes, so the unmodified base tree alone is insufficient to reproduce the binary.
 - zhongfly/mpv-winbuild workflow commit: [`49520b9987f0e6dc7cf0db83634e45c416bd58b6`](https://github.com/zhongfly/mpv-winbuild/commit/49520b9987f0e6dc7cf0db83634e45c416bd58b6).
 - Upstream release tag ref at recording: `40802a561a3f4e2af6d9bfdb996285a45795e951` (distinct from workflow SHA).
 - mpv source: [`94127e1e1aa85734482cb563cfb79cf9b6eb7772`](https://github.com/mpv-player/mpv/commit/94127e1e1aa85734482cb563cfb79cf9b6eb7772).
@@ -42,6 +43,10 @@ A dedicated M5 CI preflight checks identity, unique names, exact counts and
 the still-pending review flag. The generated binary-free audit JSON includes
 a SHA-256 of the inventory and these counts; this is an **evidence
 traceability gate, not a license approval gate**.
+
+## Installed native import inventory (pending candidate CI)
+
+The M5 candidate invokes `scripts/audit-pe-imports.py` on the installed EXE, libmpv and Vulkan Loader and stores their direct and delay-load DLL names in the evidence report. This detects dynamic Windows import requirements and confirms x64 PE headers. It is **not** a static-link or transitive license audit, and not a substitute for clean Windows 10/11 tests.
 
 ## Open blockers for redistribution
 
