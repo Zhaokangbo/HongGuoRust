@@ -37,11 +37,15 @@ pub struct Engine {
 }
 
 fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
-    Failure {
-        stage,
-        code: format!("{e:?}"),
-        message: e.to_string(),
-    }
+    let code = format!("{e:?}");
+    // -13 is libmpv's generic loading failure. It is not proof of HTTP 403:
+    // the source may be denied, unavailable, return non-media, or fail locally.
+    let message = if code.contains("Raw(-13)") {
+        "媒体加载失败（libmpv -13）。请检查网络及资源权限，并确认 HTTPS 地址直接返回 MP4，而不是 403/XML/HTML 错误页面。".into()
+    } else {
+        e.to_string()
+    };
+    Failure { stage, code, message }
 }
 
 impl Engine {

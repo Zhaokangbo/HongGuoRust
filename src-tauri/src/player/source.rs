@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn accepts_public_https_and_rejects_invalid_or_private_urls() {
         assert!(public_https_url(
-            "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+            "https://samplelib.com/lib/preview/mp4/sample-20s.mp4"
         )
         .is_ok());
         for url in [

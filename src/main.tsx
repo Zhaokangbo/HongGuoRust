@@ -5,7 +5,8 @@ import "./style.css";
 
 type PlayerCommand = "open_local" | "open_https" | "stop" | "set_paused" | "seek_to"
   | "set_rate" | "set_volume" | "set_fullscreen";
-const SAMPLE = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+// Public sample source used for manual streaming checks. External URLs can change.
+const SAMPLE = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
 
 function clock(value?: number): string {
   if (value === undefined || !Number.isFinite(value)) return "--:--";
@@ -18,7 +19,7 @@ function App() {
   const [connectionError, setConnectionError] = useState("");
   const [commandError, setCommandError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [httpsUrl, setHttpsUrl] = useState("");
+  const [httpsUrl, setHttpsUrl] = useState(SAMPLE);
   const [seekText, setSeekText] = useState("0");
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const [rate, setRate] = useState(1);
@@ -124,7 +125,7 @@ function App() {
       <div className="player-actions">
         <button disabled={busy || !connected} onClick={() => void command("open_local")}>打开本地 MP4</button>
         <input aria-label="公开 HTTPS MP4 直链" type="url" spellCheck={false}
-          placeholder="粘贴公开 HTTPS MP4 直链" title={SAMPLE}
+          placeholder="粘贴公开 HTTPS MP4 直链" title={`示例：${SAMPLE}`}
           value={httpsUrl} onChange={e => setHttpsUrl(e.target.value)} />
         <button disabled={busy || !connected || !httpsUrl.trim()}
           onClick={() => void command("open_https", { url: httpsUrl.trim() })}>播放 HTTPS</button>
