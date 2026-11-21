@@ -1,3 +1,4 @@
+use super::controls::PlayerControl;
 use super::state::Failure;
 use libmpv2::{events::Event, Mpv};
 use std::path::Path;
@@ -64,6 +65,35 @@ impl Engine {
             session,
             opened,
         })
+    }
+
+    /// Called only by the worker thread that owns the libmpv handle.
+    /// IPC success means the command was accepted, not that a frame was presented.
+    pub fn control(&mut self, control: PlayerControl) -> Result<(), Failure> {
+        let control = control.validate().map_err(|message| Failure {
+            stage: "validate",
+            code: "invalid_playback_control".into(),
+            message: message.into(),
+        })?;
+        let arg;
+        let (name, args): (&str, Vec<&str>) = match control {
+            PlayerControl::Pause(paused) => {
+                ("set", vec!["pause", if paused { "yes" } else { "no" }])
+            }
+            PlayerControl::SeekAbsolute(seconds) => {
+                arg = seconds.to_string();
+                ("seek", vec![arg.as_str(), "absolute+exact"])
+            }
+            PlayerControl::SetRate(rate) => {
+                arg = rate.to_string();
+                ("set", vec!["speed", arg.as_str()])
+            }
+            PlayerControl::SetVolume(volume) => {
+                arg = volume.to_string();
+                ("set", vec!["volume", arg.as_str()])
+            }
+        };
+        self.mpv.command(name, &args).map_err(|e| native_error("control", e))
     }
 
     pub fn poll(&mut self) -> Result<Option<Observation>, Failure> {
