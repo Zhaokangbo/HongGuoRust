@@ -77,4 +77,12 @@ jobs:
           }
           git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload UI/window diagnostics only if candidate smoke fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-installed-app-diagnostics
+          path: diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
       # Do NOT upload setup.exe before license and clean-Windows acceptance.
