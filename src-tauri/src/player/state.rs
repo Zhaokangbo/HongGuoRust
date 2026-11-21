@@ -277,6 +277,24 @@ mod tests {
     }
 
     #[test]
+    fn buffering_progress_does_not_revert_playback_state() {
+        let mut s = PlayerState::default();
+        let id = s.begin("slow-https.mp4".into());
+        s.mark_started(id);
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.progress(id, Some(13.5), Some(20.0));
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        assert_eq!(s.snapshot().position_sec, Some(13.5));
+        assert_eq!(s.snapshot().duration_sec, Some(20.0));
+        let revision = s.snapshot().revision;
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().revision, revision);
+        s.set_cache_waiting(id, false);
+        assert_eq!(s.snapshot().state, PlaybackState::Playing);
+    }
+
+    #[test]
     fn terminal_error_and_stop_ignore_late_cache_notifications() {
         let mut s = PlayerState::default();
         let id = s.begin("broken.mp4".into());
