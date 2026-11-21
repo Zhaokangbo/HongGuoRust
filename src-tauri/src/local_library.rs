@@ -171,8 +171,7 @@ impl LocalLibrary {
             item.path
                 .to_string_lossy()
                 .eq_ignore_ascii_case(&path.to_string_lossy())
-                || fs::canonicalize(&item.path)
-                    .is_ok_and(|existing| existing == identity)
+                || fs::canonicalize(&item.path).is_ok_and(|existing| existing == identity)
         }) {
             return Ok(LocalMedia::from(existing));
         }
