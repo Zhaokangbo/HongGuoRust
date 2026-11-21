@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import { CatalogView } from "./catalog/CatalogView";
 import "./style.css";
 
 type PlayerCommand = "open_local" | "open_https" | "stop" | "set_paused" | "seek_to"
-  | "set_rate" | "set_volume" | "set_fullscreen";
+  | "set_rate" | "set_volume" | "set_fullscreen" | "set_catalog_visible" | "catalog_play_episode";
 // Public sample source used for manual streaming checks. External URLs can change.
 const SAMPLE = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
 
@@ -25,6 +26,7 @@ function App() {
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(100);
   const [fullscreen, setFullscreen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -98,6 +100,23 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  async function openCatalog() {
+    if (fullscreen && !(await command("set_fullscreen", { fullscreen: false }))) return;
+    if (fullscreen) setFullscreen(false);
+    if (await command("set_catalog_visible", { visible: true })) setCatalogOpen(true);
+  }
+
+  async function backToPlayer() {
+    if (await command("set_catalog_visible", { visible: false })) setCatalogOpen(false);
+  }
+
+  async function playFromCatalog(seriesId: string, episodeId: string): Promise<boolean> {
+    const played = await command("catalog_play_episode", { seriesId, episodeId });
+    if (!played) return false;
+    await backToPlayer();
+    return true;
+  }
+
   const connected = snapshot !== null && !connectionError;
   const active = snapshot?.state === "Playing" || snapshot?.state === "Paused" || snapshot?.state === "Buffering";
   const controllable = connected && active && !busy;
@@ -113,14 +132,22 @@ function App() {
     setSeekPreview(null);
   }
 
-  return <main className={fullscreen ? "fullscreen" : ""}>
+  return <main className={fullscreen ? "fullscreen" : catalogOpen ? "catalog-mode" : ""}>
     <header>
       <h1><i aria-hidden="true" />HongGuoRust</h1>
-      <span className={connected ? "connection online" : "connection"} role="status">
-        {connected ? "已连接" : connectionError ? "连接失败" : "连接中"}
-      </span>
+      <div className="catalog-header-actions">
+        <button className="catalog-toggle" disabled={!connected || busy}
+          onClick={() => { if (catalogOpen) void backToPlayer(); else void openCatalog(); }}>
+          {catalogOpen ? "返回播放" : "演示剧库"}
+        </button>
+        <span className={connected ? "connection online" : "connection"} role="status">
+          {connected ? "已连接" : connectionError ? "连接失败" : "连接中"}
+        </span>
+      </div>
     </header>
-    <section aria-label="视频画面" />
+    {catalogOpen
+      ? <CatalogView onBack={backToPlayer} onPlay={playFromCatalog} playerError={commandError} />
+      : <section aria-label="视频画面" />}
     <footer className="player-controls">
       <div className="player-actions">
         <button disabled={busy || !connected} onClick={() => void command("open_local")}>打开本地 MP4</button>

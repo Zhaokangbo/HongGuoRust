@@ -1,3 +1,4 @@
+use crate::catalog::{CatalogService, Series, SeriesDetail};
 use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
 };
@@ -75,4 +76,37 @@ pub async fn set_rate(window: WebviewWindow, rate: f64) -> Result<(), String> {
 #[tauri::command]
 pub async fn set_volume(window: WebviewWindow, volume: f64) -> Result<(), String> {
     dispatch_control(window, PlayerControl::SetVolume(volume)).await
+}
+
+
+#[tauri::command]
+pub fn catalog_search(
+    catalog: State<'_, CatalogService>,
+    query: Option<String>,
+) -> Result<Vec<Series>, String> {
+    catalog.search(query.as_deref())
+}
+
+#[tauri::command]
+pub fn catalog_detail(
+    catalog: State<'_, CatalogService>,
+    series_id: String,
+) -> Result<SeriesDetail, String> {
+    catalog.detail(&series_id)
+}
+
+#[tauri::command]
+pub fn catalog_play_episode(
+    catalog: State<'_, CatalogService>,
+    player: State<'_, PlayerService>,
+    series_id: String,
+    episode_id: String,
+) -> Result<u64, String> {
+    let url = catalog.resolve_episode(&series_id, &episode_id)?;
+    player.open_https(url)
+}
+
+#[tauri::command]
+pub fn set_catalog_visible(host: State<'_, crate::VideoHost>, visible: bool) {
+    window::set_video_visible(host.0, !visible);
 }
