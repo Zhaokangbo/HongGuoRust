@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-windows.ps1'
+      - 'scripts/get-mpv.ps1'
+      - 'scripts/prepare-mpv-msvc.ps1'
       - 'src-tauri/tauri.bundle.conf.json'
       - 'src-tauri/windows/hooks.nsh'
       - 'docs/acceptance/m5.md'
