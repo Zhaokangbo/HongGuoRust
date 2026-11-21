@@ -45,7 +45,7 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
     // -13 is libmpv's generic loading failure. It is not proof of HTTP 403:
     // the source may be denied, unavailable, return non-media, or fail locally.
     let message = if code.contains("Raw(-13)") {
-        "媒体加载失败（libmpv -13）。请检查网络及资源权限，并确认 HTTPS 地址直接返回 MP4，而不是 403/XML/HTML 错误页面。".into()
+        "媒体加载失败（libmpv -13）。请检查 VPN 或代理端口是否有效、网络和资源权限，确认 HTTPS 地址返回 MP4 而非 403/XML/HTML。".into()
     } else {
         e.to_string()
     };
