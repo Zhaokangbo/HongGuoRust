@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  catalogErrorMessage, clearOwnedManifest, getCatalogSeries, importOwnedManifest,
+  catalogErrorMessage, clearOwnedManifest, getCatalogSeries, getCatalogEpisodeProgress, importOwnedManifest,
   isCatalogCancellation, listCatalogSources, searchCatalogPage,
 } from "./api";
-import type { CatalogProvider, Series, SeriesDetail } from "./types";
+import type { CatalogProvider, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
+import { latestEpisodeProgress, formatEpisodePosition } from "./progress";
 import { LocalLibraryView } from "./LocalLibraryView";
 import { DiscoveryHome } from "./DiscoveryHome";
 
@@ -31,6 +32,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const detailController = useRef<AbortController | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
+  const [episodeProgress, setEpisodeProgress] = useState<ProviderEpisodeProgress[]>([]);
+  const [progressError, setProgressError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
@@ -101,6 +104,21 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       if (version === requestVersion.current) requestVersion.current++;
     };
   }, [mode, search, sourceId, refreshKey]);
+
+  // Provider history is read-only here. Keep stale responses from attaching to a new detail.
+  useEffect(() => {
+    let active = true;
+    setEpisodeProgress([]);
+    setProgressError("");
+    if (detail) {
+      void getCatalogEpisodeProgress(detail.series.id).then(records => {
+        if (active) setEpisodeProgress(records);
+      }).catch(reason => {
+        if (active) setProgressError(String(reason));
+      });
+    }
+    return () => { active = false; };
+  }, [detail, refreshKey]);
 
   async function loadMore() {
     if (nextOffset === null || loadingMore || loading || working) return;
@@ -233,6 +251,9 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
+  const lastProgress = detail ? latestEpisodeProgress(detail.episodes, episodeProgress) : null;
+  const lastEpisode = lastProgress && detail?.episodes.find(item => item.id === lastProgress.episodeId);
+
   return <section className="catalog-view" aria-label="内容剧库">
     <div className="catalog-heading">
       <div>
@@ -326,6 +347,23 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <div className="catalog-detail-body">
         <div className="catalog-meta">{detail.series.genre} · {detail.series.badge}</div>
         <p>{detail.series.description}</p>
+        {progressError && <p className="catalog-progress-error" role="alert">
+          观看历史读取失败，原有记录不会被自动覆盖：{progressError}
+        </p>}
+        {lastEpisode && lastProgress && <div className="catalog-resume" role="status">
+          <div>
+            <strong>上次观看：第 {lastEpisode.number} 集 · {lastEpisode.title}</strong>
+            <span>{lastProgress.completed
+              ? "本集已观看完毕"
+              : "播放进度 " + formatEpisodePosition(lastProgress.positionSec) +
+                (lastProgress.durationSec ? " / " + formatEpisodePosition(lastProgress.durationSec) : "")}
+            </span>
+          </div>
+          <button type="button" disabled={working}
+            onClick={() => void play(detail.series.id, lastEpisode.id)}>
+            {lastProgress.completed ? "重看本集" : "继续观看"}
+          </button>
+        </div>}
         <h3>选集 <span>共 {detail.episodes.length} 集 · 点击播放后可在底部切换上一集/下一集</span></h3>
         <div className="catalog-episodes">
           {[...detail.episodes].sort((a, b) => a.number - b.number).map(episode =>
