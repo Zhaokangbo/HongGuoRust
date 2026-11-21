@@ -15,6 +15,12 @@ function clock(value?: number): string {
   return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
 }
 
+interface LocalPlaylist {
+  ids: number[];
+  index: number;
+  origin: string;
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState<PlayerSnapshot | null>(null);
   const [connectionError, setConnectionError] = useState("");
@@ -27,6 +33,7 @@ function App() {
   const [volume, setVolume] = useState(100);
   const [fullscreen, setFullscreen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [playlist, setPlaylist] = useState<LocalPlaylist | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -113,15 +120,38 @@ function App() {
   async function playFromCatalog(seriesId: string, episodeId: string): Promise<boolean> {
     const played = await command("catalog_play_episode", { seriesId, episodeId });
     if (!played) return false;
+    setPlaylist(null);
     await backToPlayer();
     return true;
   }
 
-  async function playFromLocal(id: number): Promise<boolean> {
+  async function playFromLocal(id: number, orderedIds: number[], origin: string): Promise<boolean> {
     const played = await command("library_play", { id });
     if (!played) return false;
+    const index = orderedIds.indexOf(id);
+    setPlaylist({
+      ids: index >= 0 ? [...orderedIds] : [id],
+      index: index >= 0 ? index : 0,
+      origin,
+    });
     await backToPlayer();
     return true;
+  }
+
+  async function movePlaylist(delta: -1 | 1) {
+    if (!playlist || busy) return;
+    const targetIndex = playlist.index + delta;
+    if (targetIndex < 0 || targetIndex >= playlist.ids.length) return;
+    const ok = await command("library_play", { id: playlist.ids[targetIndex] });
+    if (ok) setPlaylist(current =>
+      current && current.ids.join(",") === playlist.ids.join(",")
+        ? { ...current, index: targetIndex } : current);
+  }
+
+  async function playUnqueued(name: "open_local" | "open_https" | "stop",
+    args?: Record<string, unknown>) {
+    const ok = await command(name, args);
+    if (ok) setPlaylist(null);
   }
 
   const connected = snapshot !== null && !connectionError;
@@ -157,14 +187,14 @@ function App() {
       : <section aria-label="视频画面" />}
     <footer className="player-controls">
       <div className="player-actions">
-        <button disabled={busy || !connected} onClick={() => void command("open_local")}>打开本地 MP4</button>
+        <button disabled={busy || !connected} onClick={() => void playUnqueued("open_local")}>打开本地 MP4</button>
         <input aria-label="公开 HTTPS MP4 直链" type="url" spellCheck={false}
           placeholder="粘贴公开 HTTPS MP4 直链" title={`示例：${SAMPLE}`}
           value={httpsUrl} onChange={e => setHttpsUrl(e.target.value)} />
         <button disabled={busy || !connected || !httpsUrl.trim()}
-          onClick={() => void command("open_https", { url: httpsUrl.trim() })}>播放 HTTPS</button>
+          onClick={() => void playUnqueued("open_https", { url: httpsUrl.trim() })}>播放 HTTPS</button>
         <button disabled={busy || !connected || snapshot?.state === "Idle"}
-          onClick={() => void command("stop")}>停止</button>
+          onClick={() => void playUnqueued("stop")}>停止</button>
         <span className="filename" title={snapshot?.filename}>{snapshot?.filename}</span>
         {error && <span role="alert" title={error}>{error}</span>}
       </div>
@@ -182,6 +212,15 @@ function App() {
           onClick={() => void command("set_paused", { paused: snapshot?.state !== "Paused" })}>
           {snapshot?.state === "Paused" ? "继续" : "暂停"}
         </button>
+        {playlist && <>
+          <button disabled={busy || playlist.index === 0}
+            onClick={() => void movePlaylist(-1)} title="按本次播放列表顺序播放上一部">上一部</button>
+          <span className="playlist-indicator" title={playlist.origin + " · 本次队列；不自动连播"}>
+            列表 {playlist.index + 1}/{playlist.ids.length}
+          </span>
+          <button disabled={busy || playlist.index >= playlist.ids.length - 1}
+            onClick={() => void movePlaylist(1)} title="按本次播放列表顺序播放下一部">下一部</button>
+        </>}
         <label>跳转秒数
           <input aria-label="跳转秒数" type="number" min={0} step={1} value={seekText}
             onChange={e => setSeekText(e.target.value)} />

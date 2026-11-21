@@ -121,3 +121,18 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 /* M7-B: progress is informational; position remains owned by the native worker. */
 .local-progress { width: min(300px, 100%); height: 5px; margin-top: 5px; border-radius: 5px; background: #3a5043; overflow: hidden; }
 .local-progress-fill { height: 100%; border-radius: inherit; background: #9fe6c2; }
+
+/* M8-A: local browser, view-only sorting and an ephemeral manual playlist. */
+.local-browse-tools {
+  display: flex; flex-wrap: wrap; align-items: end; gap: 12px;
+  margin: 14px 0 18px;
+}
+.local-browse-tools label { display: flex; flex-direction: column; gap: 5px; color: #afc2b5; font-size: 12px; }
+.local-browse-tools input, .local-browse-tools select {
+  border: 1px solid #526c5c; border-radius: 6px; padding: 9px 10px;
+  background: #1b2b22; color: #edf7ef; font-size: 13px;
+}
+.local-browse-tools input { width: min(44vw, 290px); }
+.local-browse-tools select { min-width: 158px; }
+.local-browse-count { color: #98b6a4; font-size: 12px; margin-bottom: 9px; }
+.playlist-indicator { color: #bcebd5; font: 11px Consolas, monospace; white-space: nowrap; }

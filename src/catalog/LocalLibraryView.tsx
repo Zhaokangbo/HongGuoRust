@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { addLocalMedia, clearLocalHistory, listLocalMedia, removeLocalMedia, setLocalFavorite } from "./api";
 import type { LocalMedia } from "./types";
+import { browseLocalMedia, playlistFromVisible, type LibraryMode, type LibrarySort } from "./localBrowse";
 
 interface Props {
-  onPlay: (id: number) => Promise<boolean>;
+  onPlay: (id: number, orderedIds: number[], origin: string) => Promise<boolean>;
   playerError: string;
   historyOnly?: boolean;
   favoritesOnly?: boolean;
@@ -21,6 +22,8 @@ export function LocalLibraryView({ onPlay, playerError, historyOnly = false, fav
   const [error, setError] = useState("");
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [confirmClear, setConfirmClear] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<LibrarySort>(historyOnly ? "recent" : "added");
 
   useEffect(() => {
     let active = true;
@@ -88,32 +91,52 @@ export function LocalLibraryView({ onPlay, playerError, historyOnly = false, fav
     }
   }
 
+  const mode: LibraryMode = historyOnly ? "history" : favoritesOnly ? "favorites" : "local";
+  const { total, visible } = browseLocalMedia(items, mode, query, sort);
+  const orderedIds = playlistFromVisible(visible);
+  const origin = historyOnly ? "最近播放" : favoritesOnly ? "我的收藏" : "我的视频";
+
   async function play(id: number) {
     setWorking(true);
     setError("");
     try {
-      await onPlay(id);
+      await onPlay(id, orderedIds, origin);
     } finally {
       setWorking(false);
     }
   }
-
-  const visible = historyOnly
-    ? [...items].filter(item => item.lastPlayedMs !== null)
-        .sort((a, b) => (b.lastPlayedMs ?? 0) - (a.lastPlayedMs ?? 0))
-    : favoritesOnly ? items.filter(item => item.favorite) : items;
 
   return <div className="local-library">
     {!historyOnly && !favoritesOnly && <div className="local-library-toolbar">
       <button type="button" disabled={working} onClick={() => void add()}>+ 添加本地 MP4</button>
       <span>仅保存媒体文件位置，不复制、不上传视频文件。</span>
     </div>}
+    <div className="local-browse-tools">
+      <label>
+        <span>搜索</span>
+        <input type="search" aria-label="搜索本地视频" placeholder="按标题或文件名搜索"
+          maxLength={128} value={query} onChange={event => setQuery(event.target.value)} />
+      </label>
+      <label>
+        <span>排序</span>
+        <select aria-label="本地视频排序" value={sort}
+          onChange={event => setSort(event.target.value as LibrarySort)}>
+          <option value="added">添加时间（最新）</option>
+          <option value="title">标题（A–Z）</option>
+          <option value="recent">最近播放</option>
+          <option value="progress">观看进度</option>
+        </select>
+      </label>
+      <span className="local-browse-count" role="status">显示 {visible.length} / {total} 条</span>
+    </div>
     {(error || playerError) && <p role="alert" className="catalog-error">{error || playerError}</p>}
     {loading ? <p className="catalog-empty" role="status">正在读取本地媒体目录…</p>
-      : visible.length === 0 ? <p className="catalog-empty">{historyOnly
-          ? "还没有观看记录。请到“我的视频”选择一部 MP4 播放。"
-          : favoritesOnly ? "还没有收藏的视频。请到“我的视频”中点击“收藏”。"
-          : "媒体库还是空的，点击“添加本地 MP4”开始。"}</p>
+      : visible.length === 0 ? <p className="catalog-empty">{total > 0
+          ? "没有匹配的视频，请尝试其他关键词。"
+          : historyOnly
+            ? "还没有观看记录。请到“我的视频”选择一部 MP4 播放。"
+            : favoritesOnly ? "还没有收藏的视频。请到“我的视频”中点击“收藏”。"
+            : "媒体库还是空的，点击“添加本地 MP4”开始。"}</p>
       : <div className="local-library-list">
         {visible.map(item => <div className="local-media-row" key={item.id}>
           <div className="local-media-icon" aria-hidden="true">MP4</div>
@@ -157,6 +180,7 @@ export function LocalLibraryView({ onPlay, playerError, historyOnly = false, fav
             onClick={() => setConfirmId(item.id)}>移除</button>)}
         </div>)}
       </div>}
+    <p className="catalog-disclaimer">本次播放列表按当前搜索和排序结果生成，仅支持手动上一部/下一部切换；不自动连播、不保存队列。</p>
     <p className="catalog-disclaimer">{historyOnly
       ? "观看进度只保存在本机。清除记录不会移除视频，也不会删除视频文件。"
       : favoritesOnly ? "取消收藏不会删除原始视频，也不会清除观看进度。"
