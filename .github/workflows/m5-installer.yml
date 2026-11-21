@@ -69,7 +69,7 @@ jobs:
         run: |
           $setup = @(Get-ChildItem src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' -File)
           if ($setup.Count -ne 1) { throw "Expected one NSIS setup, found $($setup.Count)" }
-          ./scripts/smoke-installer.ps1 -Installer $setup[0].FullName -AuditReport 'build-evidence/m5-package-report.json'
+          ./scripts/smoke-installer.ps1 -Installer $setup[0].FullName -AuditReport 'build-evidence/m5-package-report.json' -CandidateCommit '${{ github.event.pull_request.head.sha || github.sha }}'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Assert native runtime never entered git tracking
         shell: pwsh
