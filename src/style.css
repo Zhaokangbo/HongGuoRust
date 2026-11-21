@@ -32,3 +32,18 @@ dt { color: #a9b7af; } dd { margin: 0; font-family: Consolas, monospace; }
 .player-transport input, .player-transport select { background: #1b2823; border: 1px solid #53615b; color: #e9f1ed; border-radius: 4px; padding: 4px; }
 .player-transport input { width: 58px; }
 .player-status { margin-left: auto; color: #a0e9cd; font-family: Consolas, monospace; }
+
+/* M3 retains the M2 96px footer so the native HWND geometry remains unchanged. */
+.player-controls { height: 96px; padding: 3px 18px; grid-template-columns: minmax(0, 1fr); grid-template-rows: 30px 22px 30px; row-gap: 2px; }
+.player-actions { grid-column: 1; gap: 7px; }
+.player-actions button { padding: 5px 9px; }
+.player-actions input[type=url] { min-width: 100px; width: min(29vw, 270px); background: #1b2823; color: #e9f1ed; border: 1px solid #53615b; border-radius: 4px; padding: 5px; }
+.player-actions .filename { flex: 1; min-width: 0; }
+.player-actions [role=alert] { flex: 0 1 180px; min-width: 0; }
+.player-timeline { display: flex; align-items: center; gap: 7px; min-width: 0; font: 12px Consolas, monospace; }
+.player-timeline span { width: 45px; text-align: center; flex: none; }
+.player-timeline input { flex: 1; min-width: 0; cursor: pointer; }
+.player-transport { gap: 7px; }
+.player-version { font: 12px Consolas, monospace; color: #a9b7af; flex: none; }
+main.fullscreen { grid-template-rows: 0px minmax(0, 1fr) 0px; }
+main.fullscreen header, main.fullscreen footer { display: none; }

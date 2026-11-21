@@ -5,6 +5,8 @@ export interface PlayerSnapshot {
   revision: number;
   sessionId: number | null;
   appVersion: string;
+  positionSec?: number;
+  durationSec?: number;
 }
 
 declare global {
