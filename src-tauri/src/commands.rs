@@ -1,4 +1,6 @@
-use crate::player::{controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window};
+use crate::player::{
+    controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Manager, State, WebviewWindow};
 
