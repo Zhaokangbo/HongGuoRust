@@ -1,4 +1,6 @@
-use crate::catalog::{CatalogService, Series, SeriesDetail};
+use crate::catalog::{
+    CatalogService, MediaTarget, ProviderInfo, SearchPage, Series, SeriesDetail,
+};
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
@@ -89,6 +91,27 @@ pub fn catalog_search(
 }
 
 #[tauri::command]
+pub fn catalog_sources(catalog: State<'_, CatalogService>) -> Vec<ProviderInfo> {
+    catalog.sources()
+}
+
+#[tauri::command]
+pub fn catalog_search_page(
+    catalog: State<'_, CatalogService>,
+    query: Option<String>,
+    source_id: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<SearchPage, String> {
+    catalog.search_page(
+        query.as_deref(),
+        source_id.as_deref(),
+        offset.unwrap_or(0),
+        limit.unwrap_or(24),
+    )
+}
+
+#[tauri::command]
 pub fn catalog_detail(
     catalog: State<'_, CatalogService>,
     series_id: String,
@@ -103,8 +126,10 @@ pub fn catalog_play_episode(
     series_id: String,
     episode_id: String,
 ) -> Result<u64, String> {
-    let url = catalog.resolve_episode(&series_id, &episode_id)?;
-    player.open_https(url)
+    match catalog.resolve_episode(&series_id, &episode_id)? {
+        MediaTarget::Https(url) => player.open_https(url),
+        MediaTarget::LocalLibrary(id) => player.open_library(id),
+    }
 }
 
 #[tauri::command]
