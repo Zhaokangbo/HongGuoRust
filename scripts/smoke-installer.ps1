@@ -8,7 +8,15 @@ if ($env:OS -ne 'Windows_NT') { throw 'NSIS smoke requires Windows' }
 
 $setup = (Resolve-Path -LiteralPath $Installer).Path
 $expectedHash = 'df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e7913'
-$dir = Join-Path $env:RUNNER_TEMP ('HongGuoRustM5Smoke-' + [guid]::NewGuid().ToString('N'))
+# RUNNER_TEMP exists on GitHub Actions but not on a normal Windows desktop.
+# Keep local smoke tests runnable without requiring the CI environment.
+$smokeRoot = if (![string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -and
+    (Test-Path -LiteralPath $env:RUNNER_TEMP -PathType Container)) {
+    $env:RUNNER_TEMP
+} else {
+    [IO.Path]::GetTempPath()
+}
+$dir = Join-Path $smokeRoot ('HongGuoRustM5Smoke-' + [guid]::NewGuid().ToString('N'))
 $exe = Join-Path $dir 'hongguorust.exe'
 $dll = Join-Path $dir 'libmpv-2.dll'
 $vulkan = Join-Path $dir 'vulkan-1.dll'
