@@ -34,6 +34,23 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
 
+  // Leaving the unified catalog must invalidate any still-loading detail.
+  useEffect(() => {
+    if (mode !== "demo") {
+      detailController.current?.abort();
+      detailController.current = null;
+      setDetail(null);
+      setDetailLoading(false);
+      setWorking(false);
+    }
+  }, [mode]);
+
+  // The search effect separately cleans its own request on dependency change.
+  useEffect(() => () => {
+    pageController.current?.abort();
+    detailController.current?.abort();
+  }, []);
+
   useEffect(() => {
     let alive = true;
     void listCatalogSources().then(result => {
