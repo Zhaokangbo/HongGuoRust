@@ -199,19 +199,34 @@ try {
         $python = Get-Command python -ErrorAction Stop
         $oldRuntimeDir = [Environment]::GetEnvironmentVariable('MPV_RUNTIME_DIR', 'Process')
         $oldLogDir = [Environment]::GetEnvironmentVariable('HONGGUORUST_LOG_DIR', 'Process')
+        $oldModuleReport = [Environment]::GetEnvironmentVariable('HONGGUORUST_LOADED_MODULE_REPORT', 'Process')
+        $nativeModuleReportPath = Join-Path $smokeRoot ('hgr-loaded-modules-' + [guid]::NewGuid().ToString('N') + '.json')
         try {
             $env:MPV_RUNTIME_DIR = $dir
+            if ($auditEvidence) { $env:HONGGUORUST_LOADED_MODULE_REPORT = $nativeModuleReportPath }
             $env:HONGGUORUST_LOG_DIR = (Join-Path $PSScriptRoot '../diagnostics')
             New-Item -ItemType Directory -Force -Path $env:HONGGUORUST_LOG_DIR | Out-Null
             & $python.Source "$PSScriptRoot/smoke-player.py" $exe
             if ($LASTEXITCODE -ne 0) {
                 throw "NSIS-installed executable playback probe failed (exit $LASTEXITCODE)"
             }
+            if ($auditEvidence) {
+                if (!(Test-Path -LiteralPath $nativeModuleReportPath -PathType Leaf)) {
+                    throw 'Installed playback passed but emitted no loaded-module evidence'
+                }
+                $nativeModules = Get-Content -LiteralPath $nativeModuleReportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($nativeModules.installed_native_modules_verified -ne $true) {
+                    throw 'Loaded-module report failed installer-runtime origin verification'
+                }
+                $auditEvidence['runtime_loaded_module_report'] = $nativeModules
+            }
             $playbackVerified = $true
             Write-Host 'PASS: installed EXE completed M2 video/audio probe and 20 clean playing-window close cycles'
         } finally {
             [Environment]::SetEnvironmentVariable('MPV_RUNTIME_DIR', $oldRuntimeDir, 'Process')
             [Environment]::SetEnvironmentVariable('HONGGUORUST_LOG_DIR', $oldLogDir, 'Process')
+            [Environment]::SetEnvironmentVariable('HONGGUORUST_LOADED_MODULE_REPORT', $oldModuleReport, 'Process')
+            Remove-Item -LiteralPath $nativeModuleReportPath -Force -ErrorAction SilentlyContinue
         }
     }
 
