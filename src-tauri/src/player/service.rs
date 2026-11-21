@@ -99,12 +99,18 @@ impl PlayerService {
         if shared.closing {
             return Err("Window is closing".into());
         }
-        let id = shared.player.snapshot().session_id.ok_or("No active playback session")?;
+        let id = shared
+            .player
+            .snapshot()
+            .session_id
+            .ok_or("No active playback session")?;
         let (reply, receiver) = mpsc::sync_channel(1);
-        self.tx.send(Command::Control { id, request, reply })
+        self.tx
+            .send(Command::Control { id, request, reply })
             .map_err(|_| "Playback worker exited")?;
         drop(shared);
-        receiver.recv_timeout(std::time::Duration::from_secs(5))
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
             .map_err(|_| "Playback control timed out".to_owned())?
     }
 
