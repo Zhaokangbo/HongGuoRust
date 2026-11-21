@@ -81,7 +81,11 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
             commands::open_local,
-            commands::stop
+            commands::stop,
+            commands::set_paused,
+            commands::seek_to,
+            commands::set_rate,
+            commands::set_volume
         ])
         .run(tauri::generate_context!())
         .expect("failed to run HongGuoRust");
