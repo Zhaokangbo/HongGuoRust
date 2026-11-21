@@ -46,3 +46,12 @@ export interface LocalMedia {
   completed: boolean;
   favorite: boolean;
 }
+
+export interface ProviderEpisodeProgress {
+  seriesId: string;
+  episodeId: string;
+  positionSec: number;
+  durationSec: number | null;
+  lastPlayedMs: number;
+  completed: boolean;
+}
