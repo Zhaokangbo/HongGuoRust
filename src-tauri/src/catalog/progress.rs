@@ -39,7 +39,10 @@ struct ProgressData {
 
 impl Default for ProgressData {
     fn default() -> Self {
-        Self { schema_version: SCHEMA, items: Vec::new() }
+        Self {
+            schema_version: SCHEMA,
+            items: Vec::new(),
+        }
     }
 }
 
@@ -74,7 +77,10 @@ pub struct ProviderProgressStore {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 /// Digest-like change detector. This is deliberately not used for authorization
@@ -98,17 +104,26 @@ fn read_data(path: &Path) -> Result<ProgressData, String> {
     }
     let data: ProgressData = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
         .map_err(|e| format!("剧集历史文件无法解析，请先备份：{e}"))?;
-    if data.schema_version != SCHEMA || data.items.len() > MAX_ITEMS || data.items.iter().any(|x| {
-        !valid_id(&x.series_id, 161) || !valid_id(&x.episode_id, 128)
-            || x.source_fingerprint.len() != 16
-            || !x.source_fingerprint.bytes().all(|c| c.is_ascii_hexdigit())
-            || !x.position_sec.is_finite() || x.position_sec < 0.0
-            || x.duration_sec.is_some_and(|d| !d.is_finite() || d <= 0.0)
-    }) {
+    if data.schema_version != SCHEMA
+        || data.items.len() > MAX_ITEMS
+        || data.items.iter().any(|x| {
+            !valid_id(&x.series_id, 161)
+                || !valid_id(&x.episode_id, 128)
+                || x.source_fingerprint.len() != 16
+                || !x.source_fingerprint.bytes().all(|c| c.is_ascii_hexdigit())
+                || !x.position_sec.is_finite()
+                || x.position_sec < 0.0
+                || x.duration_sec.is_some_and(|d| !d.is_finite() || d <= 0.0)
+        })
+    {
         return Err("剧集历史文件格式无效，请先备份".into());
     }
     let mut identities = std::collections::HashSet::new();
-    if data.items.iter().any(|x| !identities.insert((&x.series_id, &x.episode_id))) {
+    if data
+        .items
+        .iter()
+        .any(|x| !identities.insert((&x.series_id, &x.episode_id)))
+    {
         return Err("剧集历史文件包含重复条目，请先备份".into());
     }
     Ok(data)
@@ -128,8 +143,18 @@ fn write_data(path: &Path, data: &ProgressData) -> Result<(), String> {
     drop(file);
     let src: Vec<u16> = pending.as_os_str().encode_wide().chain(Some(0)).collect();
     let dst: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-    if unsafe { MoveFileExW(src.as_ptr(), dst.as_ptr(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) } == 0 {
-        return Err(format!("保存剧集历史失败：{}", std::io::Error::last_os_error()));
+    if unsafe {
+        MoveFileExW(
+            src.as_ptr(),
+            dst.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        return Err(format!(
+            "保存剧集历史失败：{}",
+            std::io::Error::last_os_error()
+        ));
     }
     Ok(())
 }
@@ -137,7 +162,11 @@ fn write_data(path: &Path, data: &ProgressData) -> Result<(), String> {
 impl ProviderProgressStore {
     pub fn new() -> Self {
         match std::env::var_os("LOCALAPPDATA") {
-            Some(root) => Self::from_path(PathBuf::from(root).join("HongGuoRust").join("provider-progress.json")),
+            Some(root) => Self::from_path(
+                PathBuf::from(root)
+                    .join("HongGuoRust")
+                    .join("provider-progress.json"),
+            ),
             None => Self {
                 path: PathBuf::new(),
                 state: Mutex::new(ProgressData::default()),
@@ -151,35 +180,74 @@ impl ProviderProgressStore {
             Ok(data) => (data, None),
             Err(e) => (ProgressData::default(), Some(e)),
         };
-        Self { path, state: Mutex::new(state), load_error }
+        Self {
+            path,
+            state: Mutex::new(state),
+            load_error,
+        }
     }
 
     fn ready(&self) -> Result<(), String> {
-        if let Some(e) = &self.load_error { Err(e.clone()) } else { Ok(()) }
+        if let Some(e) = &self.load_error {
+            Err(e.clone())
+        } else {
+            Ok(())
+        }
     }
 
-    pub fn get(&self, series_id: &str, episode_id: &str, url: &str) -> Result<Option<ProviderEpisodeProgress>, String> {
+    pub fn get(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        url: &str,
+    ) -> Result<Option<ProviderEpisodeProgress>, String> {
         self.ready()?;
         let hash = fingerprint(url);
         let state = self.state.lock().map_err(|e| e.to_string())?;
-        Ok(state.items.iter().find(|x| x.series_id == series_id
-            && x.episode_id == episode_id && x.source_fingerprint == hash)
+        Ok(state
+            .items
+            .iter()
+            .find(|x| {
+                x.series_id == series_id
+                    && x.episode_id == episode_id
+                    && x.source_fingerprint == hash
+            })
             .map(ProviderEpisodeProgress::from))
     }
 
-    pub fn resume_point(&self, series_id: &str, episode_id: &str, url: &str) -> Result<Option<f64>, String> {
+    pub fn resume_point(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        url: &str,
+    ) -> Result<Option<f64>, String> {
         Ok(self.get(series_id, episode_id, url)?.and_then(|record| {
-            if record.completed { return None; }
+            if record.completed {
+                return None;
+            }
             let sec = record.position_sec;
-            if sec < 5.0 { return None; }
-            if record.duration_sec.is_some_and(|duration| sec >= duration - 5.0) { return None; }
+            if sec < 5.0 {
+                return None;
+            }
+            if record
+                .duration_sec
+                .is_some_and(|duration| sec >= duration - 5.0)
+            {
+                return None;
+            }
             Some(sec)
         }))
     }
 
     fn update(
-        &self, series_id: &str, episode_id: &str, url_fingerprint: &str,
-        position: Option<f64>, duration: Option<f64>, completed: bool, started: bool,
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        url_fingerprint: &str,
+        position: Option<f64>,
+        duration: Option<f64>,
+        completed: bool,
+        started: bool,
     ) -> Result<(), String> {
         self.ready()?;
         if !valid_id(series_id, 161) || !valid_id(episode_id, 128) {
@@ -187,20 +255,31 @@ impl ProviderProgressStore {
         }
         let mut state = self.state.lock().map_err(|e| e.to_string())?;
         let mut next = state.clone();
-        let item = if let Some(index) = next.items.iter().position(|x|
-            x.series_id == series_id && x.episode_id == episode_id)
+        let item = if let Some(index) = next
+            .items
+            .iter()
+            .position(|x| x.series_id == series_id && x.episode_id == episode_id)
         {
             &mut next.items[index]
         } else {
             if next.items.len() >= MAX_ITEMS {
-                let oldest = next.items.iter().enumerate()
-                    .min_by_key(|(_, item)| item.last_played_ms).map(|(index, _)| index).unwrap_or(0);
+                let oldest = next
+                    .items
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, item)| item.last_played_ms)
+                    .map(|(index, _)| index)
+                    .unwrap_or(0);
                 next.items.remove(oldest);
             }
             next.items.push(StoredProgress {
-                series_id: series_id.into(), episode_id: episode_id.into(),
-                source_fingerprint: url_fingerprint.into(), position_sec: 0.0,
-                duration_sec: None, last_played_ms: 0, completed: false,
+                series_id: series_id.into(),
+                episode_id: episode_id.into(),
+                source_fingerprint: url_fingerprint.into(),
+                position_sec: 0.0,
+                duration_sec: None,
+                last_played_ms: 0,
+                completed: false,
             });
             next.items.last_mut().unwrap()
         };
@@ -212,7 +291,9 @@ impl ProviderProgressStore {
             item.completed = false;
         }
         if started {
-            if item.completed { item.position_sec = 0.0; }
+            if item.completed {
+                item.position_sec = 0.0;
+            }
             item.completed = false;
         }
         if let Some(p) = position.filter(|p| p.is_finite() && *p >= 0.0) {
@@ -223,7 +304,9 @@ impl ProviderProgressStore {
         }
         if completed {
             item.completed = true;
-            if let Some(d) = item.duration_sec { item.position_sec = d; }
+            if let Some(d) = item.duration_sec {
+                item.position_sec = d;
+            }
         }
         item.last_played_ms = now_ms();
         write_data(&self.path, &next)?;
@@ -231,13 +314,41 @@ impl ProviderProgressStore {
         Ok(())
     }
 
-    pub fn mark_started(&self, series_id: &str, episode_id: &str, source: &str) -> Result<(), String> {
-        self.update(series_id, episode_id, &fingerprint(source), None, None, false, true)
+    pub fn mark_started(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        source: &str,
+    ) -> Result<(), String> {
+        self.update(
+            series_id,
+            episode_id,
+            &fingerprint(source),
+            None,
+            None,
+            false,
+            true,
+        )
     }
 
-    pub fn save_progress(&self, series_id: &str, episode_id: &str, source: &str,
-        position: Option<f64>, duration: Option<f64>, completed: bool) -> Result<(), String> {
-        self.update(series_id, episode_id, &fingerprint(source), position, duration, completed, false)
+    pub fn save_progress(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        source: &str,
+        position: Option<f64>,
+        duration: Option<f64>,
+        completed: bool,
+    ) -> Result<(), String> {
+        self.update(
+            series_id,
+            episode_id,
+            &fingerprint(source),
+            position,
+            duration,
+            completed,
+            false,
+        )
     }
 }
 
@@ -247,8 +358,15 @@ mod tests {
     use std::fs;
 
     fn test_path() -> PathBuf {
-        std::env::temp_dir().join(format!("hgr-provider-{}-{:?}", std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()))
+        std::env::temp_dir()
+            .join(format!(
+                "hgr-provider-{}-{:?}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ))
             .join("provider-progress.json")
     }
 
@@ -256,13 +374,39 @@ mod tests {
     fn bookmarks_survive_reopen_and_are_namespaced() {
         let path = test_path();
         let store = ProviderProgressStore::from_path(path.clone());
-        store.mark_started("demo:same", "ep-1", "https://example.com/a.mp4").unwrap();
-        store.save_progress("demo:same", "ep-1", "https://example.com/a.mp4", Some(40.0), Some(100.0), false).unwrap();
+        store
+            .mark_started("demo:same", "ep-1", "https://example.com/a.mp4")
+            .unwrap();
+        store
+            .save_progress(
+                "demo:same",
+                "ep-1",
+                "https://example.com/a.mp4",
+                Some(40.0),
+                Some(100.0),
+                false,
+            )
+            .unwrap();
         drop(store);
         let store = ProviderProgressStore::from_path(path.clone());
-        assert_eq!(store.resume_point("demo:same", "ep-1", "https://example.com/a.mp4").unwrap(), Some(40.0));
-        assert_eq!(store.resume_point("manifest:same", "ep-1", "https://example.com/a.mp4").unwrap(), None);
-        assert_eq!(store.resume_point("demo:same", "ep-2", "https://example.com/a.mp4").unwrap(), None);
+        assert_eq!(
+            store
+                .resume_point("demo:same", "ep-1", "https://example.com/a.mp4")
+                .unwrap(),
+            Some(40.0)
+        );
+        assert_eq!(
+            store
+                .resume_point("manifest:same", "ep-1", "https://example.com/a.mp4")
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            store
+                .resume_point("demo:same", "ep-2", "https://example.com/a.mp4")
+                .unwrap(),
+            None
+        );
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
@@ -270,15 +414,61 @@ mod tests {
     fn changed_source_and_completed_episode_never_seek_to_old_position() {
         let path = test_path();
         let store = ProviderProgressStore::from_path(path.clone());
-        store.mark_started("manifest:series", "ep", "https://example.com/old.mp4").unwrap();
-        store.save_progress("manifest:series", "ep", "https://example.com/old.mp4", Some(35.0), Some(100.0), false).unwrap();
-        assert!(store.get("manifest:series", "ep", "https://example.com/new.mp4").unwrap().is_none());
-        assert_eq!(store.resume_point("manifest:series", "ep", "https://example.com/new.mp4").unwrap(), None);
-        store.mark_started("manifest:series", "ep", "https://example.com/new.mp4").unwrap();
-        assert_eq!(store.resume_point("manifest:series", "ep", "https://example.com/new.mp4").unwrap(), None);
-        store.save_progress("manifest:series", "ep", "https://example.com/new.mp4", Some(95.0), Some(100.0), true).unwrap();
-        assert!(store.get("manifest:series", "ep", "https://example.com/new.mp4").unwrap().unwrap().completed);
-        assert_eq!(store.resume_point("manifest:series", "ep", "https://example.com/new.mp4").unwrap(), None);
+        store
+            .mark_started("manifest:series", "ep", "https://example.com/old.mp4")
+            .unwrap();
+        store
+            .save_progress(
+                "manifest:series",
+                "ep",
+                "https://example.com/old.mp4",
+                Some(35.0),
+                Some(100.0),
+                false,
+            )
+            .unwrap();
+        assert!(store
+            .get("manifest:series", "ep", "https://example.com/new.mp4")
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            store
+                .resume_point("manifest:series", "ep", "https://example.com/new.mp4")
+                .unwrap(),
+            None
+        );
+        store
+            .mark_started("manifest:series", "ep", "https://example.com/new.mp4")
+            .unwrap();
+        assert_eq!(
+            store
+                .resume_point("manifest:series", "ep", "https://example.com/new.mp4")
+                .unwrap(),
+            None
+        );
+        store
+            .save_progress(
+                "manifest:series",
+                "ep",
+                "https://example.com/new.mp4",
+                Some(95.0),
+                Some(100.0),
+                true,
+            )
+            .unwrap();
+        assert!(
+            store
+                .get("manifest:series", "ep", "https://example.com/new.mp4")
+                .unwrap()
+                .unwrap()
+                .completed
+        );
+        assert_eq!(
+            store
+                .resume_point("manifest:series", "ep", "https://example.com/new.mp4")
+                .unwrap(),
+            None
+        );
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
@@ -288,7 +478,9 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, b"corrupt").unwrap();
         let store = ProviderProgressStore::from_path(path.clone());
-        assert!(store.mark_started("demo:series", "ep", "https://example.com/a").is_err());
+        assert!(store
+            .mark_started("demo:series", "ep", "https://example.com/a")
+            .is_err());
         assert_eq!(fs::read(&path).unwrap(), b"corrupt");
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
