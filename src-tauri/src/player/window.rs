@@ -11,8 +11,8 @@ use windows_sys::Win32::UI::Controls::Dialogs::{
     OPENFILENAMEW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, GetClientRect, SetWindowPos, HWND_TOP, SWP_NOACTIVATE, WS_CHILD,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
+    CreateWindowExW, GetClientRect, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SW_HIDE,
+    SW_SHOW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
 };
 
 /// The UI thread owns this STATIC child. Windows destroys it with its parent
@@ -68,6 +68,12 @@ pub fn layout(parent: HWND, host: isize, scale: f64, fullscreen: bool) {
             SWP_NOACTIVATE,
         );
     }
+}
+
+/// Hide the native child HWND when the HTML catalog occupies the same region.
+/// The normal player layout and native HWND lifetime remain unchanged.
+pub fn set_video_visible(host: isize, visible: bool) {
+    unsafe { ShowWindow(host as HWND, if visible { SW_SHOW } else { SW_HIDE }) };
 }
 
 #[derive(Default)]

@@ -47,3 +47,50 @@ dt { color: #a9b7af; } dd { margin: 0; font-family: Consolas, monospace; }
 .player-version { font: 12px Consolas, monospace; color: #a9b7af; flex: none; }
 main.fullscreen { grid-template-rows: 0px minmax(0, 1fr) 0px; }
 main.fullscreen header, main.fullscreen footer { display: none; }
+
+
+/* M6 catalog occupies the video row only while Rust hides the native HWND.
+   The default 66px/96px player geometry is unchanged for M1-M5 probes. */
+.catalog-header-actions { display: flex; align-items: center; gap: 18px; }
+.catalog-toggle { background: #20332c; color: #a0e9cd; border: 1px solid #4c6b5f; }
+.catalog-mode { height: 100vh; min-height: 0; grid-template-rows: 66px minmax(0, 1fr); }
+.catalog-mode .player-controls { display: none; }
+.catalog-view { min-height: 0; overflow: auto; padding: 22px 28px 42px; background: #101715; }
+.catalog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.catalog-heading h2 { font-size: 26px; margin: 3px 0 6px; }
+.catalog-heading p { color: #aebeb5; font-size: 13px; margin: 0; line-height: 1.6; }
+.catalog-heading .catalog-eyebrow { color: #a0e9cd; letter-spacing: .16em; font: 10px Consolas, monospace; }
+.catalog-ghost { border: 1px solid #48675a; background: transparent; color: #a0e9cd; white-space: nowrap; }
+.catalog-search { display: flex; gap: 9px; margin: 21px 0 24px; max-width: 600px; }
+.catalog-search input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 7px; border: 1px solid #415e53; background: #17231e; color: #e9f1ed; font-size: 14px; }
+.catalog-search button { border-radius: 7px; padding: 0 24px; }
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.catalog-card { display: flex; flex-direction: column; gap: 7px; text-align: left; background: #18231e; color: #e9f1ed; border: 1px solid #31463b; border-radius: 10px; padding: 9px; }
+.catalog-card:hover, .catalog-episodes button:hover { border-color: #9cdbc3; }
+.catalog-card strong { font-size: 17px; margin-top: 3px; }
+.catalog-artwork { height: 130px; width: 100%; display: flex; align-items: flex-end; padding: 12px; border-radius: 6px; color: #fff; letter-spacing: .14em; font: 11px Consolas, monospace; }
+.artwork-forest { background: linear-gradient(140deg, #193c2d 10%, #2f7950 48%, #b2b16f 100%); }
+.artwork-city { background: linear-gradient(140deg, #2b314d 10%, #655a87 52%, #ce8068 100%); }
+.artwork-studio { background: linear-gradient(140deg, #162e42 10%, #277a8f 58%, #8ad4ca 100%); }
+.catalog-meta { color: #a9b8af; font-size: 12px; }
+.catalog-card-badge { color: #b0e8ce; font-size: 11px; margin: 1px 0 3px; }
+.catalog-detail { display: grid; grid-template-columns: minmax(160px, 240px) 1fr; gap: 24px; margin-top: 24px; }
+.catalog-detail-art { min-height: 270px; border-radius: 10px; display: flex; align-items: end; padding: 18px; color: white; letter-spacing: .15em; }
+.catalog-detail-body > p { color: #c6d2cb; font-size: 14px; line-height: 1.7; }
+.catalog-detail-body h3 { font-size: 16px; margin: 26px 0 13px; }
+.catalog-detail-body h3 span { color: #8d9e94; font-size: 12px; font-weight: normal; }
+.catalog-episodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 10px; }
+.catalog-episodes button { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; text-align: left; border: 1px solid #466154; color: #ecf6ee; background: #1d2b24; border-radius: 7px; padding: 13px; }
+.catalog-episodes strong { font: 18px Consolas, monospace; color: #a0e9cd; }
+.catalog-episodes span { font-size: 12px; }
+.catalog-episodes small { grid-column: 2; color: #aab9b0; }
+.catalog-disclaimer { margin-top: 27px; font-size: 11px; line-height: 1.5; color: #899c90; }
+.catalog-error { color: #ffb7a8; font-size: 13px; }
+.catalog-empty { padding: 36px 10px; color: #a9b8af; text-align: center; }
+@media (max-width: 700px) {
+  .catalog-header-actions { gap: 9px; }
+  .catalog-view { padding: 16px; }
+  .catalog-heading { flex-direction: column; }
+  .catalog-detail { grid-template-columns: 1fr; }
+  .catalog-detail-art { min-height: 110px; }
+}

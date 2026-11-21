@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod catalog;
 mod commands;
 mod player;
 
+use catalog::CatalogService;
 use player::{service::PlayerService, window};
 use std::fs::{self, File};
 use std::path::PathBuf;
@@ -33,6 +35,7 @@ fn main() {
         Err(_) => logger.with_writer(std::io::stderr).init(),
     }
     tauri::Builder::default()
+        .manage(CatalogService::default())
         .manage(window::Picker::default())
         .setup(|app| {
             let win = app
@@ -80,6 +83,10 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
+            commands::catalog_search,
+            commands::catalog_detail,
+            commands::catalog_play_episode,
+            commands::set_catalog_visible,
             commands::open_local,
             commands::stop,
             commands::set_paused,
