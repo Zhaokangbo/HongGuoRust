@@ -1,4 +1,5 @@
 use crate::catalog::{CatalogService, Series, SeriesDetail};
+use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
 };
@@ -108,4 +109,37 @@ pub fn catalog_play_episode(
 #[tauri::command]
 pub fn set_catalog_visible(host: State<'_, crate::VideoHost>, visible: bool) {
     window::set_video_visible(host.0, !visible);
+}
+
+#[tauri::command]
+pub fn library_list(library: State<'_, LocalLibrary>) -> Result<Vec<LocalMedia>, String> {
+    library.list()
+}
+
+#[tauri::command]
+pub async fn library_add_local(window: WebviewWindow) -> Result<Option<LocalMedia>, String> {
+    let owner = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+    tauri::async_runtime::spawn_blocking(move || {
+        window
+            .state::<window::Picker>()
+            .choose(owner)?
+            .map(|path| window.state::<LocalLibrary>().add(path))
+            .transpose()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn library_remove(library: State<'_, LocalLibrary>, id: u64) -> Result<(), String> {
+    library.remove(id)
+}
+
+#[tauri::command]
+pub fn library_play(
+    library: State<'_, LocalLibrary>,
+    player: State<'_, PlayerService>,
+    id: u64,
+) -> Result<u64, String> {
+    player.open(library.resolve_path(id)?)
 }
