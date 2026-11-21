@@ -24,3 +24,11 @@ dt { color: #a9b7af; } dd { margin: 0; font-family: Consolas, monospace; }
 .player-actions button:disabled { opacity: .55; }
 .player-actions span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-actions [role=alert] { color: #ffb7a8; }
+
+.player-transport { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; min-width: 0; font-size: 12px; white-space: nowrap; overflow-x: auto; }
+.player-transport label { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.player-transport button { padding: 5px 9px; flex: none; }
+.player-transport button:disabled, .player-transport select:disabled { opacity: .55; }
+.player-transport input, .player-transport select { background: #1b2823; border: 1px solid #53615b; color: #e9f1ed; border-radius: 4px; padding: 4px; }
+.player-transport input { width: 58px; }
+.player-status { margin-left: auto; color: #a0e9cd; font-family: Consolas, monospace; }
