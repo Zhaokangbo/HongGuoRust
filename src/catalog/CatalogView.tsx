@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props) {
-  const [mode, setMode] = useState<"demo" | "local">("demo");
+  const [mode, setMode] = useState<"demo" | "local" | "history">("demo");
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<Series[]>([]);
@@ -65,8 +65,11 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     <div className="catalog-heading">
       <div>
         <p className="catalog-eyebrow">M6 · CONTENT PROVIDERS</p>
-        <h2>{detail ? detail.series.title : mode === "local" ? "我的视频" : "探索内容"}</h2>
-        <p>{mode === "local" ? "管理你自己选择的本地 MP4，文件始终保留在原始位置。" : "演示内容来自 LocalDemoProvider，所有剧集复用同一个公开的 20 秒测试视频。"}</p>
+        <h2>{detail ? detail.series.title : mode === "history" ? "最近播放" : mode === "local" ? "我的视频" : "探索内容"}</h2>
+        <p>{mode === "history"
+          ? "播放进度由 Rust 播放器记录，重新播放会从上次位置继续。"
+          : mode === "local" ? "管理你自己选择的本地 MP4，文件始终保留在原始位置。"
+          : "演示内容来自 LocalDemoProvider，所有剧集复用同一个公开的 20 秒测试视频。"}</p>
       </div>
       <button className="catalog-ghost" disabled={working} onClick={() => { if (detail) setDetail(null); else void onBack(); }}>
         {detail ? "← 返回列表" : "← 返回播放器"}
@@ -78,6 +81,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         onClick={() => { setMode("demo"); setError(""); }}>演示内容</button>
       <button type="button" className={mode === "local" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("local"); setError(""); }}>我的视频</button>
+      <button type="button" className={mode === "history" ? "catalog-tab active" : "catalog-tab"}
+        onClick={() => { setMode("history"); setError(""); }}>最近播放</button>
     </nav>}
 
     {!detail && mode === "demo" && <form className="catalog-search" onSubmit={submit}>
@@ -88,7 +93,9 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
 
     {(error || playerError) && <p role="alert" className="catalog-error">{error || playerError}</p>}
 
-    {mode === "local" ? <LocalLibraryView onPlay={onPlayLocal} playerError={playerError} />
+    {mode === "local" || mode === "history"
+      ? <LocalLibraryView key={mode} historyOnly={mode === "history"}
+          onPlay={onPlayLocal} playerError={playerError} />
       : detail ? <div className="catalog-detail">
       <div className={"catalog-detail-art artwork-" + detail.series.artwork} aria-hidden="true">
         <span>DEMO</span>

@@ -29,3 +29,7 @@ export function addLocalMedia(): Promise<LocalMedia | null> {
 export function removeLocalMedia(id: number): Promise<void> {
   return desktopInvoke<void>("library_remove", { id });
 }
+
+export function clearLocalHistory(id: number): Promise<void> {
+  return desktopInvoke<void>("library_clear_history", { id });
+}

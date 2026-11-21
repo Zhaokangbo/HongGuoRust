@@ -25,4 +25,8 @@ export interface LocalMedia {
   title: string;
   filename: string;
   available: boolean;
+  positionSec: number;
+  durationSec: number | null;
+  lastPlayedMs: number | null;
+  completed: boolean;
 }

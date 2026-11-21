@@ -10,7 +10,7 @@ use local_library::LocalLibrary;
 use player::{service::PlayerService, window};
 use std::fs::{self, File};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{Manager, WindowEvent};
 
@@ -38,7 +38,7 @@ fn main() {
     }
     tauri::Builder::default()
         .manage(CatalogService::default())
-        .manage(LocalLibrary::new())
+        .manage(Arc::new(LocalLibrary::new()))
         .manage(window::Picker::default())
         .setup(|app| {
             let win = app
@@ -46,7 +46,8 @@ fn main() {
                 .ok_or("Missing main window")?;
             let host = window::create(&win)?;
             app.manage(VideoHost(host));
-            app.manage(PlayerService::new(host)?);
+            let library = Arc::clone(app.state::<Arc<LocalLibrary>>().inner());
+            app.manage(PlayerService::new(host, library)?);
             tracing::info!("native host and service ready");
             Ok(())
         })
@@ -93,6 +94,7 @@ fn main() {
             commands::library_add_local,
             commands::library_remove,
             commands::library_play,
+            commands::library_clear_history,
             commands::set_catalog_visible,
             commands::open_local,
             commands::stop,

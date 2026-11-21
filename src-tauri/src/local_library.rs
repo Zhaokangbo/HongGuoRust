@@ -7,6 +7,7 @@ use std::io::Write;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Storage::FileSystem::{
     MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
 };
@@ -21,6 +22,17 @@ struct StoredMedia {
     id: u64,
     title: String,
     path: PathBuf,
+    #[serde(default)]
+    history: PlaybackHistory,
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaybackHistory {
+    position_sec: f64,
+    duration_sec: Option<f64>,
+    last_played_ms: Option<u64>,
+    completed: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -48,6 +60,10 @@ pub struct LocalMedia {
     title: String,
     filename: String,
     available: bool,
+    position_sec: f64,
+    duration_sec: Option<f64>,
+    last_played_ms: Option<u64>,
+    completed: bool,
 }
 
 impl From<&StoredMedia> for LocalMedia {
@@ -62,6 +78,10 @@ impl From<&StoredMedia> for LocalMedia {
                 .to_string_lossy()
                 .into_owned(),
             available: crate::player::engine::local_mp4(&item.path).is_ok(),
+            position_sec: item.history.position_sec,
+            duration_sec: item.history.duration_sec,
+            last_played_ms: item.history.last_played_ms,
+            completed: item.history.completed,
         }
     }
 }
@@ -111,6 +131,13 @@ fn store_data(path: &Path, data: &LibraryData) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 impl LocalLibrary {
@@ -181,7 +208,12 @@ impl LocalLibrary {
         let mut next = data.clone();
         let id = next.next_id;
         next.next_id = id.checked_add(1).ok_or("媒体目录 ID 已用尽")?;
-        let item = StoredMedia { id, title, path };
+        let item = StoredMedia {
+            id,
+            title,
+            path,
+            history: PlaybackHistory::default(),
+        };
         let summary = LocalMedia::from(&item);
         next.items.push(item);
         store_data(&self.file, &next)?;
@@ -197,6 +229,93 @@ impl LocalLibrary {
         if next.items.len() == data.items.len() {
             return Err("媒体条目不存在".into());
         }
+        store_data(&self.file, &next)?;
+        *data = next;
+        Ok(())
+    }
+
+    pub fn resume_point(&self, id: u64) -> Result<Option<f64>, String> {
+        self.ready()?;
+        let data = self.data.lock().map_err(|e| e.to_string())?;
+        let item = data.items.iter().find(|item| item.id == id);
+        let item = item.ok_or("媒体条目不存在")?;
+        let history = &item.history;
+        if history.completed || !history.position_sec.is_finite() {
+            return Ok(None);
+        }
+        let sec = history.position_sec;
+        if sec < 5.0
+            || history
+                .duration_sec
+                .is_some_and(|d| !d.is_finite() || d < 10.0 || sec >= d - 5.0 || sec >= d * 0.95)
+        {
+            return Ok(None);
+        }
+        Ok(Some(sec))
+    }
+
+    pub fn mark_started(&self, id: u64) -> Result<(), String> {
+        self.ready()?;
+        let mut data = self.data.lock().map_err(|e| e.to_string())?;
+        let mut next = data.clone();
+        let item = next
+            .items
+            .iter_mut()
+            .find(|item| item.id == id)
+            .ok_or("媒体条目不存在")?;
+        if item.history.completed {
+            item.history.position_sec = 0.0;
+        }
+        item.history.completed = false;
+        item.history.last_played_ms = Some(now_ms());
+        store_data(&self.file, &next)?;
+        *data = next;
+        Ok(())
+    }
+
+    pub fn record_progress(
+        &self,
+        id: u64,
+        position: Option<f64>,
+        duration: Option<f64>,
+        completed: bool,
+    ) -> Result<(), String> {
+        self.ready()?;
+        let mut data = self.data.lock().map_err(|e| e.to_string())?;
+        let mut next = data.clone();
+        let item = next
+            .items
+            .iter_mut()
+            .find(|item| item.id == id)
+            .ok_or("媒体条目不存在")?;
+        if let Some(sec) = position.filter(|v| v.is_finite() && *v >= 0.0) {
+            item.history.position_sec = sec;
+        }
+        if let Some(sec) = duration.filter(|v| v.is_finite() && *v > 0.0) {
+            item.history.duration_sec = Some(sec);
+        }
+        if completed {
+            item.history.completed = true;
+            if let Some(sec) = item.history.duration_sec {
+                item.history.position_sec = sec;
+            }
+        }
+        item.history.last_played_ms = Some(now_ms());
+        store_data(&self.file, &next)?;
+        *data = next;
+        Ok(())
+    }
+
+    pub fn clear_history(&self, id: u64) -> Result<(), String> {
+        self.ready()?;
+        let mut data = self.data.lock().map_err(|e| e.to_string())?;
+        let mut next = data.clone();
+        let item = next
+            .items
+            .iter_mut()
+            .find(|item| item.id == id)
+            .ok_or("媒体条目不存在")?;
+        item.history = PlaybackHistory::default();
         store_data(&self.file, &next)?;
         *data = next;
         Ok(())
@@ -254,6 +373,47 @@ mod tests {
         reopened.remove(first.id).unwrap();
         assert!(media.exists());
         assert!(reopened.list().unwrap().is_empty());
+        drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn legacy_library_schema_and_resume_bookmark() {
+        let dir = test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let media = dir.join("legacy.mp4");
+        fs::write(&media, b"test").unwrap();
+        let file = dir.join("library.json");
+        let legacy = serde_json::json!({
+            "schemaVersion": 1,
+            "nextId": 2,
+            "items": [{"id": 1, "title": "legacy", "path": media}]
+        });
+        fs::write(&file, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let library = LocalLibrary::from_path(file.clone());
+        assert_eq!(library.resume_point(1).unwrap(), None);
+        library.mark_started(1).unwrap();
+        library
+            .record_progress(1, Some(40.0), Some(120.0), false)
+            .unwrap();
+        drop(library);
+
+        let reopened = LocalLibrary::from_path(file);
+        assert_eq!(reopened.resume_point(1).unwrap(), Some(40.0));
+        reopened
+            .record_progress(1, Some(117.0), Some(120.0), true)
+            .unwrap();
+        assert!(reopened.list().unwrap()[0].completed);
+        assert!(reopened.resume_point(1).unwrap().is_none());
+        reopened.mark_started(1).unwrap();
+        assert_eq!(reopened.list().unwrap()[0].position_sec, 0.0);
+        reopened.record_progress(1, Some(4.0), None, false).unwrap();
+        assert!(reopened.resume_point(1).unwrap().is_none());
+        reopened.record_progress(1, Some(8.0), None, false).unwrap();
+        assert_eq!(reopened.resume_point(1).unwrap(), Some(8.0));
+        reopened.clear_history(1).unwrap();
+        assert!(reopened.list().unwrap()[0].last_played_ms.is_none());
+        assert!(media.exists());
         drop(reopened);
         fs::remove_dir_all(dir).unwrap();
     }

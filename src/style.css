@@ -113,3 +113,7 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 .local-media-row button:disabled { opacity: .55; cursor: not-allowed; }
 .local-media-confirm { display: flex; align-items: center; gap: 6px; color: #f1c9ae; font-size: 12px; flex-wrap: wrap; }
 .local-library .catalog-empty { text-align: left; }
+
+/* M7-A: history indicators reuse the local-media row layout. */
+.local-history-detail { color: #a6e9c9; font-size: 11px; }
+.catalog-tabs { flex-wrap: wrap; }
