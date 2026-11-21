@@ -3,6 +3,7 @@
 
 mod local;
 mod manifest;
+pub mod progress;
 mod registry;
 pub(crate) mod request;
 
