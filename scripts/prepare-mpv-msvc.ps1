@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Destination)
+param([Parameter(Mandatory)][string]$Destination, [switch]$ForceBuildVulkan)
 $ErrorActionPreference = 'Stop'
 $Destination = (New-Item -ItemType Directory -Force -Path $Destination).FullName
 & "$PSScriptRoot/get-mpv.ps1" -Destination $Destination
@@ -18,7 +18,7 @@ $def = Join-Path $Destination 'mpv.def'
 if ($LASTEXITCODE) { throw 'Cannot create the MSVC import library' }
 
 # This build imports vulkan-1.dll even when mpv uses Direct3D.
-if (!(Test-Path "$env:windir/System32/vulkan-1.dll") -and !(Test-Path "$Destination/vulkan-1.dll")) {
+if ($ForceBuildVulkan -or (!(Test-Path "$env:windir/System32/vulkan-1.dll") -and !(Test-Path "$Destination/vulkan-1.dll"))) {
     $work = Join-Path $Destination 'vulkan-build'
     foreach ($entry in @(
         @{name='Vulkan-Headers'; rev='2cd90f9d20df57eac214c148f3aed885372ddcfe'},

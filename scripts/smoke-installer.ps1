@@ -1,0 +1,267 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$Installer,
+    [string]$AuditReport,
+    [string]$CandidateCommit,
+    [switch]$VerifyPlayback,
+    [switch]$AuditNativeImports
+)
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+if ($env:OS -ne 'Windows_NT') { throw 'NSIS smoke requires Windows' }
+
+$setup = (Resolve-Path -LiteralPath $Installer).Path
+$expectedHash = 'df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e7913'
+if ($AuditNativeImports -and [string]::IsNullOrWhiteSpace($AuditReport)) {
+    throw '-AuditNativeImports requires -AuditReport so results can be preserved'
+}
+# RUNNER_TEMP exists on GitHub Actions but not on a normal Windows desktop.
+# Keep local smoke tests runnable without requiring the CI environment.
+$smokeRoot = if (![string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -and
+    (Test-Path -LiteralPath $env:RUNNER_TEMP -PathType Container)) {
+    $env:RUNNER_TEMP
+} else {
+    [IO.Path]::GetTempPath()
+}
+$dir = Join-Path $smokeRoot ('HongGuoRustM5Smoke-' + [guid]::NewGuid().ToString('N'))
+$exe = Join-Path $dir 'hongguorust.exe'
+$dll = Join-Path $dir 'libmpv-2.dll'
+$vulkan = Join-Path $dir 'vulkan-1.dll'
+$installed = $false
+$uninstalled = $false
+$auditEvidence = $null
+$playbackVerified = $false
+$nativeImportsVerified = $false
+
+function Run-Nsis([string]$file, [string[]]$arguments, [string]$stage) {
+    $proc = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -Wait
+    if ($proc.ExitCode -ne 0) { throw "$stage exit code $($proc.ExitCode)" }
+}
+
+try {
+    if (Test-Path -LiteralPath $dir) { throw 'Refusing to reuse an installation directory' }
+    Write-Host "Installing NSIS test candidate into $dir"
+    # /D overrides NSIS install directory. It must be the last option, without quotes.
+    try {
+        Run-Nsis -file $setup -arguments @('/S', "/D=$dir") -stage 'NSIS installation'
+    } catch {
+        Write-Warning 'NSIS installation failed. Installed file layout (if any):'
+        if (Test-Path -LiteralPath $dir) {
+            Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue |
+                Select-Object -First 50 -ExpandProperty FullName |
+                ForEach-Object { Write-Host "  $_" }
+        } else {
+            Write-Host "  No destination directory created: $dir"
+        }
+        throw
+    }
+    $installed = $true
+
+    if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
+        throw "NSIS installed no application executable at $exe"
+    }
+    if (!(Test-Path -LiteralPath $dll -PathType Leaf)) {
+        $files = @(Get-ChildItem -LiteralPath $dir -Recurse -Filter 'libmpv-2.dll' -File |
+            ForEach-Object FullName)
+        throw "NSIS did not place libmpv-2.dll next to EXE. Found: $($files -join '; ')"
+    }
+    $hash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $expectedHash) { throw "Installed libmpv DLL hash mismatch: $hash" }
+    Write-Host "PASS: installed EXE and verified libmpv-2.dll SHA256=$hash"
+    if (!(Test-Path -LiteralPath $vulkan -PathType Leaf)) {
+        throw "Installed app has no private vulkan-1.dll: $vulkan"
+    }
+    Write-Host "PASS: app-local Vulkan loader SHA256=$((Get-FileHash -LiteralPath $vulkan -Algorithm SHA256).Hash)"
+
+
+    # Confirm the NSIS installer contains exactly the vetted source-file copies
+    # for the preliminary license materials. This is necessary but not proof of
+    # complete binary redistribution compliance.
+    $legalSources = [ordered]@{
+        'LICENSE-GPL-3.0.txt'        = (Join-Path $PSScriptRoot '../LICENSE')
+        'THIRD-PARTY-NOTICES.txt'   = (Join-Path $PSScriptRoot '../src-tauri/legal/THIRD-PARTY-NOTICES.txt')
+        'VULKAN-LOADER-LICENSE.txt' = (Join-Path $PSScriptRoot '../src-tauri/legal/VULKAN-LOADER-LICENSE.txt')
+        'VULKAN-HEADERS-LICENSE.md' = (Join-Path $PSScriptRoot '../src-tauri/legal/VULKAN-HEADERS-LICENSE.md')
+        'MPV-LGPL-2.1.txt'         = (Join-Path $PSScriptRoot '../src-tauri/legal/MPV-LGPL-2.1.txt')
+        'FFMPEG-LGPL-3.0.txt'      = (Join-Path $PSScriptRoot '../src-tauri/legal/FFMPEG-LGPL-3.0.txt')
+        'MPV-COPYRIGHT-REFERENCE.txt' = (Join-Path $PSScriptRoot '../src-tauri/legal/MPV-COPYRIGHT-REFERENCE.txt')
+        'FFMPEG-LICENSE-REFERENCE.md' = (Join-Path $PSScriptRoot '../src-tauri/legal/FFMPEG-LICENSE-REFERENCE.md')
+    }
+    $installedLegalPaths = @(
+        foreach ($name in $legalSources.Keys) {
+            $found = @(Get-ChildItem -LiteralPath $dir -Filter $name -File -Recurse)
+            if ($found.Count -ne 1) {
+                throw "Expected one installed legal file '$name', found $($found.Count)"
+            }
+            $expectedLegalHash = (Get-FileHash -LiteralPath $legalSources[$name] -Algorithm SHA256).Hash
+            $actualLegalHash = (Get-FileHash -LiteralPath $found[0].FullName -Algorithm SHA256).Hash
+            if ($expectedLegalHash -ne $actualLegalHash) {
+                throw "Installed legal file '$name' is not identical to the repository copy"
+            }
+            $found[0].FullName
+        }
+    )
+    Write-Host "PASS: installed all $($installedLegalPaths.Count) legal reference files without changes"
+
+    # Inventory only metadata from the installed app. No binaries are copied
+    # into the report or into the GitHub Actions artifact.
+    if (![string]::IsNullOrWhiteSpace($AuditReport)) {
+        $inventory = @(
+            Get-ChildItem -LiteralPath $dir -File -Recurse |
+                Sort-Object FullName |
+                ForEach-Object {
+                    [ordered]@{
+                        path = $_.FullName.Substring($dir.Length + 1).Replace('\', '/')
+                        bytes = $_.Length
+                        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                    }
+                }
+        )
+        $noticeCandidates = @(
+            $inventory | Where-Object {
+                (Split-Path $_.path -Leaf) -match '^(LICENSE|COPYING|NOTICE|THIRD[-_.]?PARTY)([._-].*)?$'
+            } | ForEach-Object { $_.path }
+        )
+        # PR workflows check out a synthetic merge commit by default.
+        # Record both the real PR head and the tree actually built by Actions.
+        $sourceCommit = if (![string]::IsNullOrWhiteSpace($CandidateCommit)) {
+            $CandidateCommit
+        } else {
+            $env:GITHUB_SHA
+        }
+        # The upstream inventory is configured-feature evidence, not proof
+        # of actual linkage or binary redistribution compliance.
+        $inventoryPath = Join-Path $PSScriptRoot '../docs/architecture/ffmpeg-config-inventory.json'
+        $upstreamInventory = Get-Content -LiteralPath $inventoryPath -Raw -Encoding utf8 | ConvertFrom-Json
+        $inventoryHash = (Get-FileHash -LiteralPath $inventoryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $auditEvidence = [ordered]@{
+            schema_version = 1
+            candidate_commit = $sourceCommit
+            workflow_checkout_sha = $env:GITHUB_SHA
+            installer_name = (Split-Path -Leaf $setup)
+            installer_sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+            installed_files = $inventory
+            installed_notice_candidates = $noticeCandidates
+            required_legal_files_verified = $true
+            installed_playback_smoke_requested = [bool]$VerifyPlayback
+            installed_playback_smoke_verified = $false
+            native_pe_imports_audit_requested = [bool]$AuditNativeImports
+            native_pe_imports_audit_verified = $false
+            required_legal_file_names = @($legalSources.Keys)
+            clean_windows_10_11_verified = $false
+            redistribution_provenance_reviewed = $false
+            distribution_authorized = $false
+            upstream_inventory_sha256 = $inventoryHash
+            upstream_configured_external_library_count = @($upstreamInventory.ffmpeg.external_libraries).Count
+            upstream_configured_hardware_provider_count = @($upstreamInventory.ffmpeg.hardware_acceleration_providers).Count
+            upstream_license_audit_status = $upstreamInventory.audit.status
+            note = 'Hosted runner evidence only; not clean-machine or third-party redistribution acceptance.'
+        }
+    }
+
+    # PE import tables enumerate dynamic DLL imports only, including delayed
+    # imports. They cannot identify statically linked FFmpeg or mpv components
+    # and cannot establish that Windows 10/11 provides every imported DLL.
+    if ($AuditNativeImports) {
+        $python = Get-Command python -ErrorAction Stop
+        $importOutput = & $python.Source "$PSScriptRoot/audit-pe-imports.py" $exe $dll $vulkan
+        if ($LASTEXITCODE -ne 0) {
+            throw "Installed candidate PE import audit failed (exit $LASTEXITCODE)"
+        }
+        $importReport = $importOutput | ConvertFrom-Json
+        if (@($importReport.binaries).Count -ne 3) {
+            throw 'PE audit did not report all three installed executable modules'
+        }
+        $auditEvidence['native_pe_import_report'] = $importReport
+        $nativeImportsVerified = $true
+        Write-Host 'PASS: audited x64 PE direct/delay-load DLL imports for installed EXE and both native DLLs'
+    }
+
+    # The preexisting M1 UI automation asserts Rust IPC and normal process exit.
+    try {
+        & "$PSScriptRoot/smoke-windows.ps1" -Executable $exe
+        if (!$?) { throw 'Installed application IPC/window smoke failed' }
+    } catch {
+        Write-Warning 'Installed app GUI/IPC smoke failed. Inspect uploaded diagnostics.'
+        $diag = Join-Path $PSScriptRoot '../diagnostics'
+        $logs = @(Get-ChildItem -LiteralPath $diag -Filter 'player-*.log' -File -ErrorAction SilentlyContinue)
+        if ($logs.Count -gt 0) {
+            Write-Host "Latest player log: $($logs[-1].Name)"
+            Get-Content -LiteralPath $logs[-1].FullName -Tail 55 -Encoding UTF8
+        }
+        throw
+    }
+    Write-Host 'PASS: installed app launched, rendered Rust Idle and closed cleanly'
+
+    if ($VerifyPlayback) {
+        # Reuse the established M2 20-cycle real-video/audio harness, but run
+        # against the NSIS-installed EXE and its app-private native runtimes.
+        $python = Get-Command python -ErrorAction Stop
+        $oldRuntimeDir = [Environment]::GetEnvironmentVariable('MPV_RUNTIME_DIR', 'Process')
+        $oldLogDir = [Environment]::GetEnvironmentVariable('HONGGUORUST_LOG_DIR', 'Process')
+        $oldModuleReport = [Environment]::GetEnvironmentVariable('HONGGUORUST_LOADED_MODULE_REPORT', 'Process')
+        $nativeModuleReportPath = Join-Path $smokeRoot ('hgr-loaded-modules-' + [guid]::NewGuid().ToString('N') + '.json')
+        try {
+            $env:MPV_RUNTIME_DIR = $dir
+            if ($auditEvidence) { $env:HONGGUORUST_LOADED_MODULE_REPORT = $nativeModuleReportPath }
+            $env:HONGGUORUST_LOG_DIR = (Join-Path $PSScriptRoot '../diagnostics')
+            New-Item -ItemType Directory -Force -Path $env:HONGGUORUST_LOG_DIR | Out-Null
+            & $python.Source "$PSScriptRoot/smoke-player.py" $exe
+            if ($LASTEXITCODE -ne 0) {
+                throw "NSIS-installed executable playback probe failed (exit $LASTEXITCODE)"
+            }
+            if ($auditEvidence) {
+                if (!(Test-Path -LiteralPath $nativeModuleReportPath -PathType Leaf)) {
+                    throw 'Installed playback passed but emitted no loaded-module evidence'
+                }
+                $nativeModules = Get-Content -LiteralPath $nativeModuleReportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                if ($nativeModules.installed_native_modules_verified -ne $true) {
+                    throw 'Loaded-module report failed installer-runtime origin verification'
+                }
+                $auditEvidence['runtime_loaded_module_report'] = $nativeModules
+            }
+            $playbackVerified = $true
+            Write-Host 'PASS: installed EXE completed M2 video/audio probe and 20 clean playing-window close cycles'
+        } finally {
+            [Environment]::SetEnvironmentVariable('MPV_RUNTIME_DIR', $oldRuntimeDir, 'Process')
+            [Environment]::SetEnvironmentVariable('HONGGUORUST_LOG_DIR', $oldLogDir, 'Process')
+            [Environment]::SetEnvironmentVariable('HONGGUORUST_LOADED_MODULE_REPORT', $oldModuleReport, 'Process')
+            Remove-Item -LiteralPath $nativeModuleReportPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    $uninstallers = @(Get-ChildItem -LiteralPath $dir -File |
+        Where-Object { $_.Name -match '^uninstall.*\.exe$' })
+    if ($uninstallers.Count -ne 1) {
+        throw "Expected exactly one uninstaller, found $($uninstallers.Count)"
+    }
+    Write-Host "Uninstalling from $dir"
+    Run-Nsis -file $uninstallers[0].FullName -arguments @('/S') -stage 'NSIS uninstallation'
+    $limit = [DateTime]::UtcNow.AddSeconds(20)
+    while ((Test-Path -LiteralPath $exe) -and [DateTime]::UtcNow -lt $limit) {
+        Start-Sleep -Milliseconds 250
+    }
+    if (Test-Path -LiteralPath $exe) { throw 'Uninstaller left application EXE behind' }
+    if (Test-Path -LiteralPath $dll) { throw 'Uninstaller left app-private libmpv DLL behind' }
+    if (Test-Path -LiteralPath $vulkan) { throw 'Uninstaller left app-private Vulkan DLL behind' }
+    foreach ($legalPath in $installedLegalPaths) {
+        if (Test-Path -LiteralPath $legalPath) {
+            throw "Uninstaller left app-private legal file behind: $legalPath"
+        }
+    }
+    $uninstalled = $true
+    Write-Host 'PASS: NSIS silent install, app IPC, DLL SHA-256 and uninstall'
+    if ($auditEvidence) {
+        $auditEvidence['installed_playback_smoke_verified'] = $playbackVerified
+        $auditEvidence['native_pe_imports_audit_verified'] = $nativeImportsVerified
+        $reportPath = [IO.Path]::GetFullPath($AuditReport)
+        $reportDir = Split-Path -Parent $reportPath
+        New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+        $auditEvidence | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8
+        Write-Host "Wrote binary-free package evidence: $reportPath"
+    }
+} finally {
+    if ($installed -and !$uninstalled) {
+        Write-Warning "A failed installer smoke may have left a test installation at $dir"
+    }
+}

@@ -1,0 +1,86 @@
+HongGuoRust Windows Installer — PRELIMINARY Third-Party Notices
+================================================================
+
+STATUS: INCOMPLETE. THIS FILE DOES NOT AUTHORIZE BINARY DISTRIBUTION.
+This manifest records known components and exact source references for
+the M5 test candidate; it is not a complete dependency audit.
+
+HongGuoRust application
+------------------------
+Project source: https://github.com/Zhaokangbo/HongGuoRust
+Original application code: GPL-3.0-only
+Full project license: legal/LICENSE-GPL-3.0.txt within the installer.
+For the exact candidate source revision see the m5-package-evidence
+report, including candidate_commit and workflow_checkout_sha.
+
+libmpv binary
+-------------
+Project: https://github.com/mpv-player/mpv
+Binary provider: https://github.com/zhongfly/mpv-winbuild
+Pinned release: 2026-11-20-94127e1e1a
+Archive: mpv-dev-lgpl-x86_64-20261120-git-94127e1e1a.7z
+Archive SHA-256:
+  6edded03578c35ec1a89c1c50ad92bd52a79521dec6180f49fd697f5e18f367b
+libmpv-2.dll SHA-256:
+  df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e7913
+The upstream provider identifies the variant as mpv LGPL-2.1-or-later
+with FFmpeg LGPLv3 linked statically, but explicitly does not guarantee
+that every incompatible component has been disabled.
+REMAINING: acquire and audit the exact binary's source revisions, FFmpeg
+configuration, linked-component inventory, required license texts and
+corresponding-source availability / recipient modification rights.
+The archive filename and checksum are NOT license compliance evidence.
+
+Application-private Vulkan loader
+----------------------------------
+Vulkan Loader:
+  https://github.com/KhronosGroup/Vulkan-Loader/tree/da8d2caad9341ca8c5a7c3deba217d7da50a7c24
+Vulkan Headers used during compilation:
+  https://github.com/KhronosGroup/Vulkan-Headers/tree/2cd90f9d20df57eac214c148f3aed885372ddcfe
+Both are pinned at the v1.4.321 release revisions for M5.
+Included reference licenses: legal/VULKAN-LOADER-LICENSE.txt and
+legal/VULKAN-HEADERS-LICENSE.md.
+The loader repo states Apache-2.0 for most files with exceptions.
+REMAINING: audit the compiled loader's file-level licenses and any
+other applicable third-party notices; record exact build options.
+
+Tauri, Rust and JavaScript ecosystem
+------------------------------------
+UI: React, TypeScript, Vite. Runtime: Tauri 2, WebView2 and Rust crates.
+Lockfiles: package-lock.json and src-tauri/Cargo.lock in the repository.
+REMAINING: enumerate actual release build dependencies and all applicable
+redistribution notices. Do not claim complete compliance from a list of
+high-level project names.
+
+Verified upstream build trace (exact pinned 2026-11-20 release)
+--------------------------------------------------------------
+Release: https://github.com/zhongfly/mpv-winbuild/releases/tag/2026-11-20-94127e1e1a
+Upstream build: https://github.com/zhongfly/mpv-winbuild/actions/runs/44732170261
+LGPL Windows x64 job ID: 136274516587.
+Upstream mpv-winbuild workflow commit: 49520b9987f0e6dc7cf0db83634e45c416bd58b6.
+mpv source: 94127e1e1aa85734482cb563cfb79cf9b6eb7772.
+FFmpeg source: 7ddf7bc8a482cf28b4fab2e63b7093ba35cb6a80.
+Upstream recorded FFmpeg license: LGPL version 3 or later.
+Upstream recorded FFmpeg static=yes and shared=no.
+Upstream mpv Meson summary: gpl=false, libmpv=true, cplayer=false.
+These observations relate to the exact pinned binary's upstream build.
+See docs/architecture/mpv-binary-evidence.md for references and limitations.
+
+License reference texts included with this candidate:
+  legal/MPV-LGPL-2.1.txt (from exact mpv source revision)
+  legal/FFMPEG-LGPL-3.0.txt (from exact FFmpeg source revision)
+  legal/MPV-COPYRIGHT-REFERENCE.txt (from exact mpv revision)
+  legal/FFMPEG-LICENSE-REFERENCE.md (from exact FFmpeg revision)
+The LGPLv3 supplement incorporates GPLv3 terms. The app includes GPLv3.
+These texts do not establish that all statically linked dependencies meet
+their obligations or that the corresponding source is available.
+RELEASE GATE
+------------
+Before publishing any installer or runtime binaries, verify:
+1. Corresponding source/build scripts for the exact binary components.
+2. Complete license texts, attribution, notices and LGPL obligations.
+3. Functional acceptance on clean Windows 10 and Windows 11 x64.
+4. The final installer audit report and its SHA-256 identity.
+
+This notice is informational only. It cannot replace the required
+license texts or fulfillment of the applicable copyleft obligations.

@@ -11,6 +11,7 @@ import win32con
 from pywinauto import Desktop
 import sys
 import os
+import json
 import tempfile
 import time
 import math
@@ -122,6 +123,45 @@ def frame(child, accepted):
     except RuntimeError:
         print(f"Pixel probe diagnostic: {last}", flush=True)
         raise
+
+def inspect_loaded_native_modules(process, executable_dir):
+    """Confirm the playing process actually loaded the two app-local DLLs.
+
+    psutil returns mapped file paths from the live process. This proves module
+    origins on this CI host only, not clean Windows 10/11 compatibility,
+    static linkage, or licensing.
+    """
+    loaded = [Path(m.path) for m in psutil.Process(process.pid).memory_maps()
+              if Path(m.path).suffix.lower() == ".dll"]
+    installed = Path(executable_dir).resolve()
+    requested = ("libmpv-2.dll", "vulkan-1.dll")
+    verified = []
+    for name in requested:
+        matching = [path for path in loaded if path.name.lower() == name]
+        expected = os.path.normcase(os.path.normpath(str(installed / name)))
+        if not matching:
+            raise RuntimeError(f"Running player did not map expected DLL {name}")
+        if not all(os.path.normcase(os.path.normpath(str(path))) == expected
+                   for path in matching):
+            raise RuntimeError(f"Running player mapped {name} from outside its install directory")
+        verified.append({"name": name, "origin": "installed_application_directory"})
+    report = {
+        "schema_version": 1,
+        "process_state": "Playing",
+        "source": "psutil.Process.memory_maps() on live NSIS-installed player",
+        "installed_native_modules_verified": True,
+        "expected_modules": verified,
+        "loaded_dll_file_names": sorted({path.name.lower() for path in loaded}),
+        "clean_windows_10_11_verified": False,
+        "static_dependency_licenses_reviewed": False,
+    }
+    output = os.environ.get("HONGGUORUST_LOADED_MODULE_REPORT", "")
+    if output:
+        Path(output).write_text(json.dumps(report, indent=2, ensure_ascii=True) + "\n",
+                                encoding="utf-8")
+    print("PASS: playing process loaded libmpv/Vulkan from NSIS install directory; "
+          f"observed {len(report['loaded_dll_file_names'])} distinct DLL names", flush=True)
+
 
 def desktop_checks(main, child):
     show = bind("ShowWindow", wt.BOOL, wt.HWND, c.c_int)
@@ -255,6 +295,8 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
             frame(child, {"blue" if first=="red" else "red"})
             check_output_endpoint()
             until(lambda: text_visible("Playing"), "Rust Playing")
+            if os.environ.get("HONGGUORUST_LOADED_MODULE_REPORT"):
+                inspect_loaded_native_modules(process, Path(exe).resolve().parent)
             select(second)
             frame(child, {"green"})
             until(lambda: text_visible(second.name) and text_visible("Playing"), "replacement snapshot")

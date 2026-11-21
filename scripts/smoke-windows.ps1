@@ -91,7 +91,12 @@ public static class HongGuoProcessTree {
             Select-Object -ExpandProperty ProcessId)
         foreach ($childId in $parents) {
             $child = Get-Process -Id $childId -ErrorAction SilentlyContinue
-            if ($child -and !$child.HasExited) { $child }
+            if ($child -and !$child.HasExited) {
+                # Only track WebView2 subprocesses owned by the desktop app.
+                # Build tools (e.g. MSBuild) share this CI desktop; PID reuse
+                # or stale parent IDs must not count as a player leak.
+                if ($child.ProcessName -eq 'msedgewebview2') { $child }
+            }
         }
     })
     if (!$process.CloseMainWindow()) { throw 'Window rejected the close request' }
@@ -105,7 +110,7 @@ public static class HongGuoProcessTree {
             throw "Child process remained after close: $($child.ProcessName) (PID $($child.Id))"
         }
     }
-    Write-Output "PASS: no surviving processes among $($children.Count) observed descendants"
+    Write-Output "PASS: no surviving WebView2 subprocesses among $($children.Count) observed descendants"
 } catch {
     $failure = $_
     try {

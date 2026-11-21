@@ -20,3 +20,9 @@ src-tauri/gen/
 .idea/
 Thumbs.db
 diagnostics/
+
+# M5 verified libmpv staging — never commit binaries
+src-tauri/resources/libmpv-2.dll
+
+# App-private pinned Vulkan runtime staged only during M5 packaging
+src-tauri/resources/vulkan-1.dll
