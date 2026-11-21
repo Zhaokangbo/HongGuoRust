@@ -5,8 +5,8 @@ mod commands;
 mod local_library;
 mod player;
 
-use catalog::{CatalogService, OwnedManifestStore};
 use catalog::progress::ProviderProgressStore;
+use catalog::{CatalogService, OwnedManifestStore};
 use local_library::LocalLibrary;
 use player::{service::PlayerService, window};
 use std::fs::{self, File};
