@@ -88,7 +88,7 @@ function App() {
             {[0, 25, 50, 75, 100].map(value => <option value={value} key={value}>{value}%</option>)}
           </select>
         </label>
-        <span className="player-status">{snapshot?.state ?? "—"}</span>
+        <span className="player-status">{snapshot?.state ?? "—"} · {snapshot?.appVersion ?? "—"}</span>
       </div>
     </footer>
   </main>;
