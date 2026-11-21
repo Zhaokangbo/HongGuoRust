@@ -206,8 +206,23 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     let _ = reply.send(Err("Playback session changed or is not ready".into()));
                     continue;
                 }
-                let result = engine.as_mut().unwrap().control(request)
+                let result = engine
+                    .as_mut()
+                    .unwrap()
+                    .control(request)
                     .map_err(|failure| failure.message);
+                if result.is_ok() {
+                    let mut shared = state.lock().unwrap();
+                    match request {
+                        PlayerControl::Pause(true) => {
+                            shared.player.update(id, PlaybackState::Paused, None);
+                        }
+                        PlayerControl::Pause(false) => {
+                            shared.player.update(id, PlaybackState::Playing, None);
+                        }
+                        _ => {}
+                    }
+                }
                 let _ = reply.send(result);
             }
             Some(Command::Close) => break,
@@ -222,11 +237,10 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                     Ok(Some(Observation::Restart)) => {
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
-                        state
-                            .lock()
-                            .unwrap()
-                            .player
-                            .update(id, PlaybackState::Playing, None);
+                        let mut shared = state.lock().unwrap();
+                        if shared.player.snapshot().state != PlaybackState::Paused {
+                            shared.player.update(id, PlaybackState::Playing, None);
+                        }
                     }
                     Ok(Some(Observation::End)) => {
                         release(&mut engine);
