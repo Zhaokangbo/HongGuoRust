@@ -161,6 +161,13 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                 }
             }
             Some(Command::Stop(id)) => {
+                // A Stop can be queued before a subsequent Open. Never release
+                // the newly selected session's engine for a stale Stop.
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                if id.is_none() || current_id != id {
+                    info!(session_id=?id, current_session_id=?current_id, "ignored stale stop");
+                    continue;
+                }
                 release(&mut engine);
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
