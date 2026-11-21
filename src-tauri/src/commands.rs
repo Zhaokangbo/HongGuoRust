@@ -4,6 +4,7 @@ use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{Manager, State, WebviewWindow};
 
 #[tauri::command]
@@ -112,7 +113,7 @@ pub fn set_catalog_visible(host: State<'_, crate::VideoHost>, visible: bool) {
 }
 
 #[tauri::command]
-pub fn library_list(library: State<'_, LocalLibrary>) -> Result<Vec<LocalMedia>, String> {
+pub fn library_list(library: State<'_, Arc<LocalLibrary>>) -> Result<Vec<LocalMedia>, String> {
     library.list()
 }
 
@@ -123,7 +124,7 @@ pub async fn library_add_local(window: WebviewWindow) -> Result<Option<LocalMedi
         window
             .state::<window::Picker>()
             .choose(owner)?
-            .map(|path| window.state::<LocalLibrary>().add(path))
+            .map(|path| window.state::<Arc<LocalLibrary>>().add(path))
             .transpose()
     })
     .await
@@ -131,15 +132,19 @@ pub async fn library_add_local(window: WebviewWindow) -> Result<Option<LocalMedi
 }
 
 #[tauri::command]
-pub fn library_remove(library: State<'_, LocalLibrary>, id: u64) -> Result<(), String> {
+pub fn library_remove(library: State<'_, Arc<LocalLibrary>>, id: u64) -> Result<(), String> {
     library.remove(id)
 }
 
 #[tauri::command]
-pub fn library_play(
-    library: State<'_, LocalLibrary>,
-    player: State<'_, PlayerService>,
+pub fn library_play(player: State<'_, PlayerService>, id: u64) -> Result<u64, String> {
+    player.open_library(id)
+}
+
+#[tauri::command]
+pub fn library_clear_history(
+    library: State<'_, Arc<LocalLibrary>>,
     id: u64,
-) -> Result<u64, String> {
-    player.open(library.resolve_path(id)?)
+) -> Result<(), String> {
+    library.clear_history(id)
 }

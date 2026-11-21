@@ -1,5 +1,7 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
+use super::history::{finish, HistorySession};
+use crate::local_library::LocalLibrary;
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use std::path::PathBuf;
@@ -14,6 +16,8 @@ enum Command {
         id: u64,
         source: MediaSource,
         accepted: Instant,
+        library_id: Option<u64>,
+        resume_at: Option<f64>,
     },
     Stop(Option<u64>),
     Control {
@@ -34,20 +38,23 @@ pub struct PlayerService {
     state: Arc<Mutex<Shared>>,
     tx: Sender<Command>,
     worker: Mutex<Option<JoinHandle<()>>>,
+    library: Arc<LocalLibrary>,
 }
 
 impl PlayerService {
-    pub fn new(host: isize) -> std::io::Result<Self> {
+    pub fn new(host: isize, library: Arc<LocalLibrary>) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(Shared::default()));
         let shared = Arc::clone(&state);
+        let worker_library = Arc::clone(&library);
         let worker = thread::Builder::new()
             .name("libmpv-player".into())
-            .spawn(move || run(host, rx, shared))?;
+            .spawn(move || run(host, rx, shared, worker_library))?;
         Ok(Self {
             state,
             tx,
             worker: Mutex::new(Some(worker)),
+            library,
         })
     }
 
@@ -56,14 +63,25 @@ impl PlayerService {
     }
 
     pub fn open(&self, path: PathBuf) -> Result<u64, String> {
-        self.open_source(MediaSource::Local(path))
+        self.open_source(MediaSource::Local(path), None, None)
+    }
+
+    pub fn open_library(&self, id: u64) -> Result<u64, String> {
+        let path = self.library.resolve_path(id)?;
+        let resume_at = self.library.resume_point(id)?;
+        self.open_source(MediaSource::Local(path), Some(id), resume_at)
     }
 
     pub fn open_https(&self, url: String) -> Result<u64, String> {
-        self.open_source(MediaSource::https(url)?)
+        self.open_source(MediaSource::https(url)?, None, None)
     }
 
-    fn open_source(&self, source: MediaSource) -> Result<u64, String> {
+    fn open_source(
+        &self,
+        source: MediaSource,
+        library_id: Option<u64>,
+        resume_at: Option<f64>,
+    ) -> Result<u64, String> {
         let mut shared = self.state.lock().unwrap();
         if shared.closing {
             return Err("Window is closing".into());
@@ -78,6 +96,8 @@ impl PlayerService {
                 id,
                 source,
                 accepted,
+                library_id,
+                resume_at,
             })
             .is_err()
         {
@@ -184,9 +204,15 @@ fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) 
     }
 }
 
-fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
+fn run(
+    host: isize,
+    rx: Receiver<Command>,
+    state: Arc<Mutex<Shared>>,
+    library: Arc<LocalLibrary>,
+) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
+    let mut history: Option<HistorySession> = None;
     loop {
         let cmd = if engine.is_some() {
             match rx.try_recv() {
@@ -205,6 +231,8 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                 id,
                 source,
                 accepted,
+                library_id,
+                resume_at,
             }) => {
                 {
                     let shared = state.lock().unwrap();
@@ -213,6 +241,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                 }
                 end_cache_interval(&mut cache_since, "replaced");
+                finish(&mut history, &library, false);
                 release(&mut engine);
                 match Engine::load(host, &source, id, accepted) {
                     Ok(player) => {
@@ -222,6 +251,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                             "loadfile accepted"
                         );
                         engine = Some(player);
+                        history = library_id.map(|key| HistorySession::new(id, key, resume_at));
                     }
                     Err(e) => failed(&state, id, e),
                 }
@@ -235,6 +265,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     continue;
                 }
                 end_cache_interval(&mut cache_since, "stopped");
+                finish(&mut history, &library, false);
                 release(&mut engine);
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
@@ -262,6 +293,15 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                         _ => {}
                     }
                 }
+                if result.is_ok() {
+                    if let Some(active) = history.as_mut().filter(|h| h.session == id) {
+                        match request {
+                            PlayerControl::SeekAbsolute(sec) => active.seeked(&library, sec),
+                            PlayerControl::Pause(true) => active.save(&library, false),
+                            _ => {}
+                        }
+                    }
+                }
                 let _ = reply.send(result);
             }
             Some(Command::Close) => break,
@@ -272,11 +312,24 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                 let ms = current.opened.elapsed().as_millis() as u64;
                 match event {
                     Ok(Some(Observation::Loaded)) => {
-                        info!(session_id = id, elapsed_ms = ms, "file-loaded")
+                        info!(session_id = id, elapsed_ms = ms, "file-loaded");
+                        if let Some(active) = history.as_mut().filter(|h| h.session == id) {
+                            if let Some(sec) = active.resume_at.take() {
+                                if let Err(e) = current.control(PlayerControl::SeekAbsolute(sec)) {
+                                    tracing::warn!(session_id = id, error = %e.message, "resume seek failed");
+                                } else {
+                                    active.seeked(&library, sec);
+                                    info!(session_id = id, position_sec = sec, "resume seek accepted");
+                                }
+                            }
+                        }
                     }
                     Ok(Some(Observation::Restart)) => {
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
                         state.lock().unwrap().player.mark_started(id);
+                        if let Some(active) = history.as_mut().filter(|h| h.session == id) {
+                            active.started(&library);
+                        }
                     }
                     Ok(Some(Observation::CacheWaiting(waiting))) => {
                         if waiting {
@@ -303,6 +356,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                     Ok(Some(Observation::End)) => {
                         end_cache_interval(&mut cache_since, "ended");
+                        finish(&mut history, &library, true);
                         release(&mut engine);
                         state
                             .lock()
@@ -312,6 +366,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                     Err(e) => {
                         end_cache_interval(&mut cache_since, "error");
+                        finish(&mut history, &library, false);
                         release(&mut engine);
                         failed(&state, id, e);
                     }
@@ -321,6 +376,9 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                             .unwrap()
                             .player
                             .progress(id, position, duration);
+                        if let Some(active) = history.as_mut().filter(|h| h.session == id) {
+                            active.progress(&library, position, duration);
+                        }
                     }
                     Ok(None) => {}
                 }
@@ -329,6 +387,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
     }
     let started = Instant::now();
     end_cache_interval(&mut cache_since, "closed");
+    finish(&mut history, &library, false);
     release(&mut engine);
     info!(
         elapsed_ms = started.elapsed().as_millis() as u64,
