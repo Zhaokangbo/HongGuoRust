@@ -121,7 +121,9 @@ impl CatalogService {
 
     /// Existing M6 IPC still searches only the built-in demo source.
     pub fn search(&self, query: Option<&str>) -> Result<Vec<Series>, String> {
-        Ok(self.search_page(query, Some("demo"), 0, MAX_PAGE_SIZE)?.items)
+        Ok(self
+            .search_page(query, Some("demo"), 0, MAX_PAGE_SIZE)?
+            .items)
     }
 
     /// Search is deterministic by provider registration order and provider item order.
@@ -190,7 +192,9 @@ impl CatalogService {
         {
             return Err("invalid_episode_id: Invalid episode ID".into());
         }
-        let target = self.provider(source)?.resolve_episode(local_id, episode_id)?;
+        let target = self
+            .provider(source)?
+            .resolve_episode(local_id, episode_id)?;
         match target {
             MediaTarget::Https(url) => {
                 crate::player::source::public_https_url(&url).map(MediaTarget::Https)
@@ -255,9 +259,7 @@ mod tests {
             _series_id: &str,
             _episode_id: &str,
         ) -> Result<MediaTarget, String> {
-            Ok(MediaTarget::Https(
-                "https://example.org/clip.mp4".into(),
-            ))
+            Ok(MediaTarget::Https("https://example.org/clip.mp4".into()))
         }
     }
 
@@ -273,8 +275,14 @@ mod tests {
         assert_eq!(all.items[0].id, "demo:forest-demo");
         assert_eq!(all.items[3].id, "other:forest-demo");
         assert_eq!(all.items[3].provider_id, "other");
-        assert_eq!(service.detail("forest-demo").unwrap().series.id, "demo:forest-demo");
-        assert_eq!(service.detail("other:forest-demo").unwrap().series.id, "other:forest-demo");
+        assert_eq!(
+            service.detail("forest-demo").unwrap().series.id,
+            "demo:forest-demo"
+        );
+        assert_eq!(
+            service.detail("other:forest-demo").unwrap().series.id,
+            "other:forest-demo"
+        );
         assert!(service.detail("missing:forest-demo").is_err());
         assert!(service.detail("demo::bad").is_err());
         assert!(CatalogService::from_providers(vec![
@@ -297,7 +305,9 @@ mod tests {
         assert!(service.search_page(None, Some("unknown"), 0, 10).is_err());
         assert!(service.search_page(None, None, 0, 0).is_err());
         assert!(service.search_page(None, None, 0, 51).is_err());
-        assert!(service.search_page(Some(&"x".repeat(129)), None, 0, 20).is_err());
+        assert!(service
+            .search_page(Some(&"x".repeat(129)), None, 0, 20)
+            .is_err());
         assert_eq!(service.sources().len(), 1);
     }
 
@@ -315,17 +325,23 @@ mod tests {
         let added = library.add(media.clone()).unwrap();
         let service = CatalogService::new(Arc::clone(&library));
 
-        let local = service.search_page(Some("自己的"), Some("local"), 0, 10).unwrap();
+        let local = service
+            .search_page(Some("自己的"), Some("local"), 0, 10)
+            .unwrap();
         assert_eq!(local.total, 1);
         assert_eq!(local.items[0].id, format!("local:{}", added.id));
         assert_eq!(local.items[0].provider_id, "local");
         let detail = service.detail(&local.items[0].id).unwrap();
         assert_eq!(detail.episodes[0].id, "ep-01");
         assert_eq!(
-            service.resolve_episode(&local.items[0].id, "ep-01").unwrap(),
+            service
+                .resolve_episode(&local.items[0].id, "ep-01")
+                .unwrap(),
             MediaTarget::LocalLibrary(added.id)
         );
-        assert!(service.resolve_episode(&local.items[0].id, "ep-99").is_err());
+        assert!(service
+            .resolve_episode(&local.items[0].id, "ep-99")
+            .is_err());
         let mixed = service.search_page(None, Some("all"), 0, 50).unwrap();
         assert_eq!(mixed.total, 4);
         drop(service);

@@ -178,7 +178,10 @@ mod tests {
         assert_eq!(provider.search("").unwrap().len(), 3);
         assert_eq!(provider.search("城市").unwrap().len(), 1);
         assert_eq!(provider.search("完全不存在").unwrap().len(), 0);
-        let details = provider.detail("forest-demo").unwrap().expect("forest demo");
+        let details = provider
+            .detail("forest-demo")
+            .unwrap()
+            .expect("forest demo");
         assert_eq!(details.series.episode_count, details.episodes.len());
         assert_eq!(details.episodes[0].id, "ep-01");
     }

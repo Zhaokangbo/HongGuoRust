@@ -1,6 +1,4 @@
-use crate::catalog::{
-    CatalogService, MediaTarget, ProviderInfo, SearchPage, Series, SeriesDetail,
-};
+use crate::catalog::{CatalogService, MediaTarget, ProviderInfo, SearchPage, Series, SeriesDetail};
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
