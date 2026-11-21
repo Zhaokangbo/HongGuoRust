@@ -45,7 +45,9 @@ pub fn get_fullscreen(window: WebviewWindow) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn set_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<bool, String> {
-    window.set_fullscreen(fullscreen).map_err(|error| error.to_string())?;
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|error| error.to_string())?;
     window.is_fullscreen().map_err(|error| error.to_string())
 }
 

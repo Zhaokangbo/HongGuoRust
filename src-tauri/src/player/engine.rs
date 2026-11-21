@@ -23,7 +23,10 @@ pub enum Observation {
     Loaded,
     Restart,
     End,
-    Progress { position: Option<f64>, duration: Option<f64> },
+    Progress {
+        position: Option<f64>,
+        duration: Option<f64>,
+    },
 }
 
 pub struct Engine {
@@ -42,11 +45,22 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
 }
 
 impl Engine {
-    pub fn load(host: isize, source: &MediaSource, session: u64, opened: Instant) -> Result<Self, Failure> {
+    pub fn load(
+        host: isize,
+        source: &MediaSource,
+        session: u64,
+        opened: Instant,
+    ) -> Result<Self, Failure> {
         let name = match source {
-            MediaSource::Local(path) => local_mp4(path)
-                .map(str::to_owned)
-                .map_err(|message| Failure { stage: "validate", code: "invalid_local_mp4".into(), message })?,
+            MediaSource::Local(path) => {
+                local_mp4(path)
+                    .map(str::to_owned)
+                    .map_err(|message| Failure {
+                        stage: "validate",
+                        code: "invalid_local_mp4".into(),
+                        message,
+                    })?
+            }
             MediaSource::Https(url) => url.clone(),
         };
         let local = matches!(source, MediaSource::Local(_));

@@ -93,18 +93,29 @@ impl PlayerState {
 
     pub fn progress(&mut self, id: u64, position: Option<f64>, duration: Option<f64>) {
         if !self.current(id)
-            || !matches!(self.state, PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Loading)
-        { return; }
+            || !matches!(
+                self.state,
+                PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Loading
+            )
+        {
+            return;
+        }
         let position = position.filter(|value| value.is_finite() && *value >= 0.0);
         let duration = duration.filter(|value| value.is_finite() && *value >= 0.0);
         if let Some(value) = position {
-            if self.position_sec.is_none_or(|old| (old - value).abs() >= 0.05) {
+            if self
+                .position_sec
+                .is_none_or(|old| (old - value).abs() >= 0.05)
+            {
                 self.position_sec = Some(value);
                 self.revision += 1;
             }
         }
         if let Some(value) = duration {
-            if self.duration_sec.is_none_or(|old| (old - value).abs() >= 0.05) {
+            if self
+                .duration_sec
+                .is_none_or(|old| (old - value).abs() >= 0.05)
+            {
                 self.duration_sec = Some(value);
                 self.revision += 1;
             }

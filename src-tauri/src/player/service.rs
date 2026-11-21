@@ -1,7 +1,7 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
-use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use super::source::MediaSource;
+use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -65,12 +65,22 @@ impl PlayerService {
 
     fn open_source(&self, source: MediaSource) -> Result<u64, String> {
         let mut shared = self.state.lock().unwrap();
-        if shared.closing { return Err("Window is closing".into()); }
+        if shared.closing {
+            return Err("Window is closing".into());
+        }
         let filename = source.label();
         let kind = source.kind();
         let id = shared.player.begin(filename);
         let accepted = Instant::now();
-        if self.tx.send(Command::Open { id, source, accepted }).is_err() {
+        if self
+            .tx
+            .send(Command::Open {
+                id,
+                source,
+                accepted,
+            })
+            .is_err()
+        {
             let failure = Failure {
                 stage: "dispatch",
                 code: "worker_exited".into(),
@@ -81,7 +91,7 @@ impl PlayerService {
                 .update(id, PlaybackState::Error, Some(failure));
             return Err("Playback worker exited".into());
         }
-        info!(session_id=id, source_kind=kind, "open source accepted");
+        info!(session_id = id, source_kind = kind, "open source accepted");
         Ok(id)
     }
 
@@ -179,7 +189,11 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
             }
         };
         match cmd {
-            Some(Command::Open { id, source, accepted }) => {
+            Some(Command::Open {
+                id,
+                source,
+                accepted,
+            }) => {
                 {
                     let shared = state.lock().unwrap();
                     if shared.closing || !shared.player.current(id) {
@@ -266,7 +280,11 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                         failed(&state, id, e);
                     }
                     Ok(Some(Observation::Progress { position, duration })) => {
-                        state.lock().unwrap().player.progress(id, position, duration);
+                        state
+                            .lock()
+                            .unwrap()
+                            .player
+                            .progress(id, position, duration);
                     }
                     Ok(None) => {}
                 }
