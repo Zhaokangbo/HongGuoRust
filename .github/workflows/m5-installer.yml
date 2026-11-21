@@ -1,0 +1,60 @@
+name: Windows M5 NSIS candidate
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/build-windows.ps1'
+      - 'src-tauri/tauri.bundle.conf.json'
+      - 'src-tauri/windows/hooks.nsh'
+      - 'docs/acceptance/m5.md'
+      - '.github/workflows/m5-installer.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'feat/m5-installer'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install Rust x64 MSVC and rustfmt
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Install checked Tauri CLI 2.11.4
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'cargo-tauri.zip'
+          $cli = Join-Path $env:RUNNER_TEMP 'tauri-cli'
+          Invoke-WebRequest 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.4/cargo-tauri-x86_64-pc-windows-msvc.zip' -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne '0743e30a661a35d63339b24cf63828f97ba5389a1d7f13b368a542794dd0a3f3') {
+            throw 'Tauri CLI archive checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath $cli
+          $binary = @(Get-ChildItem $cli -Recurse -Filter cargo-tauri.exe -File)
+          if ($binary.Count -ne 1) { throw 'Expected exactly one cargo-tauri.exe in verified archive' }
+          $binary[0].DirectoryName >> $env:GITHUB_PATH
+      - name: Prototype installer build (no distributable artifact)
+        shell: pwsh
+        run: |
+          ./scripts/build-windows.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Assert native runtime never entered git tracking
+        shell: pwsh
+        run: |
+          if (Test-Path 'src-tauri/resources/libmpv-2.dll') {
+            throw 'Untracked DLL staging left behind after package step'
+          }
+          git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Do NOT upload setup.exe before license and clean-Windows acceptance.
