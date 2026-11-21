@@ -220,3 +220,15 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 }
 .episode-completion { color: #a2e7c7; font-size: 11px; }
 .episode-completion[role="alert"] { color: #ffb7a8; }
+
+/* M10-C1: episode-level resume, separate from M7 local history. */
+.catalog-resume {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 14px; margin: 14px 0 20px; border-radius: 9px;
+  border: 1px solid #4c785f; background: #1a3226; flex-wrap: wrap;
+}
+.catalog-resume > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.catalog-resume strong { color: #bcf2d5; font-size: 14px; }
+.catalog-resume span { color: #a9c3b4; font-size: 12px; }
+.catalog-resume button { border: 1px solid #81c7a6; border-radius: 7px; padding: 9px 16px; }
+.catalog-progress-error { color: #ffb7a8; font-size: 12px; }
