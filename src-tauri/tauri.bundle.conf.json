@@ -6,7 +6,11 @@
     ],
     "resources": {
       "resources/libmpv-2.dll": "libmpv-2.dll",
-      "resources/vulkan-1.dll": "vulkan-1.dll"
+      "resources/vulkan-1.dll": "vulkan-1.dll",
+      "../LICENSE": "legal/LICENSE-GPL-3.0.txt",
+      "legal/THIRD-PARTY-NOTICES.txt": "legal/THIRD-PARTY-NOTICES.txt",
+      "legal/VULKAN-LOADER-LICENSE.txt": "legal/VULKAN-LOADER-LICENSE.txt",
+      "legal/VULKAN-HEADERS-LICENSE.md": "legal/VULKAN-HEADERS-LICENSE.md"
     },
     "windows": {
       "webviewInstallMode": {
