@@ -115,7 +115,7 @@ def frame(child, accepted):
                 return "blue"
             if "green" in accepted and green > 80 and max(red,blue) < 65:
                 return "green"
-        last = (tuple(bounds), list(zip(points, colors)))
+        last = ((bounds.left, bounds.top, bounds.right, bounds.bottom), list(zip(points, colors)))
         return None
     try:
         return until(sample, "fixture pixels " + str(accepted))
