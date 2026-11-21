@@ -2,9 +2,11 @@
 
 mod catalog;
 mod commands;
+mod local_library;
 mod player;
 
 use catalog::CatalogService;
+use local_library::LocalLibrary;
 use player::{service::PlayerService, window};
 use std::fs::{self, File};
 use std::path::PathBuf;
@@ -36,6 +38,7 @@ fn main() {
     }
     tauri::Builder::default()
         .manage(CatalogService::default())
+        .manage(LocalLibrary::new())
         .manage(window::Picker::default())
         .setup(|app| {
             let win = app
@@ -86,6 +89,10 @@ fn main() {
             commands::catalog_search,
             commands::catalog_detail,
             commands::catalog_play_episode,
+            commands::library_list,
+            commands::library_add_local,
+            commands::library_remove,
+            commands::library_play,
             commands::set_catalog_visible,
             commands::open_local,
             commands::stop,

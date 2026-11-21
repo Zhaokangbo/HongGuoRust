@@ -19,3 +19,10 @@ export interface SeriesDetail {
   series: Series;
   episodes: Episode[];
 }
+
+export interface LocalMedia {
+  id: number;
+  title: string;
+  filename: string;
+  available: boolean;
+}

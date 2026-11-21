@@ -5,7 +5,7 @@ import { CatalogView } from "./catalog/CatalogView";
 import "./style.css";
 
 type PlayerCommand = "open_local" | "open_https" | "stop" | "set_paused" | "seek_to"
-  | "set_rate" | "set_volume" | "set_fullscreen" | "set_catalog_visible" | "catalog_play_episode";
+  | "set_rate" | "set_volume" | "set_fullscreen" | "set_catalog_visible" | "catalog_play_episode" | "library_play";
 // Public sample source used for manual streaming checks. External URLs can change.
 const SAMPLE = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
 
@@ -117,6 +117,13 @@ function App() {
     return true;
   }
 
+  async function playFromLocal(id: number): Promise<boolean> {
+    const played = await command("library_play", { id });
+    if (!played) return false;
+    await backToPlayer();
+    return true;
+  }
+
   const connected = snapshot !== null && !connectionError;
   const active = snapshot?.state === "Playing" || snapshot?.state === "Paused" || snapshot?.state === "Buffering";
   const controllable = connected && active && !busy;
@@ -138,7 +145,7 @@ function App() {
       <div className="catalog-header-actions">
         <button className="catalog-toggle" disabled={!connected || busy}
           onClick={() => { if (catalogOpen) void backToPlayer(); else void openCatalog(); }}>
-          {catalogOpen ? "返回播放" : "演示剧库"}
+          {catalogOpen ? "返回播放" : "内容剧库"}
         </button>
         <span className={connected ? "connection online" : "connection"} role="status">
           {connected ? "已连接" : connectionError ? "连接失败" : "连接中"}
@@ -146,7 +153,7 @@ function App() {
       </div>
     </header>
     {catalogOpen
-      ? <CatalogView onBack={backToPlayer} onPlay={playFromCatalog} playerError={commandError} />
+      ? <CatalogView onBack={backToPlayer} onPlay={playFromCatalog} onPlayLocal={playFromLocal} playerError={commandError} />
       : <section aria-label="视频画面" />}
     <footer className="player-controls">
       <div className="player-actions">

@@ -94,3 +94,22 @@ main.fullscreen header, main.fullscreen footer { display: none; }
   .catalog-detail { grid-template-columns: 1fr; }
   .catalog-detail-art { min-height: 110px; }
 }
+
+
+/* M6-B personal local MP4 catalog. Only HTML library UI changes. */
+.catalog-tabs { display: flex; gap: 8px; margin: 20px 0 8px; border-bottom: 1px solid #33463c; }
+.catalog-tab { background: transparent; border-radius: 6px 6px 0 0; color: #a8bdb1; padding: 9px 18px; }
+.catalog-tab.active { background: #263d30; color: #aff0d2; box-shadow: inset 0 -2px #a0e9cd; }
+.local-library-toolbar { display: flex; gap: 14px; align-items: center; margin: 22px 0 18px; flex-wrap: wrap; }
+.local-library-toolbar span { color: #aebeb5; font-size: 12px; }
+.local-library-list { display: grid; gap: 9px; }
+.local-media-row { display: flex; align-items: center; gap: 12px; background: #17241d; border: 1px solid #354b3f; border-radius: 9px; padding: 11px; flex-wrap: wrap; }
+.local-media-icon { background: #234b39; color: #b2f4d5; font: 12px Consolas, monospace; padding: 16px 12px; border-radius: 5px; }
+.local-media-summary { display: flex; flex-direction: column; gap: 3px; flex: 1 1 180px; min-width: 0; }
+.local-media-summary strong, .local-media-summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-media-summary strong { font-size: 14px; }
+.local-media-summary span { color: #9daea3; font-size: 12px; }
+.local-media-summary small { color: #ffb7a8; }
+.local-media-row button:disabled { opacity: .55; cursor: not-allowed; }
+.local-media-confirm { display: flex; align-items: center; gap: 6px; color: #f1c9ae; font-size: 12px; flex-wrap: wrap; }
+.local-library .catalog-empty { text-align: left; }

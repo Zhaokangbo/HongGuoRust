@@ -1,4 +1,4 @@
-import type { Series, SeriesDetail } from "./types";
+import type { LocalMedia, Series, SeriesDetail } from "./types";
 
 function desktopInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const core = window.__TAURI__?.core;
@@ -16,4 +16,16 @@ export function getCatalogSeries(seriesId: string): Promise<SeriesDetail> {
 
 export function playCatalogEpisode(seriesId: string, episodeId: string): Promise<number> {
   return desktopInvoke<number>("catalog_play_episode", { seriesId, episodeId });
+}
+
+export function listLocalMedia(): Promise<LocalMedia[]> {
+  return desktopInvoke<LocalMedia[]>("library_list");
+}
+
+export function addLocalMedia(): Promise<LocalMedia | null> {
+  return desktopInvoke<LocalMedia | null>("library_add_local");
+}
+
+export function removeLocalMedia(id: number): Promise<void> {
+  return desktopInvoke<void>("library_remove", { id });
 }
