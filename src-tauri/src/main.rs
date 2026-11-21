@@ -5,7 +5,7 @@ mod commands;
 mod local_library;
 mod player;
 
-use catalog::CatalogService;
+use catalog::{CatalogService, OwnedManifestStore};
 use local_library::LocalLibrary;
 use player::{service::PlayerService, window};
 use std::fs::{self, File};
@@ -37,10 +37,12 @@ fn main() {
         Err(_) => logger.with_writer(std::io::stderr).init(),
     }
     let library = Arc::new(LocalLibrary::new());
-    let catalog = CatalogService::new(Arc::clone(&library));
+    let manifest = Arc::new(OwnedManifestStore::new());
+    let catalog = CatalogService::new(Arc::clone(&library), Arc::clone(&manifest));
     tauri::Builder::default()
         .manage(catalog)
         .manage(library)
+        .manage(manifest)
         .manage(window::Picker::default())
         .setup(|app| {
             let win = app
@@ -93,6 +95,8 @@ fn main() {
             commands::catalog_sources,
             commands::catalog_search_page,
             commands::catalog_cancel_request,
+            commands::catalog_import_manifest,
+            commands::catalog_clear_manifest,
             commands::catalog_detail,
             commands::catalog_play_episode,
             commands::library_list,

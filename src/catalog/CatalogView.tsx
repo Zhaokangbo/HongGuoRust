@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  catalogErrorMessage, getCatalogSeries, isCatalogCancellation,
-  listCatalogSources, searchCatalogPage,
+  catalogErrorMessage, clearOwnedManifest, getCatalogSeries, importOwnedManifest,
+  isCatalogCancellation, listCatalogSources, searchCatalogPage,
 } from "./api";
 import type { CatalogProvider, Series, SeriesDetail } from "./types";
 import { LocalLibraryView } from "./LocalLibraryView";
@@ -33,6 +33,9 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
+  const [manifestBusy, setManifestBusy] = useState(false);
+  const [manifestInfo, setManifestInfo] = useState("");
+  const [confirmManifestClear, setConfirmManifestClear] = useState(false);
 
   // Leaving the unified catalog must invalidate any still-loading detail.
   useEffect(() => {
@@ -163,6 +166,46 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     setRefreshKey(previous => previous + 1);
   }
 
+  async function importManifest() {
+    if (manifestBusy) return;
+    setManifestBusy(true);
+    setError("");
+    setManifestInfo("");
+    try {
+      const count = await importOwnedManifest();
+      if (count === null) return;
+      setSourceId("manifest");
+      setInput("");
+      setSearch("");
+      setConfirmManifestClear(false);
+      setManifestInfo(`已导入 ${count} 部作品。清单保存在本机应用数据目录。`);
+      refreshCatalog();
+    } catch (reason) {
+      setError(catalogErrorMessage(reason));
+    } finally {
+      setManifestBusy(false);
+    }
+  }
+
+  async function clearManifest() {
+    if (!confirmManifestClear) {
+      setConfirmManifestClear(true);
+      return;
+    }
+    setManifestBusy(true);
+    setError("");
+    try {
+      await clearOwnedManifest();
+      setManifestInfo("已清空自有媒体清单（不会删除原始 JSON 或视频文件）。");
+      setConfirmManifestClear(false);
+      refreshCatalog();
+    } catch (reason) {
+      setError(catalogErrorMessage(reason));
+    } finally {
+      setManifestBusy(false);
+    }
+  }
+
   async function play(seriesId: string, episodeId: string) {
     setWorking(true);
     try {
@@ -203,7 +246,13 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <label htmlFor="catalog-provider-select">内容源</label>
       <select id="catalog-provider-select" aria-label="选择内容源"
         value={sourceId} disabled={working || loadingMore}
-        onChange={event => { setSourceId(event.target.value); setInput(""); setSearch(""); }}>
+        onChange={event => {
+          setSourceId(event.target.value);
+          setInput("");
+          setSearch("");
+          setConfirmManifestClear(false);
+          setManifestInfo("");
+        }}>
         {sources.length === 0 && <option value="demo">演示内容</option>}
         {sources.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}
         <option value="all">全部内容源</option>
@@ -214,15 +263,28 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <button type="button" className="catalog-ghost"
         disabled={!(loading || loadingMore || detailLoading)}
         onClick={cancelPending}>取消请求</button>
+      {(sourceId === "manifest" || sourceId === "all") && <>
+        <button type="button" className="catalog-ghost"
+          disabled={manifestBusy || working}
+          onClick={() => void importManifest()}>
+          {manifestBusy ? "处理中..." : "导入自有 JSON 清单"}
+        </button>
+        <button type="button" className="catalog-ghost"
+          disabled={manifestBusy || working}
+          onClick={() => void clearManifest()}>
+          {confirmManifestClear ? "再次点击确认清空" : "清空自有清单"}
+        </button>
+      </>}
       {!loading && <span role="status">共 {total} 条内容</span>}
     </div>}
 
     {!detail && mode === "demo" && <form className="catalog-search" onSubmit={submit}>
       <input type="search" value={input} onChange={event => setInput(event.target.value)}
-        placeholder="搜索演示剧名、类型或关键词" aria-label="搜索内容" maxLength={128} />
+        placeholder="搜索作品名称、类型或关键词" aria-label="搜索内容" maxLength={128} />
       <button type="submit">搜索</button>
     </form>}
 
+    {manifestInfo && <p className="catalog-manifest-info" role="status">{manifestInfo}</p>}
     {error && <div className="catalog-request-error" role="alert">
       <span>{error}</span>
       <button type="button" className="catalog-ghost"
@@ -235,7 +297,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           favoritesOnly={mode === "favorites"} onPlay={onPlayLocal} playerError={playerError} />
       : detail ? <div className="catalog-detail">
       <div className={"catalog-detail-art artwork-" + detail.series.artwork} aria-hidden="true">
-        <span>DEMO</span>
+        <span>{detail.series.providerId === "manifest" ? "自有清单"
+          : detail.series.providerId === "local" ? "本地媒体" : "DEMO"}</span>
       </div>
       <div className="catalog-detail-body">
         <div className="catalog-meta">{detail.series.genre} · {detail.series.badge}</div>
@@ -258,7 +321,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         {items.map(item => <button key={item.id} type="button"
           className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
           <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
-            <span>HGR / DEMO</span>
+            <span>{item.providerId === "manifest" ? "HGR / 自有清单"
+              : item.providerId === "local" ? "HGR / LOCAL" : "HGR / DEMO"}</span>
           </span>
           <strong>{item.title}</strong>
           <span className="catalog-meta">{item.genre} · {item.episodeCount} 集</span>
@@ -270,6 +334,6 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <button type="button" disabled={working || loadingMore}
         onClick={() => void loadMore()}>{loadingMore ? "正在加载..." : "加载更多"}</button>
     </div>}
-    {mode === "demo" && <p className="catalog-disclaimer">演示内容仅用于功能验证；本地来源只读取你主动添加的 MP4，不上传或扫描文件夹。此功能不接入第三方短剧平台，也不代表真实作品授权。</p>}
+    {mode === "demo" && <p className="catalog-disclaimer">演示内容仅用于功能验证；本地来源只读取你主动添加的 MP4。自有清单仅接收用户选择的 JSON，引用公开 HTTPS MP4，导入前请确认内容使用权限；不会扫描或上传本地视频。</p>}
   </section>;
 }

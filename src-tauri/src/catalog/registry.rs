@@ -1,6 +1,7 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
 use super::local::LocalLibraryProvider;
+use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
 use super::{ContentProvider, LocalDemoProvider, MediaTarget, Series, SeriesDetail};
 use crate::local_library::LocalLibrary;
@@ -82,10 +83,11 @@ impl Default for CatalogService {
 }
 
 impl CatalogService {
-    pub fn new(library: Arc<LocalLibrary>) -> Self {
+    pub fn new(library: Arc<LocalLibrary>, manifest: Arc<OwnedManifestStore>) -> Self {
         Self::from_providers(vec![
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
+            Box::new(OwnedManifestProvider::new(manifest)),
         ])
         .expect("built-in provider IDs must be unique and valid")
     }
@@ -396,7 +398,10 @@ mod tests {
         fs::write(&media, b"test").unwrap();
         let library = Arc::new(LocalLibrary::from_path(dir.join("library.json")));
         let added = library.add(media.clone()).unwrap();
-        let service = CatalogService::new(Arc::clone(&library));
+        let manifest = Arc::new(OwnedManifestStore::from_test_path(
+            dir.join("owned-manifest.json"),
+        ));
+        let service = CatalogService::new(Arc::clone(&library), manifest);
 
         let local = service
             .search_page(Some("自己的"), Some("local"), 0, 10)

@@ -62,11 +62,20 @@ export function catalogErrorMessage(reason: unknown): string {
   if (value.includes("provider_not_found:")) return "该内容源不可用，请切换内容源";
   if (value.includes("series_not_found:")) return "该内容已不存在，请刷新列表";
   if (value.includes("invalid_query:")) return "搜索内容过长，请缩短关键词";
+  if (value.includes("manifest_")) return value.replace(/^.*?(manifest_[a-z]+:)/, "清单错误：");
   return value;
 }
 
 export function searchCatalog(query: string): Promise<Series[]> {
   return desktopInvoke<Series[]>("catalog_search", { query });
+}
+
+export function importOwnedManifest(): Promise<number | null> {
+  return desktopInvoke<number | null>("catalog_import_manifest");
+}
+
+export function clearOwnedManifest(): Promise<void> {
+  return desktopInvoke<void>("catalog_clear_manifest");
 }
 
 export function listCatalogSources(): Promise<CatalogProvider[]> {

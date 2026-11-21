@@ -90,6 +90,14 @@ pub struct Picker {
 
 impl Picker {
     pub fn choose(&self, parent: isize) -> Result<Option<PathBuf>, String> {
+        self.choose_filtered(parent, false)
+    }
+
+    pub fn choose_manifest(&self, parent: isize) -> Result<Option<PathBuf>, String> {
+        self.choose_filtered(parent, true)
+    }
+
+    fn choose_filtered(&self, parent: isize, manifest: bool) -> Result<Option<PathBuf>, String> {
         {
             let mut state = self.state.lock().unwrap();
             if state.closing || state.active {
@@ -97,7 +105,7 @@ impl Picker {
             }
             state.active = true;
         }
-        let result = pick(parent);
+        let result = pick(parent, manifest);
         self.state.lock().unwrap().active = false;
         self.returned.notify_all();
         result
@@ -132,9 +140,13 @@ impl Picker {
     }
 }
 
-fn pick(parent: isize) -> Result<Option<PathBuf>, String> {
+fn pick(parent: isize, manifest: bool) -> Result<Option<PathBuf>, String> {
     let mut buffer = vec![0u16; 32768];
-    let filter: Vec<_> = "MP4 video\0*.mp4\0\0".encode_utf16().collect();
+    let filter: Vec<_> = if manifest {
+        "JSON manifest\0*.json\0\0".encode_utf16().collect()
+    } else {
+        "MP4 video\0*.mp4\0\0".encode_utf16().collect()
+    };
     let mut dialog = OPENFILENAMEW::default();
     dialog.lStructSize = std::mem::size_of::<OPENFILENAMEW>() as u32;
     dialog.hwndOwner = parent as HWND;
