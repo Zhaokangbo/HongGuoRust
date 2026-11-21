@@ -1,4 +1,6 @@
+use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
+use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -10,10 +12,15 @@ use tracing::{error, info};
 enum Command {
     Open {
         id: u64,
-        path: PathBuf,
+        source: MediaSource,
         accepted: Instant,
     },
     Stop(Option<u64>),
+    Control {
+        id: u64,
+        request: PlayerControl,
+        reply: mpsc::SyncSender<Result<(), String>>,
+    },
     Close,
 }
 
@@ -49,18 +56,31 @@ impl PlayerService {
     }
 
     pub fn open(&self, path: PathBuf) -> Result<u64, String> {
+        self.open_source(MediaSource::Local(path))
+    }
+
+    pub fn open_https(&self, url: String) -> Result<u64, String> {
+        self.open_source(MediaSource::https(url)?)
+    }
+
+    fn open_source(&self, source: MediaSource) -> Result<u64, String> {
         let mut shared = self.state.lock().unwrap();
         if shared.closing {
             return Err("Window is closing".into());
         }
-        let filename = path
-            .file_name()
-            .ok_or("Missing filename")?
-            .to_string_lossy()
-            .into_owned();
+        let filename = source.label();
+        let kind = source.kind();
         let id = shared.player.begin(filename);
         let accepted = Instant::now();
-        if self.tx.send(Command::Open { id, path, accepted }).is_err() {
+        if self
+            .tx
+            .send(Command::Open {
+                id,
+                source,
+                accepted,
+            })
+            .is_err()
+        {
             let failure = Failure {
                 stage: "dispatch",
                 code: "worker_exited".into(),
@@ -71,6 +91,7 @@ impl PlayerService {
                 .update(id, PlaybackState::Error, Some(failure));
             return Err("Playback worker exited".into());
         }
+        info!(session_id = id, source_kind = kind, "open source accepted");
         Ok(id)
     }
 
@@ -82,6 +103,30 @@ impl PlayerService {
         self.tx
             .send(Command::Stop(shared.player.snapshot().session_id))
             .map_err(|_| "Playback worker exited".into())
+    }
+
+    /// Enqueue a validated playback control and wait for a native libmpv reply.
+    /// Rust remains the only owner of the player; the Tauri command must call
+    /// this on a blocking task, never from the UI/event-loop thread.
+    pub fn control(&self, request: PlayerControl) -> Result<(), String> {
+        let request = request.validate().map_err(str::to_owned)?;
+        let shared = self.state.lock().unwrap();
+        if shared.closing {
+            return Err("Window is closing".into());
+        }
+        let id = shared
+            .player
+            .snapshot()
+            .session_id
+            .ok_or("No active playback session")?;
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::Control { id, request, reply })
+            .map_err(|_| "Playback worker exited")?;
+        drop(shared);
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "Playback control timed out".to_owned())?
     }
 
     pub fn begin_close(&self) -> bool {
@@ -144,7 +189,11 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
             }
         };
         match cmd {
-            Some(Command::Open { id, path, accepted }) => {
+            Some(Command::Open {
+                id,
+                source,
+                accepted,
+            }) => {
                 {
                     let shared = state.lock().unwrap();
                     if shared.closing || !shared.player.current(id) {
@@ -152,7 +201,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                 }
                 release(&mut engine);
-                match Engine::load(host, &path, id, accepted) {
+                match Engine::load(host, &source, id, accepted) {
                     Ok(player) => {
                         info!(
                             session_id = id,
@@ -176,6 +225,31 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
             }
+            Some(Command::Control { id, request, reply }) => {
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                if current_id != Some(id) || engine.as_ref().map(|e| e.session) != Some(id) {
+                    let _ = reply.send(Err("Playback session changed or is not ready".into()));
+                    continue;
+                }
+                let result = engine
+                    .as_mut()
+                    .unwrap()
+                    .control(request)
+                    .map_err(|failure| failure.message);
+                if result.is_ok() {
+                    let mut shared = state.lock().unwrap();
+                    match request {
+                        PlayerControl::Pause(true) => {
+                            shared.player.update(id, PlaybackState::Paused, None);
+                        }
+                        PlayerControl::Pause(false) => {
+                            shared.player.update(id, PlaybackState::Playing, None);
+                        }
+                        _ => {}
+                    }
+                }
+                let _ = reply.send(result);
+            }
             Some(Command::Close) => break,
             None => {
                 let current = engine.as_mut().unwrap();
@@ -188,11 +262,10 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                     Ok(Some(Observation::Restart)) => {
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
-                        state
-                            .lock()
-                            .unwrap()
-                            .player
-                            .update(id, PlaybackState::Playing, None);
+                        let mut shared = state.lock().unwrap();
+                        if shared.player.snapshot().state != PlaybackState::Paused {
+                            shared.player.update(id, PlaybackState::Playing, None);
+                        }
                     }
                     Ok(Some(Observation::End)) => {
                         release(&mut engine);
@@ -205,6 +278,13 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     Err(e) => {
                         release(&mut engine);
                         failed(&state, id, e);
+                    }
+                    Ok(Some(Observation::Progress { position, duration })) => {
+                        state
+                            .lock()
+                            .unwrap()
+                            .player
+                            .progress(id, position, duration);
                     }
                     Ok(None) => {}
                 }

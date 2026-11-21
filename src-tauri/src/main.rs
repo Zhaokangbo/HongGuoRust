@@ -49,7 +49,7 @@ fn main() {
                 if let (Some(host), Ok(hwnd), Ok(scale)) =
                     (win.try_state::<VideoHost>(), win.hwnd(), win.scale_factor())
                 {
-                    window::layout(hwnd.0, host.0, scale);
+                    window::layout(hwnd.0, host.0, scale, win.is_fullscreen().unwrap_or(false));
                 }
             }
             WindowEvent::CloseRequested { api, .. } => {
@@ -81,7 +81,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
             commands::open_local,
-            commands::stop
+            commands::stop,
+            commands::set_paused,
+            commands::seek_to,
+            commands::set_rate,
+            commands::set_volume,
+            commands::open_https,
+            commands::get_fullscreen,
+            commands::set_fullscreen
         ])
         .run(tauri::generate_context!())
         .expect("failed to run HongGuoRust");

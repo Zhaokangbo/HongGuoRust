@@ -1,7 +1,9 @@
+use super::controls::PlayerControl;
+use super::source::MediaSource;
 use super::state::Failure;
 use libmpv2::{events::Event, Mpv};
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub fn local_mp4(path: &Path) -> Result<&str, String> {
     let name = path.to_str().ok_or("The path is not valid Unicode")?;
@@ -21,49 +23,109 @@ pub enum Observation {
     Loaded,
     Restart,
     End,
+    Progress {
+        position: Option<f64>,
+        duration: Option<f64>,
+    },
 }
 
 pub struct Engine {
     mpv: Mpv,
     pub session: u64,
     pub opened: Instant,
+    progress_checked_at: Instant,
 }
 
 fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
+    let code = format!("{e:?}");
+    // -13 is libmpv's generic loading failure. It is not proof of HTTP 403:
+    // the source may be denied, unavailable, return non-media, or fail locally.
+    let message = if code.contains("Raw(-13)") {
+        "媒体加载失败（libmpv -13）。请检查网络及资源权限，并确认 HTTPS 地址直接返回 MP4，而不是 403/XML/HTML 错误页面。".into()
+    } else {
+        e.to_string()
+    };
     Failure {
         stage,
-        code: format!("{e:?}"),
-        message: e.to_string(),
+        code,
+        message,
     }
 }
 
 impl Engine {
-    pub fn load(host: isize, path: &Path, session: u64, opened: Instant) -> Result<Self, Failure> {
-        let name = local_mp4(path).map_err(|message| Failure {
-            stage: "validate",
-            code: "invalid_local_mp4".into(),
-            message,
-        })?;
+    pub fn load(
+        host: isize,
+        source: &MediaSource,
+        session: u64,
+        opened: Instant,
+    ) -> Result<Self, Failure> {
+        let name = match source {
+            MediaSource::Local(path) => {
+                local_mp4(path)
+                    .map(str::to_owned)
+                    .map_err(|message| Failure {
+                        stage: "validate",
+                        code: "invalid_local_mp4".into(),
+                        message,
+                    })?
+            }
+            MediaSource::Https(url) => url.clone(),
+        };
+        let local = matches!(source, MediaSource::Local(_));
         let mpv = Mpv::with_initializer(|init| {
             init.set_option("wid", host as i64)?;
             init.set_option("load-scripts", false)?;
             init.set_option("ytdl", false)?;
             init.set_option("demuxer", "lavf")?;
-            init.set_option("demuxer-lavf-format", "mov")?;
-            init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
+            if local {
+                init.set_option("demuxer-lavf-format", "mov")?;
+                init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
+            }
             init.set_option("sub-auto", "no")?;
             init.set_option("audio-file-auto", "no")?;
             init.set_option("vo", "gpu-next,gpu,direct3d")?;
             Ok(())
         })
         .map_err(|e| native_error("initialize", e))?;
-        mpv.command("loadfile", &[name])
+        mpv.command("loadfile", &[name.as_str()])
             .map_err(|e| native_error("loadfile", e))?;
         Ok(Self {
             mpv,
             session,
             opened,
+            progress_checked_at: Instant::now(),
         })
+    }
+
+    /// Called only by the worker thread that owns the libmpv handle.
+    /// IPC success means the command was accepted, not that a frame was presented.
+    pub fn control(&mut self, control: PlayerControl) -> Result<(), Failure> {
+        let control = control.validate().map_err(|message| Failure {
+            stage: "validate",
+            code: "invalid_playback_control".into(),
+            message: message.into(),
+        })?;
+        let arg;
+        let (name, args): (&str, Vec<&str>) = match control {
+            PlayerControl::Pause(paused) => {
+                ("set", vec!["pause", if paused { "yes" } else { "no" }])
+            }
+            PlayerControl::SeekAbsolute(seconds) => {
+                arg = seconds.to_string();
+                ("seek", vec![arg.as_str(), "absolute+exact"])
+            }
+            PlayerControl::SetRate(rate) => {
+                arg = rate.to_string();
+                ("set", vec!["speed", arg.as_str()])
+            }
+            PlayerControl::SetVolume(volume) => {
+                arg = volume.to_string();
+                ("set", vec!["volume", arg.as_str()])
+            }
+        };
+        self.mpv
+            .command(name, &args)
+            .map_err(|e| native_error("control", e))
     }
 
     pub fn poll(&mut self) -> Result<Option<Observation>, Failure> {
@@ -72,7 +134,17 @@ impl Engine {
             Some(Ok(Event::PlaybackRestart)) => Ok(Some(Observation::Restart)),
             Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => Ok(Some(Observation::End)),
             Some(Err(e)) => Err(native_error("playback", e)),
-            _ => Ok(None),
+            _ => {
+                if self.progress_checked_at.elapsed() >= Duration::from_millis(250) {
+                    self.progress_checked_at = Instant::now();
+                    let position = self.mpv.get_property::<f64>("time-pos").ok();
+                    let duration = self.mpv.get_property::<f64>("duration").ok();
+                    if position.is_some() || duration.is_some() {
+                        return Ok(Some(Observation::Progress { position, duration }));
+                    }
+                }
+                Ok(None)
+            }
         }
     }
 }
