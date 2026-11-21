@@ -78,7 +78,6 @@ pub async fn set_volume(window: WebviewWindow, volume: f64) -> Result<(), String
     dispatch_control(window, PlayerControl::SetVolume(volume)).await
 }
 
-
 #[tauri::command]
 pub fn catalog_search(
     catalog: State<'_, CatalogService>,

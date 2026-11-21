@@ -12,8 +12,7 @@ use windows_sys::Win32::UI::Controls::Dialogs::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, GetClientRect, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SW_HIDE,
-    SW_SHOW, WS_CHILD,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
+    SW_SHOW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_VISIBLE,
 };
 
 /// The UI thread owns this STATIC child. Windows destroys it with its parent

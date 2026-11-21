@@ -121,17 +121,22 @@ impl ContentProvider for LocalDemoProvider {
     }
 
     fn detail(&self, series_id: &str) -> Option<SeriesDetail> {
-        DEMOS.iter().find(|item| item.id == series_id).map(|item| {
-            SeriesDetail {
+        DEMOS
+            .iter()
+            .find(|item| item.id == series_id)
+            .map(|item| SeriesDetail {
                 series: item.summary(),
                 episodes: (0..item.episodes).map(|i| item.episode(i)).collect(),
-            }
-        })
+            })
     }
 
     fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<String, String> {
         let details = self.detail(series_id).ok_or("Unknown demo series")?;
-        if !details.episodes.iter().any(|episode| episode.id == episode_id) {
+        if !details
+            .episodes
+            .iter()
+            .any(|episode| episode.id == episode_id)
+        {
             return Err("Unknown demo episode".into());
         }
         // Never accept caller-supplied media URLs through the catalog API.
@@ -187,10 +192,15 @@ mod tests {
     #[test]
     fn only_known_demo_ids_can_resolve_to_fixed_https_fixture() {
         let provider = LocalDemoProvider;
-        assert_eq!(provider.resolve_episode("forest-demo", "ep-01").unwrap(), PREVIEW_MP4);
+        assert_eq!(
+            provider.resolve_episode("forest-demo", "ep-01").unwrap(),
+            PREVIEW_MP4
+        );
         assert!(provider.resolve_episode("forest-demo", "ep-99").is_err());
         assert!(provider.resolve_episode("missing", "ep-01").is_err());
-        assert!(provider.resolve_episode("forest-demo", "https://evil.example/").is_err());
+        assert!(provider
+            .resolve_episode("forest-demo", "https://evil.example/")
+            .is_err());
     }
 
     #[test]
