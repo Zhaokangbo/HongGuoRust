@@ -58,10 +58,10 @@ impl Default for LibraryData {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalMedia {
-    id: u64,
-    title: String,
-    filename: String,
-    available: bool,
+    pub(crate) id: u64,
+    pub(crate) title: String,
+    pub(crate) filename: String,
+    pub(crate) available: bool,
     position_sec: f64,
     duration_sec: Option<f64>,
     last_played_ms: Option<u64>,
@@ -159,7 +159,7 @@ impl LocalLibrary {
         }
     }
 
-    fn from_path(path: PathBuf) -> Self {
+    pub(crate) fn from_path(path: PathBuf) -> Self {
         let (data, load_error) = match read_data(&path) {
             Ok(db) => (db, None),
             Err(error) => (LibraryData::default(), Some(error)),

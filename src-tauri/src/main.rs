@@ -36,9 +36,11 @@ fn main() {
         Ok(file) => logger.with_writer(Mutex::new(file)).init(),
         Err(_) => logger.with_writer(std::io::stderr).init(),
     }
+    let library = Arc::new(LocalLibrary::new());
+    let catalog = CatalogService::new(Arc::clone(&library));
     tauri::Builder::default()
-        .manage(CatalogService::default())
-        .manage(Arc::new(LocalLibrary::new()))
+        .manage(catalog)
+        .manage(library)
         .manage(window::Picker::default())
         .setup(|app| {
             let win = app
@@ -88,6 +90,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
             commands::catalog_search,
+            commands::catalog_sources,
+            commands::catalog_search_page,
             commands::catalog_detail,
             commands::catalog_play_episode,
             commands::library_list,
