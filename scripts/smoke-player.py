@@ -315,8 +315,15 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
     os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
     os.environ["WEBVIEW2_USER_DATA_FOLDER"] = str(Path(directory) / "webview-profile")
     short_clip = Path(directory) / "end.mp4"
-    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel","error","-i",str(clip),
-                    "-t","0.6","-c","copy",str(short_clip)],check=True)
+    # Use a deterministic video-only EOF fixture. Hosted Windows runners can
+    # have no active audio output: mpv then returns MPV_ERROR_AO_INIT_FAILED
+    # (-14) for the old AAC-bearing 0.6s sample, which is NOT a natural EOF.
+    # AAC decoding remains tested in probe-mpv.py; physical speaker output
+    # is separately covered by the Windows desktop acceptance report.
+    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel", "error",
+                    "-f", "lavfi", "-i", "color=c=yellow:s=320x180:r=15:d=1",
+                    "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart", str(short_clip)], check=True)
     for cycle in range(1,21):
         run(sys.argv[1], clip, second, corrupt, short_clip, cycle == 1)
         print(f"PASS playing-window close {cycle}/20; no surviving observed descendants", flush=True)
