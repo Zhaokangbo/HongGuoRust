@@ -35,6 +35,8 @@ pub struct Engine {
     pub session: u64,
     pub opened: Instant,
     progress_checked_at: Instant,
+    cache_checked_at: Instant,
+    file_loaded: bool,
     cache_waiting: bool,
 }
 
@@ -56,9 +58,14 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
 
 /// A successful EndFile event is not necessarily a natural EOF.
 /// libmpv2 reports a non-zero playback error as Err before this function.
-fn classify_end_reason(reason: libmpv2::EndFileReason) -> Result<Observation, Failure> {
+fn classify_end_reason(reason: libmpv2::EndFileReason) -> Result<Option<Observation>, Failure> {
     if reason == mpv_end_file_reason::Eof {
-        return Ok(Observation::End);
+        return Ok(Some(Observation::End));
+    }
+    if reason == mpv_end_file_reason::Redirect {
+        // mpv redirects a playlist by continuing with its new entries.
+        // Do not tear down its handle as if playback had failed.
+        return Ok(None);
     }
     Err(Failure {
         stage: "playback",
@@ -110,6 +117,8 @@ impl Engine {
             session,
             opened,
             progress_checked_at: Instant::now(),
+            cache_checked_at: Instant::now(),
+            file_loaded: false,
             cache_waiting: false,
         })
     }
@@ -147,9 +156,12 @@ impl Engine {
 
     pub fn poll(&mut self) -> Result<Option<Observation>, Failure> {
         match self.mpv.wait_event(0.025) {
-            Some(Ok(Event::FileLoaded)) => Ok(Some(Observation::Loaded)),
+            Some(Ok(Event::FileLoaded)) => {
+                self.file_loaded = true;
+                Ok(Some(Observation::Loaded))
+            },
             Some(Ok(Event::PlaybackRestart)) => Ok(Some(Observation::Restart)),
-            Some(Ok(Event::EndFile(reason))) => classify_end_reason(reason).map(Some),
+            Some(Ok(Event::EndFile(reason))) => classify_end_reason(reason),
             Some(Ok(Event::Shutdown)) => Err(Failure {
                 stage: "playback",
                 code: "unexpected_shutdown".into(),
@@ -159,10 +171,18 @@ impl Engine {
             _ => {
                 // Native mpv property distinguishes network cache suspension
                 // from the user's own pause request.
-                if let Ok(waiting) = self.mpv.get_property::<bool>("paused-for-cache") {
-                    if waiting != self.cache_waiting {
-                        self.cache_waiting = waiting;
-                        return Ok(Some(Observation::CacheWaiting(waiting)));
+                // A remote MP4 may take time to open: do not make repeated
+                // synchronous property calls while libmpv is still loading
+                // its network stream, or query cache state on every event.
+                if self.file_loaded
+                    && self.cache_checked_at.elapsed() >= Duration::from_millis(200)
+                {
+                    self.cache_checked_at = Instant::now();
+                    if let Ok(waiting) = self.mpv.get_property::<bool>("paused-for-cache") {
+                        if waiting != self.cache_waiting {
+                            self.cache_waiting = waiting;
+                            return Ok(Some(Observation::CacheWaiting(waiting)));
+                        }
                     }
                 }
                 if self.progress_checked_at.elapsed() >= Duration::from_millis(250) {
@@ -187,16 +207,19 @@ mod tests {
     fn only_natural_eof_reaches_ended() {
         assert!(matches!(
             classify_end_reason(mpv_end_file_reason::Eof),
-            Ok(Observation::End)
+            Ok(Some(Observation::End))
         ));
         for reason in [
             mpv_end_file_reason::Stop,
             mpv_end_file_reason::Quit,
             mpv_end_file_reason::Error,
-            mpv_end_file_reason::Redirect,
         ] {
             assert!(classify_end_reason(reason).is_err());
         }
+        assert!(matches!(
+            classify_end_reason(mpv_end_file_reason::Redirect),
+            Ok(None)
+        ));
     }
 
     #[test]
