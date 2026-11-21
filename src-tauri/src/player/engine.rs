@@ -23,6 +23,7 @@ pub enum Observation {
     Loaded,
     Restart,
     End,
+    CacheWaiting(bool),
     Progress {
         position: Option<f64>,
         duration: Option<f64>,
@@ -34,6 +35,7 @@ pub struct Engine {
     pub session: u64,
     pub opened: Instant,
     progress_checked_at: Instant,
+    cache_waiting: bool,
 }
 
 fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
@@ -94,6 +96,7 @@ impl Engine {
             session,
             opened,
             progress_checked_at: Instant::now(),
+            cache_waiting: false,
         })
     }
 
@@ -135,6 +138,14 @@ impl Engine {
             Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => Ok(Some(Observation::End)),
             Some(Err(e)) => Err(native_error("playback", e)),
             _ => {
+                // Native mpv property distinguishes network cache suspension
+                // from the user's own pause request.
+                if let Ok(waiting) = self.mpv.get_property::<bool>("paused-for-cache") {
+                    if waiting != self.cache_waiting {
+                        self.cache_waiting = waiting;
+                        return Ok(Some(Observation::CacheWaiting(waiting)));
+                    }
+                }
                 if self.progress_checked_at.elapsed() >= Duration::from_millis(250) {
                     self.progress_checked_at = Instant::now();
                     let position = self.mpv.get_property::<f64>("time-pos").ok();
