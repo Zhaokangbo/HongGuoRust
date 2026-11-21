@@ -3,6 +3,11 @@ import ctypes as c
 from ctypes import wintypes as wt
 from pathlib import Path
 import subprocess
+import tkinter as tk
+import psutil
+import win32api
+import win32gui
+from pywinauto import Desktop
 import sys
 import os
 import tempfile
@@ -61,35 +66,126 @@ def check_output_endpoint():
             raise RuntimeError(f"Default WASAPI output has no matching tone: {tone_fraction:.3f}")
         print(f"Observed 440 Hz in WASAPI endpoint {device['name']}, fraction {tone_fraction:.3f}")
 
-def run(exe, clip):
-    started = time.monotonic()
-    process = subprocess.Popen([exe, "--probe-local", str(clip)])
-    colors = set()
-    last = None
+def until(read, label, timeout=30):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = read()
+        if value:
+            return value
+        time.sleep(.12)
+    raise RuntimeError("Timed out waiting for " + label)
+
+
+def displayed_pixel(child):
+    box = wt.RECT()
+    if not rect_of(child, c.byref(box)):
+        raise RuntimeError("Video host rectangle disappeared")
+    x, y = (box.left + box.right)//2, (box.top + box.bottom)//2
+    return ImageGrab.grab(bbox=(x,y,x+1,y+1), all_screens=True).getpixel((0,0))[:3]
+
+
+def frame(child, accepted):
+    def sample():
+        red, green, blue = displayed_pixel(child)
+        if red > 165 and max(blue,green) < 85:
+            return "red" if "red" in accepted else None
+        if blue > 165 and max(red,green) < 85:
+            return "blue" if "blue" in accepted else None
+        if green > 80 and max(red,blue) < 65:
+            return "green" if "green" in accepted else None
+        return None
+    return until(sample, "fixture pixels " + str(accepted))
+
+
+def desktop_checks(main, child):
+    show = bind("ShowWindow", wt.BOOL, wt.HWND, c.c_int)
+    iconic = bind("IsIconic", wt.BOOL, wt.HWND)
+    dpi = bind("GetDpiForWindow", wt.UINT, wt.HWND)
+    for handle, _, _ in win32api.EnumDisplayMonitors():
+        left, top, _, _ = win32api.GetMonitorInfo(handle)["Work"]
+        win32gui.SetWindowPos(main, 0, left+25, top+30, 720, 480, 0)
+        until(lambda: win32api.MonitorFromWindow(main) == handle, "window on test monitor")
+        frame(child, {"green"})
+        def correct_bounds():
+            width, height = win32gui.GetClientRect(main)[2:]
+            x, y = win32gui.ClientToScreen(main, (0,0))
+            scale = dpi(main) / 96
+            edges = [x + 18*scale,y + 66*scale,x + width - 18*scale,y + height - 96*scale]
+            return all(abs(a-b) <= 2 for a,b in zip(win32gui.GetWindowRect(child),edges))
+        until(correct_bounds, "scaled client bounds")
+        print(f"Resized native host verified at actual {dpi(main)} DPI", flush=True)
+    show(main, 6)
+    until(lambda: iconic(main), "minimized window")
+    show(main, 9)
+    until(lambda: not iconic(main), "restored window")
+    foreground(main)
+    frame(child, {"green"})
+    x1,y1,x2,y2 = win32gui.GetWindowRect(child)
+    mask = tk.Tk()
     try:
-        while time.monotonic() - started < 35:
-            if process.poll() is not None:
-                raise RuntimeError(f"Early probe exit {process.returncode}")
-            main = owned_window(process.pid)
-            child = find(main, None, "Static", "HongGuoRust video") if main else None
-            bounds = wt.RECT()
-            if child and rect_of(child, c.byref(bounds)):
-                foreground(main)
-                x, y = (bounds.left + bounds.right)//2, (bounds.top + bounds.bottom)//2
-                last = ImageGrab.grab(bbox=(x,y,x+1,y+1), all_screens=True).getpixel((0,0))
-                red, green, blue = last[:3]
-                color = "red" if red > 165 and max(blue,green) < 85 else (
-                    "blue" if blue > 165 and max(red,green) < 85 else None)
-                if color and color not in colors:
-                    print(f"Observed {color} pixel {last} at {time.monotonic()-started:.3f}s after launch", flush=True)
-                    colors.add(color)
-                if len(colors) == 2:
-                    check_output_endpoint()
-                    if not close(main, 0x10, 0, 0) or process.wait(timeout=12) != 0:
-                        raise RuntimeError("Normal window close failed")
-                    return
-            time.sleep(.12)
-        raise RuntimeError(f"Missing embedded colors: seen={colors}, last={last}")
+        mask.overrideredirect(True)
+        mask.attributes("-topmost", True)
+        mask.configure(background="#ff00ff")
+        mask.geometry(f"80x80{(x1+x2)//2-40:+d}{(y1+y2)//2-40:+d}")
+        mask.update()
+        until(lambda: displayed_pixel(child) == (255,0,255), "test occluder")
+    finally:
+        mask.destroy()
+    frame(child, {"green"})
+    print("Verified minimize, restore, occlusion and repaint", flush=True)
+
+
+def run(exe, clip, second, corrupt, detailed):
+    process = subprocess.Popen([exe])
+    try:
+        main = until(lambda: owned_window(process.pid), "main HWND", 90)
+        child = until(lambda: find(main,None,"Static","HongGuoRust video"), "video HWND")
+        ui = Desktop(backend="uia").window(handle=main)
+        def text_visible(name):
+            return ui.child_window(title=name,control_type="Text").exists(timeout=.3)
+        def button(name):
+            return ui.child_window(title=name,control_type="Button").wrapper_object()
+        until(lambda: text_visible("Idle"), "IPC Idle", 90)
+        def select(path):
+            button("打开本地 MP4").invoke()
+            dialog = Desktop(backend="win32").window(process=process.pid,class_name="#32770")
+            dialog.wait("visible enabled",timeout=15)
+            host = dialog.child_window(control_id=1148)
+            if host.exists(timeout=.3):
+                edit = host.child_window(class_name="Edit").wrapper_object()
+            else:
+                edit = dialog.child_window(control_id=1152,class_name="Edit").wrapper_object()
+            edit.set_edit_text(str(path))
+            dialog.child_window(control_id=1).click()
+            dialog.wait_not("visible",timeout=15)
+        select(clip)
+        foreground(main)
+        if detailed:
+            t = time.monotonic()
+            first = frame(child, {"red","blue"})
+            print(f"First sampled {first} pixel {time.monotonic()-t:.3f}s after picker returned", flush=True)
+            frame(child, {"blue" if first=="red" else "red"})
+            check_output_endpoint()
+            until(lambda: text_visible("Playing"), "Rust Playing")
+            select(second)
+            frame(child, {"green"})
+            until(lambda: text_visible(second.name) and text_visible("Playing"), "replacement snapshot")
+            desktop_checks(main, child)
+            button("停止").invoke()
+            until(lambda: text_visible("Idle"), "stopped snapshot")
+            select(corrupt)
+            until(lambda: text_visible("Error"), "corrupt MP4 error")
+            select(second)
+            frame(child, {"green"})
+            until(lambda: text_visible("Playing"), "recovered playback")
+        else:
+            until(lambda: text_visible("Playing"), "playing before close")
+        children = psutil.Process(process.pid).children(recursive=True)
+        if not close(main,0x10,0,0) or process.wait(timeout=15) != 0:
+            raise RuntimeError("Normal playing-window close failed")
+        _, alive = psutil.wait_procs(children, timeout=15)
+        if alive:
+            raise RuntimeError(f"Surviving child PIDs: {[p.pid for p in alive]}")
     finally:
         if process.poll() is None:
             process.kill()
@@ -107,4 +203,13 @@ with tempfile.TemporaryDirectory() as directory:
     dll = str(Path(os.environ.get("MPV_RUNTIME_DIR", Path(sys.argv[1]).resolve().parent)) / "libmpv-2.dll")
     subprocess.run([sys.executable, str(Path(__file__).with_name("probe-mpv.py")),
                     dll, str(clip), str(Path(directory) / "audio.wav")], check=True)
-    run(sys.argv[1], clip)
+    second = Path(directory) / "切换 B.mp4"
+    corrupt = Path(directory) / "损坏.mp4"
+    corrupt.write_bytes(b"invalid MP4")
+    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel", "error", "-f","lavfi",
+                    "-i","color=green:s=320x180:r=15:d=90","-c:v","libx264","-pix_fmt","yuv420p",str(second)],check=True)
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
+    os.environ["WEBVIEW2_USER_DATA_FOLDER"] = str(Path(directory) / "webview-profile")
+    for cycle in range(1,21):
+        run(sys.argv[1], clip, second, corrupt, cycle == 1)
+        print(f"PASS playing-window close {cycle}/20; no surviving observed descendants", flush=True)

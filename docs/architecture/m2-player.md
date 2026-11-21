@@ -1,6 +1,6 @@
 # Windows native playback probe
 
-M2-A builds the existing Tauri client with the `mpv-probe` Cargo feature. The ordinary M1 build and its Windows IPC / process-exit workflow are independent.
+M2-A validated the native child window using a feature-gated prototype. The default client now uses that same host and the Rust PlayerService. Both CI workflows exercise the production service.
 
 | Candidate | Windows integration | Decision |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ M2-A builds the existing Tauri client with the `mpv-probe` Cargo feature. The or
 
 Rust creates a child STATIC HWND above WebView2 in the main client area and supplies it as wid before mpv initialization. The WebView owns the header and footer. The size calculation uses the physical Windows client rectangle and the Tauri scale factor. A render-API integration would also need a graphics context, a presentation loop and surface teardown. The wid probe tests whether the simpler D3D path meets the acceptance criteria. Mixed-DPI monitors, occlusion and restore need desktop checks.
 
-A Unicode Win32 file dialog runs on a blocking thread. IPC accepts no path argument. The native probe command line also accepts an explicitly supplied local fixture. The playback worker owns the libmpv handle. Replacement waits for the previous worker to exit. CloseRequested keeps the HWND alive while the worker releases libmpv, then destroys the window. The feature-gated probe has no detached JavaScript playback state. Production service integration follows the audio and video acceptance gate.
+A Unicode Win32 file dialog returns a local path in Rust. IPC accepts no path argument. One worker owns the current libmpv instance. The command queue serializes replacement, stop and shutdown. Session IDs guard state transitions. CloseRequested waits for the worker to release libmpv before destroying its parent HWND.
 
 PlaybackRestart measures libmpv's timeline restart. The screen test independently samples the center of the identified child HWND for two known fixture colors. It records elapsed time from process launch to each first sampled color. Sampling gives an upper bound on desktop visibility and does not timestamp a GPU present. Physical output requires an audio endpoint and listening evidence.
 

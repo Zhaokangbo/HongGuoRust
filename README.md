@@ -13,7 +13,7 @@
 | M4 | 播放状态、可靠性测试和日志 |
 | M5 | Windows x64 安装包验收 |
 
-M1 分支已实现 Rust 状态快照与桌面界面。Windows runner 已编译并启动桌面窗口，验证了真实 IPC 和正常关闭。[M1 验收记录](docs/acceptance/m1.md) · [第一阶段架构](docs/architecture/HongGuoRust-Phase1-Plan.md) · [许可证评估](docs/architecture/licensing.md)
+默认 Windows 客户端使用 Rust 服务和 libmpv 播放本地 MP4。支持选择文件、替换和停止。运行验证包请参阅[本机启动说明](docs/acceptance/run-windows.md)。[M2 验收记录](docs/acceptance/m2.md) · [M1 验收记录](docs/acceptance/m1.md) · [第一阶段架构](docs/architecture/HongGuoRust-Phase1-Plan.md) · [许可证评估](docs/architecture/licensing.md)
 
 ## Windows 开发构建
 
@@ -22,6 +22,10 @@ M1 分支已实现 Rust 状态快照与桌面界面。Windows runner 已编译�
 ```powershell
 cargo install tauri-cli --version 2.11.4 --locked
 .\scripts\check-windows.ps1
+$native = Join-Path $env:TEMP 'HongGuoRust-mpv'
+.\scripts\prepare-mpv-msvc.ps1 -Destination $native
+$env:LIB = "$native;$env:LIB"
+$env:PATH = "$native;$env:PATH"
 npm ci
 npm run tauri -- dev
 ```

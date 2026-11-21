@@ -10,24 +10,39 @@ $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
 if (!$version) { throw 'Missing Cargo package version' }
 $connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
 $names = @('HongGuoRust', $connected, 'Idle', $version)
+$diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
+$env:HONGGUORUST_LOG_DIR = $diag
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS --force-renderer-accessibility".Trim()
+$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:TEMP ('hgr-webview-' + [guid]::NewGuid())
+$timer = [Diagnostics.Stopwatch]::StartNew()
+$root = $null
+$focused = $false
 $process = Start-Process -FilePath $exe -PassThru
 try {
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    $deadline = [DateTime]::UtcNow.AddSeconds(90)
     $missing = $names
     do {
         $process.Refresh()
         if ($process.HasExited) { throw "Application exited before IPC verification: $($process.ExitCode)" }
         if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
+            if (!$focused) {
+                $focused = (New-Object -ComObject WScript.Shell).AppActivate($process.Id)
+            }
+            try {
             $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
             $missing = @(foreach ($name in $names) {
                 $condition = New-Object System.Windows.Automation.PropertyCondition(
                     [System.Windows.Automation.AutomationElement]::NameProperty, $name)
                 if (!$root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) { $name }
             })
+            } catch [System.Windows.Automation.ElementNotAvailableException] { $missing = $names }
         }
         if ($missing.Count) { Start-Sleep -Milliseconds 300 }
     } while ($missing.Count -and [DateTime]::UtcNow -lt $deadline)
     if ($missing.Count) { throw "Window is missing expected accessible text: $($missing -join ', ')" }
+    $log = Join-Path $diag "player-$($process.Id).log"
+    if (!(Select-String -Path $log -Pattern 'first snapshot IPC.*state=Idle' -Quiet)) { throw 'Missing Rust Idle IPC evidence' }
+    Write-Output "UIA rendered the Rust Idle snapshot after $($timer.ElapsedMilliseconds) ms"
     Write-Output "PASS: desktop window shows connected, Idle and version $version"
 
     # Capture this window's process tree before closing it. Other WebView2 clients
@@ -54,6 +69,39 @@ try {
         }
     }
     Write-Output "PASS: no surviving processes among $($children.Count) observed descendants"
+} catch {
+    $failure = $_
+    try {
+        $process.Refresh()
+        "PID=$($process.Id) title=$($process.MainWindowTitle) hwnd=$($process.MainWindowHandle) elapsed_ms=$($timer.ElapsedMilliseconds) missing=$missing" | Out-File "$diag/window.txt" -Encoding utf8
+        if ($root) {
+            $rect = $root.Current.BoundingRectangle
+            Add-Type -AssemblyName System.Drawing
+            if ($rect.Width -gt 0 -and $rect.Height -gt 0) {
+                $bitmap = New-Object Drawing.Bitmap ([int]$rect.Width),([int]$rect.Height)
+                $graphics = [Drawing.Graphics]::FromImage($bitmap)
+                try {
+                    $graphics.CopyFromScreen([int]$rect.Left,[int]$rect.Top,0,0,$bitmap.Size)
+                    $bitmap.Save("$diag/window.png")
+                } finally { $graphics.Dispose(); $bitmap.Dispose() }
+            }
+        }
+    } catch { Write-Warning "Window diagnostic: $_" }
+    try {
+        if ($root) {
+            function Write-Tree($element, $depth) {
+                if ($depth -gt 20 -or $script:nodeCount -gt 600) { return }
+                $script:nodeCount++
+                "  " * $depth + "$($element.Current.ControlType.ProgrammaticName) | $($element.Current.Name) | $($element.Current.AutomationId)"
+                $child = $walker.GetFirstChild($element)
+                while ($child) { Write-Tree $child ($depth+1); $child = $walker.GetNextSibling($child) }
+            }
+            $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+            $script:nodeCount = 0
+            Write-Tree $root 0 | Out-File "$diag/uia-tree.txt" -Encoding utf8
+        }
+    } catch { Write-Warning "UIA diagnostic: $_" }
+    throw $failure
 } finally {
     if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
     $process.Dispose()

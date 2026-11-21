@@ -44,16 +44,32 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 | Out-Null
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Prepare Windows media runtime
+        run: |
+          $native = "$env:RUNNER_TEMP/mpv"
+          ./scripts/prepare-mpv-msvc.ps1 -Destination $native
+          "LIB=$native;$env:LIB" >> $env:GITHUB_ENV
+          $native >> $env:GITHUB_PATH
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - run: cargo tauri build --no-bundle -- --locked
+      - name: Stage Windows validation files
+        run: |
+          New-Item -ItemType Directory -Path validation | Out-Null
+          Copy-Item src-tauri/target/release/hongguorust.exe,scripts/get-mpv.ps1,scripts/prepare-mpv-msvc.ps1,docs/acceptance/run-windows.md -Destination validation
       - uses: actions/upload-artifact@v4
         with:
-          name: HongGuoRust-M1-windows-x64
-          path: src-tauri/target/release/hongguorust.exe
+          name: HongGuoRust-M2-windows-x64
+          path: validation/
           if-no-files-found: error
       - name: Verify live IPC and normal process exit
         shell: powershell
         run: ./scripts/smoke-windows.ps1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-ipc-diagnostics
+          path: diagnostics/
+          if-no-files-found: ignore
       - name: Check for dependency drift
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
 
