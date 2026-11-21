@@ -6,6 +6,7 @@ pub enum PlaybackState {
     Idle,
     Loading,
     Playing,
+    Paused,
     Ended,
     Error,
 }
@@ -68,7 +69,10 @@ impl PlayerState {
 
     pub fn update(&mut self, id: u64, next: PlaybackState, error: Option<Failure>) {
         if self.current(id)
-            && matches!(self.state, PlaybackState::Loading | PlaybackState::Playing)
+            && matches!(
+                self.state,
+                PlaybackState::Loading | PlaybackState::Playing | PlaybackState::Paused
+            )
             && self.state != next
         {
             self.state = next;
