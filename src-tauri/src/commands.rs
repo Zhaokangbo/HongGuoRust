@@ -1,5 +1,5 @@
-use crate::catalog::request::DEFAULT_TIMEOUT_MS;
 use crate::catalog::progress::{ProviderEpisodeProgress, ProviderProgressStore};
+use crate::catalog::request::DEFAULT_TIMEOUT_MS;
 use crate::catalog::{
     CatalogService, MediaTarget, OwnedManifestStore, ProviderInfo, SearchPage, Series, SeriesDetail,
 };
