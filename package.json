@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && vite build",
+    "test:discovery": "node --experimental-strip-types --test tests/discovery.test.mjs",
+    "build": "npm run typecheck && npm run test:discovery && vite build",
     "tauri": "cargo tauri"
   },
   "dependencies": {

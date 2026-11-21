@@ -5,6 +5,7 @@ import {
 } from "./api";
 import type { CatalogProvider, Series, SeriesDetail } from "./types";
 import { LocalLibraryView } from "./LocalLibraryView";
+import { DiscoveryHome } from "./DiscoveryHome";
 
 interface Props {
   onBack: () => Promise<void>;
@@ -14,7 +15,7 @@ interface Props {
 }
 
 export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props) {
-  const [mode, setMode] = useState<"demo" | "local" | "history" | "favorites">("demo");
+  const [mode, setMode] = useState<"home" | "demo" | "local" | "history" | "favorites">("home");
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [sourceId, setSourceId] = useState("demo");
@@ -65,6 +66,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   }, []);
 
   useEffect(() => {
+    if (mode !== "demo") {
+      searchController.current?.abort();
+      return;
+    }
     const version = ++requestVersion.current;
     const controller = new AbortController();
     searchController.current = controller;
@@ -95,7 +100,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       controller.abort();
       if (version === requestVersion.current) requestVersion.current++;
     };
-  }, [search, sourceId, refreshKey]);
+  }, [mode, search, sourceId, refreshKey]);
 
   async function loadMore() {
     if (nextOffset === null || loadingMore || loading || working) return;
@@ -166,6 +171,15 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     setRefreshKey(previous => previous + 1);
   }
 
+  function openExplorer(fromSource: string, fromQuery: string) {
+    setSourceId(fromSource);
+    setInput(fromQuery);
+    setSearch(fromQuery);
+    setError("");
+    setDetail(null);
+    setMode("demo");
+  }
+
   async function importManifest() {
     if (manifestBusy) return;
     setManifestBusy(true);
@@ -218,9 +232,12 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   return <section className="catalog-view" aria-label="内容剧库">
     <div className="catalog-heading">
       <div>
-        <p className="catalog-eyebrow">M9 · CONTENT PROVIDERS</p>
-        <h2>{detail ? detail.series.title : mode === "favorites" ? "我的收藏" : mode === "history" ? "最近播放" : mode === "local" ? "我的视频" : "探索内容"}</h2>
-        <p>{mode === "history"
+        <p className="catalog-eyebrow">M10 · MEDIA EXPERIENCE</p>
+        <h2>{detail ? detail.series.title : mode === "home" ? "内容首页"
+          : mode === "favorites" ? "我的收藏" : mode === "history" ? "最近播放"
+          : mode === "local" ? "我的视频" : "探索内容"}</h2>
+        <p>{mode === "home" ? "从已接入的内容中发现作品，按真实来源与分类浏览，直接进入详情选集。"
+          : mode === "history"
           ? "播放进度由 Rust 播放器记录，重新播放会从上次位置继续。"
           : mode === "favorites" ? "收藏你自己的本地视频，独立保存观看进度。"
           : mode === "local" ? "管理你自己选择的本地 MP4，文件始终保留在原始位置。"
@@ -232,6 +249,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     </div>
 
     {!detail && <nav className="catalog-tabs" aria-label="内容来源">
+      <button type="button" className={mode === "home" ? "catalog-tab active" : "catalog-tab"}
+        onClick={() => { setMode("home"); setError(""); }}>首页</button>
       <button type="button" className={mode === "demo" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("demo"); setError(""); }}>演示内容</button>
       <button type="button" className={mode === "local" ? "catalog-tab active" : "catalog-tab"}
@@ -315,7 +334,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           )}
         </div>
       </div>
-    </div> : loading ? <p className="catalog-empty" role="status">正在加载本地演示内容…</p>
+    </div> : mode === "home"
+      ? <DiscoveryHome sources={sources} busy={working}
+          onSelect={id => void showDetail(id)} onExplore={openExplorer} />
+      : loading ? <p className="catalog-empty" role="status">正在加载内容…</p>
       : items.length === 0 ? <p className="catalog-empty">没有匹配的内容，试试“城市”或“自然”。</p>
       : <div className="catalog-grid">
         {items.map(item => <button key={item.id} type="button"
