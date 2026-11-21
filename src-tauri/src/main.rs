@@ -6,6 +6,7 @@ mod local_library;
 mod player;
 
 use catalog::{CatalogService, OwnedManifestStore};
+use catalog::progress::ProviderProgressStore;
 use local_library::LocalLibrary;
 use player::{service::PlayerService, window};
 use std::fs::{self, File};
@@ -39,9 +40,11 @@ fn main() {
     let library = Arc::new(LocalLibrary::new());
     let manifest = Arc::new(OwnedManifestStore::new());
     let catalog = CatalogService::new(Arc::clone(&library), Arc::clone(&manifest));
+    let progress = Arc::new(ProviderProgressStore::new());
     tauri::Builder::default()
         .manage(catalog)
         .manage(library)
+        .manage(progress)
         .manage(manifest)
         .manage(window::Picker::default())
         .setup(|app| {
@@ -51,7 +54,8 @@ fn main() {
             let host = window::create(&win)?;
             app.manage(VideoHost(host));
             let library = Arc::clone(app.state::<Arc<LocalLibrary>>().inner());
-            app.manage(PlayerService::new(host, library)?);
+            let progress = Arc::clone(app.state::<Arc<ProviderProgressStore>>().inner());
+            app.manage(PlayerService::new(host, library, progress)?);
             tracing::info!("native host and service ready");
             Ok(())
         })
@@ -99,6 +103,7 @@ fn main() {
             commands::catalog_clear_manifest,
             commands::catalog_detail,
             commands::catalog_play_episode,
+            commands::catalog_episode_progress,
             commands::library_list,
             commands::library_add_local,
             commands::library_remove,
