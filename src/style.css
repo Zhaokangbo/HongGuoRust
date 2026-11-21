@@ -152,3 +152,7 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 .catalog-source-tools button { padding: 7px 10px; }
 .catalog-pagination { margin-top: 17px; display: flex; gap: 15px; align-items: center; color: #a5c5b1; font-size: 12px; }
 .catalog-pagination button { padding: 7px 15px; }
+
+/* M9-B1: request lifecycle feedback and explicit cancellation/retry. */
+.catalog-request-error { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: #ffb7a8; font-size: 12px; margin: 12px 0; }
+.catalog-request-error button { padding: 6px 10px; }

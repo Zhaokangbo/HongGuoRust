@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { getCatalogSeries, listCatalogSources, searchCatalogPage } from "./api";
+import {
+  catalogErrorMessage, getCatalogSeries, isCatalogCancellation,
+  listCatalogSources, searchCatalogPage,
+} from "./api";
 import type { CatalogProvider, Series, SeriesDetail } from "./types";
 import { LocalLibraryView } from "./LocalLibraryView";
 
@@ -22,6 +25,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const requestVersion = useRef(0);
+  const searchController = useRef<AbortController | null>(null);
+  const pageController = useRef<AbortController | null>(null);
+  const detailController = useRef<AbortController | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -39,42 +46,59 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
 
   useEffect(() => {
     const version = ++requestVersion.current;
+    const controller = new AbortController();
+    searchController.current = controller;
+    pageController.current?.abort();
+    detailController.current?.abort();
+    setLoadingMore(false);
+    setDetailLoading(false);
     setLoading(true);
     setError("");
     setDetail(null);
     setItems([]);
     setTotal(0);
     setNextOffset(null);
-    void searchCatalogPage(search, sourceId).then(page => {
-      if (version !== requestVersion.current) return;
+    void searchCatalogPage(search, sourceId, 0, 24, { signal: controller.signal }).then(page => {
+      if (version !== requestVersion.current || controller.signal.aborted) return;
       setItems(page.items);
       setTotal(page.total);
       setNextOffset(page.nextOffset);
     }).catch(reason => {
-      if (version === requestVersion.current) setError(String(reason));
+      if (version === requestVersion.current && !isCatalogCancellation(reason)) {
+        setError(catalogErrorMessage(reason));
+      }
     }).finally(() => {
       if (version === requestVersion.current) setLoading(false);
+      if (searchController.current === controller) searchController.current = null;
     });
     return () => {
+      controller.abort();
       if (version === requestVersion.current) requestVersion.current++;
     };
   }, [search, sourceId, refreshKey]);
 
   async function loadMore() {
-    if (nextOffset === null || loadingMore || working) return;
+    if (nextOffset === null || loadingMore || loading || working) return;
     const version = requestVersion.current;
+    const controller = new AbortController();
+    pageController.current = controller;
     setLoadingMore(true);
     setError("");
     try {
-      const page = await searchCatalogPage(search, sourceId, nextOffset);
-      if (version !== requestVersion.current) return;
+      const page = await searchCatalogPage(search, sourceId, nextOffset, 24, {
+        signal: controller.signal,
+      });
+      if (version !== requestVersion.current || controller.signal.aborted) return;
       setItems(previous => [...previous, ...page.items]);
       setTotal(page.total);
       setNextOffset(page.nextOffset);
     } catch (reason) {
-      if (version === requestVersion.current) setError(String(reason));
+      if (version === requestVersion.current && !isCatalogCancellation(reason)) {
+        setError(catalogErrorMessage(reason));
+      }
     } finally {
-      setLoadingMore(false);
+      if (pageController.current === controller) pageController.current = null;
+      if (version === requestVersion.current) setLoadingMore(false);
     }
   }
 
@@ -85,15 +109,41 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   }
 
   async function showDetail(id: string) {
+    detailController.current?.abort();
+    const controller = new AbortController();
+    detailController.current = controller;
     setError("");
     setWorking(true);
+    setDetailLoading(true);
     try {
-      setDetail(await getCatalogSeries(id));
+      const result = await getCatalogSeries(id, { signal: controller.signal });
+      if (!controller.signal.aborted) setDetail(result);
     } catch (reason) {
-      setError(String(reason));
+      if (!isCatalogCancellation(reason)) setError(catalogErrorMessage(reason));
     } finally {
-      setWorking(false);
+      if (detailController.current === controller) {
+        detailController.current = null;
+        setWorking(false);
+        setDetailLoading(false);
+      }
     }
+  }
+
+  function cancelPending() {
+    if (!(loading || loadingMore || detailLoading)) return;
+    requestVersion.current++;
+    searchController.current?.abort();
+    pageController.current?.abort();
+    detailController.current?.abort();
+    setLoading(false);
+    setLoadingMore(false);
+    setDetailLoading(false);
+    setWorking(false);
+    setError("已取消内容源请求，点击“刷新内容”可重新加载");
+  }
+
+  function refreshCatalog() {
+    setRefreshKey(previous => previous + 1);
   }
 
   async function play(seriesId: string, episodeId: string) {
@@ -143,7 +193,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       </select>
       <button type="button" className="catalog-ghost"
         disabled={working || loadingMore}
-        onClick={() => setRefreshKey(previous => previous + 1)}>刷新内容</button>
+        onClick={refreshCatalog}>刷新内容</button>
+      <button type="button" className="catalog-ghost"
+        disabled={!(loading || loadingMore || detailLoading)}
+        onClick={cancelPending}>取消请求</button>
       {!loading && <span role="status">共 {total} 条内容</span>}
     </div>}
 
@@ -153,7 +206,12 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <button type="submit">搜索</button>
     </form>}
 
-    {(error || playerError) && <p role="alert" className="catalog-error">{error || playerError}</p>}
+    {error && <div className="catalog-request-error" role="alert">
+      <span>{error}</span>
+      <button type="button" className="catalog-ghost"
+        onClick={refreshCatalog}>重试加载</button>
+    </div>}
+    {playerError && <p role="alert" className="catalog-error">{playerError}</p>}
 
     {mode === "local" || mode === "history" || mode === "favorites"
       ? <LocalLibraryView key={mode} historyOnly={mode === "history"}

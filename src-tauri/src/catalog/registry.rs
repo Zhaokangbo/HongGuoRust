@@ -422,4 +422,77 @@ mod tests {
         drop(library);
         fs::remove_dir_all(dir).unwrap();
     }
+
+    struct SlowProvider;
+
+    impl ContentProvider for SlowProvider {
+        fn id(&self) -> &'static str {
+            "slow"
+        }
+
+        fn name(&self) -> &'static str {
+            "Slow test source"
+        }
+
+        fn search(&self, _query: &str) -> Result<Vec<Series>, String> {
+            Ok(Vec::new())
+        }
+
+        fn detail(&self, _id: &str) -> Result<Option<SeriesDetail>, String> {
+            Ok(None)
+        }
+
+        fn resolve_episode(&self, _id: &str, _episode_id: &str) -> Result<MediaTarget, String> {
+            Err("not implemented".into())
+        }
+
+        fn search_with_request(
+            &self,
+            _query: &str,
+            request: &RequestContext,
+        ) -> Result<Vec<Series>, String> {
+            for _ in 0..100 {
+                request.check()?;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn slow_provider_respects_deadline_and_request_cleanup() {
+        let catalog = CatalogService::from_providers(vec![Box::new(SlowProvider)]).unwrap();
+        let err = catalog
+            .search_page_with_request(None, Some("slow"), 0, 24, 77, 50)
+            .unwrap_err();
+        assert!(err.starts_with("provider_timeout:"));
+        assert!(!catalog.cancel_request(77));
+        assert!(catalog
+            .search_page_with_request(None, Some("slow"), 0, 24, 77, 50)
+            .is_err());
+    }
+
+    #[test]
+    fn cancelling_one_provider_request_does_not_poison_the_registry() {
+        let catalog = Arc::new(
+            CatalogService::from_providers(vec![Box::new(SlowProvider)]).unwrap(),
+        );
+        let worker_catalog = Arc::clone(&catalog);
+        let handle = std::thread::spawn(move || {
+            worker_catalog.search_page_with_request(None, Some("slow"), 0, 24, 91, 2_000)
+        });
+        let mut cancelled = false;
+        for _ in 0..100 {
+            if catalog.cancel_request(91) {
+                cancelled = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(cancelled, "request must register before cancellation");
+        let err = handle.join().unwrap().unwrap_err();
+        assert!(err.starts_with("provider_cancelled:"));
+        assert!(!catalog.cancel_request(91));
+        assert_eq!(catalog.search_page(None, Some("slow"), 0, 24).unwrap().total, 0);
+    }
 }
