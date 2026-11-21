@@ -85,15 +85,16 @@ try {
                 (Split-Path $_.path -Leaf) -match '^(LICENSE|COPYING|NOTICE|THIRD[-_.]?PARTY)([._-].*)?$'
             } | ForEach-Object { $_.path }
         )
+        # PR workflows check out a synthetic merge commit by default.
+        # Record both the real PR head and the tree actually built by Actions.
+        $sourceCommit = if (![string]::IsNullOrWhiteSpace($CandidateCommit)) {
+            $CandidateCommit
+        } else {
+            $env:GITHUB_SHA
+        }
         $auditEvidence = [ordered]@{
             schema_version = 1
-            # PR workflows check out a synthetic merge commit by default.
-            # The feature branch HEAD is the candidate's true source revision.
-            candidate_commit = if (![string]::IsNullOrWhiteSpace($CandidateCommit)) {
-                $CandidateCommit
-            } else {
-                $env:GITHUB_SHA
-            }
+            candidate_commit = $sourceCommit
             workflow_checkout_sha = $env:GITHUB_SHA
             installer_name = (Split-Path -Leaf $setup)
             installer_sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
