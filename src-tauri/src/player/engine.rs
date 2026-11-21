@@ -93,7 +93,9 @@ impl Engine {
                 ("set", vec!["volume", arg.as_str()])
             }
         };
-        self.mpv.command(name, &args).map_err(|e| native_error("control", e))
+        self.mpv
+            .command(name, &args)
+            .map_err(|e| native_error("control", e))
     }
 
     pub fn poll(&mut self) -> Result<Option<Observation>, Failure> {
