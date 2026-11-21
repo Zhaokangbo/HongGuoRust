@@ -20,3 +20,6 @@ src-tauri/gen/
 .idea/
 Thumbs.db
 diagnostics/
+
+# M5 verified libmpv staging — never commit binaries
+src-tauri/resources/libmpv-2.dll
