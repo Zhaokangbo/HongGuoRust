@@ -63,7 +63,8 @@ fn classify_end_reason(reason: libmpv2::EndFileReason) -> Result<Observation, Fa
     Err(Failure {
         stage: "playback",
         code: format!("unexpected_end_reason_{reason}"),
-        message: "Playback stopped without natural EOF (native stop, quit or unsupported redirect)".into(),
+        message: "Playback stopped without natural EOF (native stop, quit or unsupported redirect)"
+            .into(),
     })
 }
 
