@@ -19,3 +19,4 @@ src-tauri/gen/
 .vscode/
 .idea/
 Thumbs.db
+diagnostics/

@@ -147,7 +147,7 @@ def desktop_checks(main, child):
     print("Verified minimize, restore, occlusion and repaint", flush=True)
 
 
-def run(exe, clip, second, corrupt, detailed):
+def run(exe, clip, second, corrupt, short_clip, detailed):
     process = subprocess.Popen([exe])
     try:
         main = until(lambda: owned_window(process.pid), "main HWND", 90)
@@ -159,6 +159,7 @@ def run(exe, clip, second, corrupt, detailed):
             return ui.child_window(title=name,control_type="Button").wrapper_object()
         until(lambda: text_visible("Idle"), "IPC Idle", 90)
         def select(path):
+            until(lambda: button("打开本地 MP4").is_enabled(), "available file picker")
             button("打开本地 MP4").invoke()
             dialog = Desktop(backend="win32").window(process=process.pid,class_name="#32770")
             dialog.wait("visible enabled",timeout=15)
@@ -169,9 +170,28 @@ def run(exe, clip, second, corrupt, detailed):
                 candidates = edits
             if len(candidates) != 1:
                 raise RuntimeError(f"Filename edit controls: {[(e.control_id(),e.parent().control_id()) for e in edits]}")
-            candidates[0].set_edit_text(str(path))
-            dialog.child_window(control_id=1).click()
-            dialog.wait_not("visible",timeout=15)
+            picker = dialog.wrapper_object()
+            picker.set_focus()
+            edit = candidates[0]
+            accept = dialog.child_window(control_id=1,class_name="Button").wrapper_object()
+            def submitted():
+                # Validate the edit after shell initialization. BM_CLICK can be
+                # ignored by an inactive common dialog on a hosted desktop.
+                if not win32gui.IsWindow(picker.handle) or not win32gui.IsWindowVisible(picker.handle):
+                    return True
+                if not win32gui.IsWindowEnabled(picker.handle):
+                    return False
+                edit.set_edit_text(str(path))
+                if edit.window_text() == str(path) and accept.is_enabled():
+                    win32gui.PostMessage(picker.handle,0x0111,1,accept.handle)  # WM_COMMAND, IDOK
+                    time.sleep(.45)
+                return not win32gui.IsWindow(picker.handle) or not win32gui.IsWindowVisible(picker.handle)
+            try:
+                until(submitted, f"selection of {path.name}", 20)
+            except Exception:
+                for dlg in Desktop(backend="win32").windows(process=process.pid,class_name="#32770"):
+                    print("Picker diagnostic",dlg.window_text(),[(x.class_name(),x.control_id(),x.window_text()) for x in dlg.descendants() if x.is_visible()],flush=True)
+                raise
         select(clip)
         foreground(main)
         if detailed:
@@ -193,6 +213,8 @@ def run(exe, clip, second, corrupt, detailed):
             until(lambda: text_visible(second.name) and text_visible("Playing"), "rapid A/B replacement")
             select(corrupt)
             until(lambda: text_visible("Error"), "corrupt MP4 error")
+            select(short_clip)
+            until(lambda: text_visible("Ended"), "natural end of file")
             select(second)
             frame(child, {"green"})
             until(lambda: text_visible("Playing"), "recovered playback")
@@ -207,6 +229,13 @@ def run(exe, clip, second, corrupt, detailed):
         _, alive = psutil.wait_procs(children, timeout=15)
         if alive:
             raise RuntimeError(f"Surviving child PIDs: {[p.pid for p in alive]}")
+    except Exception:
+        evidence = Path(os.environ.get("HONGGUORUST_LOG_DIR", tempfile.gettempdir()))
+        evidence.mkdir(parents=True, exist_ok=True)
+        window = owned_window(process.pid)
+        if window:
+            ImageGrab.grab(bbox=win32gui.GetWindowRect(window),all_screens=True).save(evidence/"playback-failure.png")
+        raise
     finally:
         if process.poll() is None:
             process.kill()
@@ -231,6 +260,9 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
                     "-i","color=green:s=320x180:r=15:d=90","-c:v","libx264","-pix_fmt","yuv420p",str(second)],check=True)
     os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
     os.environ["WEBVIEW2_USER_DATA_FOLDER"] = str(Path(directory) / "webview-profile")
+    short_clip = Path(directory) / "end.mp4"
+    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel","error","-i",str(clip),
+                    "-t","0.6","-c","copy",str(short_clip)],check=True)
     for cycle in range(1,21):
-        run(sys.argv[1], clip, second, corrupt, cycle == 1)
+        run(sys.argv[1], clip, second, corrupt, short_clip, cycle == 1)
         print(f"PASS playing-window close {cycle}/20; no surviving observed descendants", flush=True)

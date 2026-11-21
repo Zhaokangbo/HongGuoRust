@@ -47,7 +47,44 @@ try {
 
     # Capture this window's process tree before closing it. Other WebView2 clients
     # on the desktop may legitimately outlive our application.
-    $processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId)
+    # Toolhelp works without WMI/CIM access on a restricted desktop.
+    if (!('HongGuoProcessTree' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class HongGuoProcessTree {
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    struct Entry {
+        public uint size, usage, pid;
+        public UIntPtr heap;
+        public uint module, threads, parent;
+        public int priority;
+        public uint flags;
+        [MarshalAs(UnmanagedType.ByValTStr,SizeConst=260)] public string name;
+    }
+    public struct Relation { public uint ProcessId, ParentProcessId; }
+    [DllImport("kernel32",SetLastError=true)] static extern IntPtr CreateToolhelp32Snapshot(uint flags,uint pid);
+    [DllImport("kernel32",SetLastError=true)] static extern bool Process32FirstW(IntPtr snapshot,ref Entry e);
+    [DllImport("kernel32",SetLastError=true)] static extern bool Process32NextW(IntPtr snapshot,ref Entry e);
+    [DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);
+    public static Relation[] Read() {
+        IntPtr h = CreateToolhelp32Snapshot(2,0);
+        if (h == new IntPtr(-1)) throw new Win32Exception();
+        try {
+            var e = new Entry { size = (uint)Marshal.SizeOf(typeof(Entry)) };
+            var list = new List<Relation>();
+            if (!Process32FirstW(h,ref e)) throw new Win32Exception();
+            do { list.Add(new Relation { ProcessId=e.pid,ParentProcessId=e.parent }); } while (Process32NextW(h,ref e));
+            if (Marshal.GetLastWin32Error() != 18) throw new Win32Exception();
+            return list.ToArray();
+        } finally { CloseHandle(h); }
+    }
+}
+'@
+    }
+    $processes = [HongGuoProcessTree]::Read()
     $parents = @($process.Id)
     $children = @(while ($parents.Count) {
         $parents = @($processes | Where-Object { $_.ParentProcessId -in $parents } |
