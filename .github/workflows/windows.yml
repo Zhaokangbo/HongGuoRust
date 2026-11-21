@@ -1,10 +1,16 @@
 name: Windows M1
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+# Feature branches are verified by their PRs, not a redundant push run.
+# Superseded PR checks are cancelled to avoid Windows runner congestion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
