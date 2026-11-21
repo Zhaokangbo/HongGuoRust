@@ -277,6 +277,29 @@ mod tests {
     }
 
     #[test]
+    fn terminal_error_and_stop_ignore_late_cache_notifications() {
+        let mut s = PlayerState::default();
+        let id = s.begin("broken.mp4".into());
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        let failure = Failure {
+            stage: "network",
+            code: "mock_error".into(),
+            message: "connection failed".into(),
+        };
+        s.update(id, PlaybackState::Error, Some(failure));
+        s.set_cache_waiting(id, false);
+        s.mark_started(id);
+        s.set_user_paused(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Error);
+        assert_eq!(s.snapshot().error.unwrap().code, "mock_error");
+        s.clear(Some(id));
+        assert_eq!(s.snapshot().state, PlaybackState::Idle);
+        assert_eq!(s.snapshot().session_id, None);
+        assert_eq!(s.snapshot().error, None);
+    }
+
+    #[test]
     fn replacement_rejects_late_restart_end_error_and_stop() {
         let mut s = PlayerState::default();
         let a = s.begin("A.mp4".into());
