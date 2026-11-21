@@ -210,3 +210,13 @@ main.fullscreen header, main.fullscreen footer { display: none; }
   .discovery-hero-art { min-height: 100px; }
   .discovery-hero-copy { padding: 4px; }
 }
+
+
+/* M10-B: native-session-scoped provider episode navigation, manual only. */
+.episode-context {
+  display: inline-block; max-width: min(32vw, 270px); overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; font: 11px Consolas, monospace;
+  color: #b4e6cf; vertical-align: middle;
+}
+.episode-completion { color: #a2e7c7; font-size: 11px; }
+.episode-completion[role="alert"] { color: #ffb7a8; }

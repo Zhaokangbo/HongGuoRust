@@ -3,6 +3,11 @@ import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
 import { nextAtNaturalEof, type LocalPlaylist } from "./player/autoNext";
 import { CatalogView } from "./catalog/CatalogView";
+import type { SeriesDetail } from "./catalog/types";
+import {
+  adjacentEpisode, createEpisodeQueue, currentEpisodeEnded, currentEpisodeFailed,
+  type EpisodeQueue,
+} from "./player/episodeQueue";
 import "./style.css";
 
 type PlayerCommand = "open_local" | "open_https" | "stop" | "set_paused" | "seek_to"
@@ -29,6 +34,8 @@ function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [playlist, setPlaylist] = useState<LocalPlaylist | null>(null);
+  // Separate from M8's local-file auto-next queue; Provider series are manual only.
+  const [episodeQueue, setEpisodeQueue] = useState<EpisodeQueue | null>(null);
   const [autoNext, setAutoNext] = useState(false);
   const [autoNextError, setAutoNextError] = useState("");
   // A native session ID is the sole identity for an EOF event.
@@ -132,6 +139,7 @@ function App() {
         throw new Error("播放接口未返回有效会话 ID");
       }
       setPlaylist({ ids: [...ids], index, origin, sessionId });
+      setEpisodeQueue(null);
       return true;
     } catch (reason) {
       setCommandError(String(reason));
@@ -142,20 +150,71 @@ function App() {
     }
   }
 
-  async function playFromCatalog(seriesId: string, episodeId: string): Promise<boolean> {
-    if (transitionRef.current) return false;
+  async function openProviderEpisode(seriesId: string, episodeId: string): Promise<number | null> {
+    if (transitionRef.current || busy) return null;
     transitionRef.current = true;
-    // Invalidate a terminal queue before asynchronous IPC can run.
-    consumedEofRef.current = playlist?.sessionId ?? null;
+    setBusy(true);
+    setCommandError("");
     try {
-      const played = await command("catalog_play_episode", { seriesId, episodeId });
-      if (!played) return false;
-      setPlaylist(null);
-      setAutoNextError("");
-      await backToPlayer();
-      return true;
+      const core = window.__TAURI__?.core;
+      if (!core) throw new Error("Rust desktop bridge unavailable");
+      const sessionId = await core.invoke<number>("catalog_play_episode", { seriesId, episodeId });
+      if (!Number.isSafeInteger(sessionId) || sessionId <= 0) {
+        throw new Error("选集播放接口未返回有效会话 ID");
+      }
+      return sessionId;
+    } catch (reason) {
+      setCommandError(String(reason));
+      return null;
     } finally {
       transitionRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function playFromCatalog(
+    seriesId: string, episodeId: string, detail: SeriesDetail,
+  ): Promise<boolean> {
+    if (detail.series.id !== seriesId || !detail.episodes.some(ep => ep.id === episodeId)) {
+      setCommandError("当前选集与作品详情不匹配，请刷新详情后重试");
+      return false;
+    }
+    // Build and validate navigation context before opening native media.
+    try {
+      createEpisodeQueue(detail, episodeId, 1);
+    } catch (reason) {
+      setCommandError(String(reason));
+      return false;
+    }
+    const sessionId = await openProviderEpisode(seriesId, episodeId);
+    if (sessionId === null) return false;
+    consumedEofRef.current = playlist?.sessionId ?? null;
+    setPlaylist(null);
+    setAutoNextError("");
+    setEpisodeQueue(createEpisodeQueue(detail, episodeId, sessionId));
+    await backToPlayer();
+    return true;
+  }
+
+  async function moveEpisode(delta: -1 | 1) {
+    const selected = adjacentEpisode(episodeQueue, delta);
+    if (!selected || !episodeQueue || busy || transitionRef.current) return;
+    const previousSession = episodeQueue.sessionId;
+    const sessionId = await openProviderEpisode(episodeQueue.seriesId, selected.episode.id);
+    if (sessionId === null) return;
+    setEpisodeQueue(current => current && current.sessionId === previousSession
+      ? { ...current, index: selected.index, sessionId } : current);
+  }
+
+  async function retryEpisode() {
+    if (!episodeQueue || busy || transitionRef.current) return;
+    const oldSession = episodeQueue.sessionId;
+    const sessionId = await openProviderEpisode(
+      episodeQueue.seriesId, episodeQueue.episodes[episodeQueue.index].id,
+    );
+    if (sessionId !== null) {
+      setEpisodeQueue(current => current && current.sessionId === oldSession
+        ? { ...current, sessionId } : current);
     }
   }
 
@@ -184,6 +243,7 @@ function App() {
       const ok = await command(name, args);
       if (ok) {
         setPlaylist(null);
+        setEpisodeQueue(null);
         setAutoNextError("");
       }
     } finally {
@@ -262,6 +322,27 @@ function App() {
           onClick={() => void command("set_paused", { paused: snapshot?.state !== "Paused" })}>
           {snapshot?.state === "Paused" ? "继续" : "暂停"}
         </button>
+        {episodeQueue && <>
+          <span className="episode-context" title={episodeQueue.seriesTitle}>
+            {episodeQueue.seriesTitle} · 第 {episodeQueue.episodes[episodeQueue.index].number} 集
+            · {episodeQueue.index + 1}/{episodeQueue.episodes.length}
+          </span>
+          <button disabled={busy || !connected || !adjacentEpisode(episodeQueue, -1)}
+            onClick={() => void moveEpisode(-1)} title="仅在当前作品内切换上一集">上一集</button>
+          <button disabled={busy || !connected || !adjacentEpisode(episodeQueue, 1)}
+            onClick={() => void moveEpisode(1)} title="仅在当前作品内切换下一集">下一集</button>
+          {currentEpisodeEnded(episodeQueue, snapshot) &&
+            <span className="episode-completion" role="status">
+              {adjacentEpisode(episodeQueue, 1)
+                ? "本集已播完，点击“下一集”继续"
+                : "本作品已播放到最后一集"}
+            </span>}
+          {currentEpisodeFailed(episodeQueue, snapshot) &&
+            <span className="episode-completion" role="alert">本集播放失败，可重试或切换剧集</span>}
+          {currentEpisodeFailed(episodeQueue, snapshot) &&
+            <button disabled={busy || !connected}
+              onClick={() => void retryEpisode()}>重试本集</button>}
+        </>}
         {playlist && <>
           <button disabled={busy || playlist.index === 0}
             onClick={() => void movePlaylist(-1)} title="按本次播放列表顺序播放上一部">上一部</button>
