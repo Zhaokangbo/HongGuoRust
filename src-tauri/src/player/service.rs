@@ -1,6 +1,8 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::history::{finish, HistorySession};
+use super::provider_history::{finish_provider, ProviderHistorySession};
+use crate::catalog::progress::ProviderProgressStore;
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use crate::local_library::LocalLibrary;
@@ -11,6 +13,13 @@ use std::thread::{self, JoinHandle};
 use std::time::Instant;
 use tracing::{error, info};
 
+struct ProviderPlayback {
+    series_id: String,
+    episode_id: String,
+    source: String,
+    resume_at: Option<f64>,
+}
+
 enum Command {
     Open {
         id: u64,
@@ -18,6 +27,7 @@ enum Command {
         accepted: Instant,
         library_id: Option<u64>,
         resume_at: Option<f64>,
+        provider: Option<ProviderPlayback>,
     },
     Stop(Option<u64>),
     Control {
@@ -39,22 +49,25 @@ pub struct PlayerService {
     tx: Sender<Command>,
     worker: Mutex<Option<JoinHandle<()>>>,
     library: Arc<LocalLibrary>,
+    provider_progress: Arc<ProviderProgressStore>,
 }
 
 impl PlayerService {
-    pub fn new(host: isize, library: Arc<LocalLibrary>) -> std::io::Result<Self> {
+    pub fn new(host: isize, library: Arc<LocalLibrary>, provider_progress: Arc<ProviderProgressStore>) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(Shared::default()));
         let shared = Arc::clone(&state);
         let worker_library = Arc::clone(&library);
+        let worker_progress = Arc::clone(&provider_progress);
         let worker = thread::Builder::new()
             .name("libmpv-player".into())
-            .spawn(move || run(host, rx, shared, worker_library))?;
+            .spawn(move || run(host, rx, shared, worker_library, worker_progress))?;
         Ok(Self {
             state,
             tx,
             worker: Mutex::new(Some(worker)),
             library,
+            provider_progress,
         })
     }
 
@@ -63,17 +76,26 @@ impl PlayerService {
     }
 
     pub fn open(&self, path: PathBuf) -> Result<u64, String> {
-        self.open_source(MediaSource::Local(path), None, None)
+        self.open_source(MediaSource::Local(path), None, None, None)
     }
 
     pub fn open_library(&self, id: u64) -> Result<u64, String> {
         let path = self.library.resolve_path(id)?;
         let resume_at = self.library.resume_point(id)?;
-        self.open_source(MediaSource::Local(path), Some(id), resume_at)
+        self.open_source(MediaSource::Local(path), Some(id), resume_at, None)
     }
 
     pub fn open_https(&self, url: String) -> Result<u64, String> {
-        self.open_source(MediaSource::https(url)?, None, None)
+        self.open_source(MediaSource::https(url)?, None, None, None)
+    }
+
+    /// Called only after CatalogService validated the selected episode and URL.
+    pub fn open_catalog_https(&self, url: String, series_id: String, episode_id: String) -> Result<u64, String> {
+        let source = MediaSource::https(url.clone())?;
+        let resume_at = self.provider_progress.resume_point(&series_id, &episode_id, &url)?;
+        self.open_source(source, None, None, Some(ProviderPlayback {
+            series_id, episode_id, source: url, resume_at,
+        }))
     }
 
     fn open_source(
@@ -81,6 +103,7 @@ impl PlayerService {
         source: MediaSource,
         library_id: Option<u64>,
         resume_at: Option<f64>,
+        provider: Option<ProviderPlayback>,
     ) -> Result<u64, String> {
         let mut shared = self.state.lock().unwrap();
         if shared.closing {
@@ -98,6 +121,7 @@ impl PlayerService {
                 accepted,
                 library_id,
                 resume_at,
+                provider,
             })
             .is_err()
         {
@@ -204,10 +228,12 @@ fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) 
     }
 }
 
-fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: Arc<LocalLibrary>) {
+fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>,
+    library: Arc<LocalLibrary>, provider_progress: Arc<ProviderProgressStore>) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
     let mut history: Option<HistorySession> = None;
+    let mut provider_history: Option<ProviderHistorySession> = None;
     loop {
         let cmd = if engine.is_some() {
             match rx.try_recv() {
@@ -228,6 +254,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 accepted,
                 library_id,
                 resume_at,
+                provider,
             }) => {
                 {
                     let shared = state.lock().unwrap();
@@ -237,6 +264,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 }
                 end_cache_interval(&mut cache_since, "replaced");
                 finish(&mut history, &library, false);
+                finish_provider(&mut provider_history, &provider_progress, false);
                 release(&mut engine);
                 match Engine::load(host, &source, id, accepted) {
                     Ok(player) => {
@@ -247,6 +275,9 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                         );
                         engine = Some(player);
                         history = library_id.map(|key| HistorySession::new(id, key, resume_at));
+                        provider_history = provider.map(|key| ProviderHistorySession::new(
+                            id, key.series_id, key.episode_id, key.source, key.resume_at,
+                        ));
                     }
                     Err(e) => failed(&state, id, e),
                 }
@@ -261,6 +292,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 }
                 end_cache_interval(&mut cache_since, "stopped");
                 finish(&mut history, &library, false);
+                finish_provider(&mut provider_history, &provider_progress, false);
                 release(&mut engine);
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
@@ -296,6 +328,13 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                             _ => {}
                         }
                     }
+                    if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                        match request {
+                            PlayerControl::SeekAbsolute(sec) => active.seeked(&provider_progress, sec),
+                            PlayerControl::Pause(true) => active.save(&provider_progress, false),
+                            _ => {}
+                        }
+                    }
                 }
                 let _ = reply.send(result);
             }
@@ -322,12 +361,25 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                                 }
                             }
                         }
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                            if let Some(sec) = active.resume_at.take() {
+                                if let Err(e) = current.control(PlayerControl::SeekAbsolute(sec)) {
+                                    tracing::warn!(session_id = id, error = %e.message, "provider resume seek failed");
+                                } else {
+                                    active.seeked(&provider_progress, sec);
+                                    info!(session_id = id, position_sec = sec, "provider resume seek accepted");
+                                }
+                            }
+                        }
                     }
                     Ok(Some(Observation::Restart)) => {
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
                         state.lock().unwrap().player.mark_started(id);
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             active.started(&library);
+                        }
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                            active.started(&provider_progress);
                         }
                     }
                     Ok(Some(Observation::CacheWaiting(waiting))) => {
@@ -356,6 +408,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                     Ok(Some(Observation::End)) => {
                         end_cache_interval(&mut cache_since, "ended");
                         finish(&mut history, &library, true);
+                        finish_provider(&mut provider_history, &provider_progress, true);
                         release(&mut engine);
                         state
                             .lock()
@@ -366,6 +419,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                     Err(e) => {
                         end_cache_interval(&mut cache_since, "error");
                         finish(&mut history, &library, false);
+                        finish_provider(&mut provider_history, &provider_progress, false);
                         release(&mut engine);
                         failed(&state, id, e);
                     }
@@ -378,6 +432,9 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             active.progress(&library, position, duration);
                         }
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                            active.progress(&provider_progress, position, duration);
+                        }
                     }
                     Ok(None) => {}
                 }
@@ -387,6 +444,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
     let started = Instant::now();
     end_cache_interval(&mut cache_since, "closed");
     finish(&mut history, &library, false);
+    finish_provider(&mut provider_history, &provider_progress, false);
     release(&mut engine);
     info!(
         elapsed_ms = started.elapsed().as_millis() as u64,
