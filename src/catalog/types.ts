@@ -6,6 +6,21 @@ export interface Series {
   badge: string;
   artwork: "forest" | "city" | "studio";
   episodeCount: number;
+  providerId: string;
+}
+
+export interface CatalogProvider {
+  id: string;
+  name: string;
+  supportsSearch: boolean;
+  supportsDetail: boolean;
+  supportsPlay: boolean;
+}
+
+export interface CatalogSearchPage {
+  items: Series[];
+  total: number;
+  nextOffset: number | null;
 }
 
 export interface Episode {
