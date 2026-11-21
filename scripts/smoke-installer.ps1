@@ -51,8 +51,19 @@ try {
     Write-Host "PASS: installed EXE and verified libmpv-2.dll SHA256=$hash"
 
     # The preexisting M1 UI automation asserts Rust IPC and normal process exit.
-    & "$PSScriptRoot/smoke-windows.ps1" -Executable $exe
-    if (!$?) { throw 'Installed application IPC/window smoke failed' }
+    try {
+        & "$PSScriptRoot/smoke-windows.ps1" -Executable $exe
+        if (!$?) { throw 'Installed application IPC/window smoke failed' }
+    } catch {
+        Write-Warning 'Installed app GUI/IPC smoke failed. Inspect uploaded diagnostics.'
+        $diag = Join-Path $PSScriptRoot '../diagnostics'
+        $logs = @(Get-ChildItem -LiteralPath $diag -Filter 'player-*.log' -File -ErrorAction SilentlyContinue)
+        if ($logs.Count -gt 0) {
+            Write-Host "Latest player log: $($logs[-1].Name)"
+            Get-Content -LiteralPath $logs[-1].FullName -Tail 55 -Encoding UTF8
+        }
+        throw
+    }
     Write-Host 'PASS: installed app launched, rendered Rust Idle and closed cleanly'
 
     $uninstallers = @(Get-ChildItem -LiteralPath $dir -File |
