@@ -138,7 +138,9 @@ fn read_manifest(path: &Path) -> Result<ManifestData, String> {
 }
 
 fn persist_manifest(path: &Path, data: &ManifestData) -> Result<(), String> {
-    let parent = path.parent().ok_or("manifest_unavailable: 无法确定数据目录")?;
+    let parent = path
+        .parent()
+        .ok_or("manifest_unavailable: 无法确定数据目录")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let bytes = serde_json::to_vec_pretty(data).map_err(|e| e.to_string())?;
     if bytes.len() as u64 > MAX_BYTES {
@@ -181,7 +183,9 @@ impl OwnedManifestStore {
     pub fn new() -> Self {
         match std::env::var_os("LOCALAPPDATA") {
             Some(root) => Self::from_path(
-                PathBuf::from(root).join("HongGuoRust").join("owned-manifest.json"),
+                PathBuf::from(root)
+                    .join("HongGuoRust")
+                    .join("owned-manifest.json"),
             ),
             None => Self {
                 path: PathBuf::new(),
@@ -380,7 +384,15 @@ mod tests {
         assert_eq!(store.import_file(&selected).unwrap(), 1);
         let provider = OwnedManifestProvider::new(Arc::clone(&store));
         assert_eq!(provider.search("个人").unwrap().len(), 1);
-        assert_eq!(provider.detail("my-series").unwrap().unwrap().episodes.len(), 1);
+        assert_eq!(
+            provider
+                .detail("my-series")
+                .unwrap()
+                .unwrap()
+                .episodes
+                .len(),
+            1
+        );
         assert_eq!(
             provider.resolve_episode("my-series", "ep-01").unwrap(),
             MediaTarget::Https("https://samplelib.com/lib/preview/mp4/sample-20s.mp4".into())
@@ -408,7 +420,8 @@ mod tests {
             fixture("https://localhost/media.mp4"),
             fixture("https://example.com/media.m3u8"),
             "{\"schemaVersion\":99,\"series\":[]}".into(),
-            "{\"schemaVersion\":1,\"series\":[{\"id\":\"x\",\"title\":\"x\",\"episodes\":[]}]}".into(),
+            "{\"schemaVersion\":1,\"series\":[{\"id\":\"x\",\"title\":\"x\",\"episodes\":[]}]}"
+                .into(),
             "{broken json".into(),
         ] {
             fs::write(&source, payload).unwrap();

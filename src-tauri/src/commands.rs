@@ -1,7 +1,6 @@
 use crate::catalog::request::DEFAULT_TIMEOUT_MS;
 use crate::catalog::{
-    CatalogService, MediaTarget, OwnedManifestStore, ProviderInfo, SearchPage, Series,
-    SeriesDetail,
+    CatalogService, MediaTarget, OwnedManifestStore, ProviderInfo, SearchPage, Series, SeriesDetail,
 };
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
@@ -174,9 +173,7 @@ pub async fn catalog_import_manifest(window: WebviewWindow) -> Result<Option<usi
 }
 
 #[tauri::command]
-pub fn catalog_clear_manifest(
-    manifest: State<'_, Arc<OwnedManifestStore>>,
-) -> Result<(), String> {
+pub fn catalog_clear_manifest(manifest: State<'_, Arc<OwnedManifestStore>>) -> Result<(), String> {
     manifest.clear()
 }
 
