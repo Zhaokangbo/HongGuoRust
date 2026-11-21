@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$Installer,
     [string]$AuditReport,
-    [string]$CandidateCommit
+    [string]$CandidateCommit,
+    [switch]$VerifyPlayback
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -25,6 +26,7 @@ $vulkan = Join-Path $dir 'vulkan-1.dll'
 $installed = $false
 $uninstalled = $false
 $auditEvidence = $null
+$playbackVerified = $false
 
 function Run-Nsis([string]$file, [string[]]$arguments, [string]$stage) {
     $proc = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -Wait
@@ -136,6 +138,8 @@ try {
             installed_files = $inventory
             installed_notice_candidates = $noticeCandidates
             required_legal_files_verified = $true
+            installed_playback_smoke_requested = [bool]$VerifyPlayback
+            installed_playback_smoke_verified = $false
             required_legal_file_names = @($legalSources.Keys)
             clean_windows_10_11_verified = $false
             redistribution_provenance_reviewed = $false
@@ -164,6 +168,28 @@ try {
     }
     Write-Host 'PASS: installed app launched, rendered Rust Idle and closed cleanly'
 
+    if ($VerifyPlayback) {
+        # Reuse the established M2 20-cycle real-video/audio harness, but run
+        # against the NSIS-installed EXE and its app-private native runtimes.
+        $python = Get-Command python -ErrorAction Stop
+        $oldRuntimeDir = [Environment]::GetEnvironmentVariable('MPV_RUNTIME_DIR', 'Process')
+        $oldLogDir = [Environment]::GetEnvironmentVariable('HONGGUORUST_LOG_DIR', 'Process')
+        try {
+            $env:MPV_RUNTIME_DIR = $dir
+            $env:HONGGUORUST_LOG_DIR = (Join-Path $PSScriptRoot '../diagnostics')
+            New-Item -ItemType Directory -Force -Path $env:HONGGUORUST_LOG_DIR | Out-Null
+            & $python.Source "$PSScriptRoot/smoke-player.py" $exe
+            if ($LASTEXITCODE -ne 0) {
+                throw "NSIS-installed executable playback probe failed (exit $LASTEXITCODE)"
+            }
+            $playbackVerified = $true
+            Write-Host 'PASS: installed EXE completed M2 video/audio probe and 20 clean playing-window close cycles'
+        } finally {
+            [Environment]::SetEnvironmentVariable('MPV_RUNTIME_DIR', $oldRuntimeDir, 'Process')
+            [Environment]::SetEnvironmentVariable('HONGGUORUST_LOG_DIR', $oldLogDir, 'Process')
+        }
+    }
+
     $uninstallers = @(Get-ChildItem -LiteralPath $dir -File |
         Where-Object { $_.Name -match '^uninstall.*\.exe$' })
     if ($uninstallers.Count -ne 1) {
@@ -186,6 +212,7 @@ try {
     $uninstalled = $true
     Write-Host 'PASS: NSIS silent install, app IPC, DLL SHA-256 and uninstall'
     if ($auditEvidence) {
+        $auditEvidence['installed_playback_smoke_verified'] = $playbackVerified
         $reportPath = [IO.Path]::GetFullPath($AuditReport)
         $reportDir = Split-Path -Parent $reportPath
         New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
