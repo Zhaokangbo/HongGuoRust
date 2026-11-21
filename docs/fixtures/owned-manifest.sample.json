@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "series": [
+    {
+      "id": "my-test-series",
+      "title": "自有媒体清单测试",
+      "description": "示例仅用于验证功能，请在实际使用时替换为您有权使用的媒体。",
+      "genre": "测试",
+      "episodes": [
+        {
+          "id": "ep-01",
+          "title": "第一集",
+          "url": "https://samplelib.com/lib/preview/mp4/sample-20s.mp4"
+        },
+        {
+          "id": "ep-02",
+          "title": "第二集",
+          "url": "https://samplelib.com/lib/preview/mp4/sample-20s.mp4"
+        }
+      ]
+    }
+  ]
+}
