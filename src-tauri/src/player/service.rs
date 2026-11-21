@@ -1,3 +1,4 @@
+use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use std::path::PathBuf;
@@ -14,6 +15,11 @@ enum Command {
         accepted: Instant,
     },
     Stop(Option<u64>),
+    Control {
+        id: u64,
+        request: PlayerControl,
+        reply: mpsc::SyncSender<Result<(), String>>,
+    },
     Close,
 }
 
@@ -82,6 +88,24 @@ impl PlayerService {
         self.tx
             .send(Command::Stop(shared.player.snapshot().session_id))
             .map_err(|_| "Playback worker exited".into())
+    }
+
+    /// Enqueue a validated playback control and wait for a native libmpv reply.
+    /// Rust remains the only owner of the player; the Tauri command must call
+    /// this on a blocking task, never from the UI/event-loop thread.
+    pub fn control(&self, request: PlayerControl) -> Result<(), String> {
+        let request = request.validate().map_err(str::to_owned)?;
+        let shared = self.state.lock().unwrap();
+        if shared.closing {
+            return Err("Window is closing".into());
+        }
+        let id = shared.player.snapshot().session_id.ok_or("No active playback session")?;
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.tx.send(Command::Control { id, request, reply })
+            .map_err(|_| "Playback worker exited")?;
+        drop(shared);
+        receiver.recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "Playback control timed out".to_owned())?
     }
 
     pub fn begin_close(&self) -> bool {
@@ -175,6 +199,16 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                 release(&mut engine);
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
+            }
+            Some(Command::Control { id, request, reply }) => {
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                if current_id != Some(id) || engine.as_ref().map(|e| e.session) != Some(id) {
+                    let _ = reply.send(Err("Playback session changed or is not ready".into()));
+                    continue;
+                }
+                let result = engine.as_mut().unwrap().control(request)
+                    .map_err(|failure| failure.message);
+                let _ = reply.send(result);
             }
             Some(Command::Close) => break,
             None => {
