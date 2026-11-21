@@ -65,20 +65,40 @@ try {
     }
     Write-Host "PASS: app-local Vulkan loader SHA256=$((Get-FileHash -LiteralPath $vulkan -Algorithm SHA256).Hash)"
 
-    # Inventory the installed files, not the staging directory or source archive.
-    # Hashes and names can be published as CI evidence; no application binary
-    # or installer is included in the report.
+    # Inventory only metadata from the installed app. No binaries are copied
+    # into the report or into the GitHub Actions artifact.
     if (![string]::IsNullOrWhiteSpace($AuditReport)) {
-        $inventory = @(Get-ChildItem -LiteralPath $dir -File -Recurse |
-            Sort-Object FullName | ForEach-Object {
-                [ordered]@{
-                    path = $_.FullName.Substring($dir.Length + 1).Replace('\', '/')
-                    bytes = $_.Length
-                    sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $inventory = @(
+            Get-ChildItem -LiteralPath $dir -File -Recurse |
+                Sort-Object FullName |
+                ForEach-Object {
+                    [ordered]@{
+                        path = $_.FullName.Substring($dir.Length + 1).Replace('\', '/')
+                        bytes = $_.Length
+                        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                    }
                 }
-            })
-        $noticeCandidates = @($inventory | Where-Object {
-            (Split-Path $_.path -Leaf) -match '^(LICENSE|COPYING|NOTICE|THIRD[-_.]?PARTY)([._-].*)?
+        )
+        $noticeCandidates = @(
+            $inventory | Where-Object {
+                (Split-Path $_.path -Leaf) -match '^(LICENSE|COPYING|NOTICE|THIRD[-_.]?PARTY)([._-].*)?$'
+            } | ForEach-Object { $_.path }
+        )
+        $auditEvidence = [ordered]@{
+            schema_version = 1
+            candidate_commit = $env:GITHUB_SHA
+            installer_name = (Split-Path -Leaf $setup)
+            installer_sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+            installed_files = $inventory
+            installed_notice_candidates = $noticeCandidates
+            clean_windows_10_11_verified = $false
+            redistribution_provenance_reviewed = $false
+            distribution_authorized = $false
+            note = 'Hosted runner evidence only; not clean-machine or third-party redistribution acceptance.'
+        }
+    }
+
+    # The preexisting M1 UI automation asserts Rust IPC and normal process exit.
     try {
         & "$PSScriptRoot/smoke-windows.ps1" -Executable $exe
         if (!$?) { throw 'Installed application IPC/window smoke failed' }
@@ -115,61 +135,8 @@ try {
         $reportDir = Split-Path -Parent $reportPath
         New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
         $auditEvidence | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportPath -Encoding utf8
-        Write-Host "Wrote NON-DISTRIBUTABLE package evidence: $reportPath"
+        Write-Host "Wrote binary-free package evidence: $reportPath"
     }
-} finally {
-    if ($installed -and !$uninstalled) {
-        Write-Warning "A failed installer smoke may have left a test installation at $dir"
-    }
-}
-
-        } | ForEach-Object { $_.path })
-        $auditEvidence = [ordered]@{
-            schema_version = 1
-            candidate_commit = $env:GITHUB_SHA
-            installer_name = (Split-Path -Leaf $setup)
-            installer_sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
-            installed_files = $inventory
-            installed_notice_candidates = $noticeCandidates
-            clean_windows_10_11_verified = $false
-            redistribution_provenance_reviewed = $false
-            distribution_authorized = $false
-            note = 'Hosted runner evidence only. NOT evidence of clean Windows compatibility or distribution license compliance.'
-        }
-    }
-
-    # The preexisting M1 UI automation asserts Rust IPC and normal process exit.
-    try {
-        & "$PSScriptRoot/smoke-windows.ps1" -Executable $exe
-        if (!$?) { throw 'Installed application IPC/window smoke failed' }
-    } catch {
-        Write-Warning 'Installed app GUI/IPC smoke failed. Inspect uploaded diagnostics.'
-        $diag = Join-Path $PSScriptRoot '../diagnostics'
-        $logs = @(Get-ChildItem -LiteralPath $diag -Filter 'player-*.log' -File -ErrorAction SilentlyContinue)
-        if ($logs.Count -gt 0) {
-            Write-Host "Latest player log: $($logs[-1].Name)"
-            Get-Content -LiteralPath $logs[-1].FullName -Tail 55 -Encoding UTF8
-        }
-        throw
-    }
-    Write-Host 'PASS: installed app launched, rendered Rust Idle and closed cleanly'
-
-    $uninstallers = @(Get-ChildItem -LiteralPath $dir -File |
-        Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-    if ($uninstallers.Count -ne 1) {
-        throw "Expected exactly one uninstaller, found $($uninstallers.Count)"
-    }
-    Write-Host "Uninstalling from $dir"
-    Run-Nsis -file $uninstallers[0].FullName -arguments @('/S') -stage 'NSIS uninstallation'
-    $limit = [DateTime]::UtcNow.AddSeconds(20)
-    while ((Test-Path -LiteralPath $exe) -and [DateTime]::UtcNow -lt $limit) {
-        Start-Sleep -Milliseconds 250
-    }
-    if (Test-Path -LiteralPath $exe) { throw 'Uninstaller left application EXE behind' }
-    if (Test-Path -LiteralPath $dll) { throw 'Uninstaller left app-private libmpv DLL behind' }
-    if (Test-Path -LiteralPath $vulkan) { throw 'Uninstaller left app-private Vulkan DLL behind' }
-    $uninstalled = $true
-    Write-Host 'PASS: NSIS silent install, app IPC, DLL SHA-256 and uninstall'
 } finally {
     if ($installed -and !$uninstalled) {
         Write-Warning "A failed installer smoke may have left a test installation at $dir"
