@@ -2,6 +2,8 @@ use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::ptr::null_mut;
+use std::sync::{Condvar, Mutex};
+use std::time::Duration;
 use tauri::WebviewWindow;
 use windows_sys::Win32::Foundation::{HWND, RECT};
 use windows_sys::Win32::UI::Controls::Dialogs::{
@@ -63,7 +65,63 @@ pub fn layout(parent: HWND, host: isize, scale: f64) {
     }
 }
 
-pub fn pick(parent: isize) -> Result<Option<PathBuf>, String> {
+#[derive(Default)]
+struct PickerState {
+    active: bool,
+    closing: bool,
+}
+
+#[derive(Default)]
+pub struct Picker {
+    state: Mutex<PickerState>,
+    returned: Condvar,
+}
+
+impl Picker {
+    pub fn choose(&self, parent: isize) -> Result<Option<PathBuf>, String> {
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.closing || state.active {
+                return Err("File picker unavailable".into());
+            }
+            state.active = true;
+        }
+        let result = pick(parent);
+        self.state.lock().unwrap().active = false;
+        self.returned.notify_all();
+        result
+    }
+
+    // The blocking close task keeps the owner HWND alive until the modal call returns.
+    pub fn shutdown(&self, parent: isize) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetClassNameW, GetLastActivePopup, GetWindow, PostMessageW, GW_OWNER, WM_CLOSE,
+        };
+        let parent = parent as HWND;
+        let mut state = self.state.lock().unwrap();
+        state.closing = true;
+        while state.active {
+            unsafe {
+                let dialog = GetLastActivePopup(parent);
+                let mut class = [0u16; 32];
+                let len = GetClassNameW(dialog, class.as_mut_ptr(), class.len() as i32);
+                if dialog != parent
+                    && GetWindow(dialog, GW_OWNER) == parent
+                    && String::from_utf16_lossy(&class[..len as usize]) == "#32770"
+                {
+                    PostMessageW(dialog, WM_CLOSE, 0, 0);
+                }
+            }
+            state = self
+                .returned
+                .wait_timeout(state, Duration::from_millis(40))
+                .unwrap()
+                .0;
+        }
+    }
+}
+
+fn pick(parent: isize) -> Result<Option<PathBuf>, String> {
     let mut buffer = vec![0u16; 32768];
     let filter: Vec<_> = "MP4 video\0*.mp4\0\0".encode_utf16().collect();
     let mut dialog = OPENFILENAMEW::default();

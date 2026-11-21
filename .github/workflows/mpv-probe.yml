@@ -48,6 +48,20 @@ jobs:
           name: HongGuoRust-M2-debug-x64
           path: src-tauri/target/debug/hongguorust.exe
           if-no-files-found: error
+      - uses: actions/checkout@v4
+        with:
+          repository: imniko/SetDPI
+          ref: fb11d54403d825a38c96314d081af66ca00522a9
+          path: .ci/SetDPI
+          persist-credentials: false
+      - name: Build the runner-only display scale controller
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $msbuild = & $vswhere -latest -products * -find 'MSBuild\Current\Bin\MSBuild.exe' | Select-Object -First 1
+          & $msbuild .ci/SetDPI/SetDpi.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $exe = Get-ChildItem .ci/SetDPI -Recurse -Filter SetDpi.exe | Select-Object -First 1
+          "M2_CI_SETDPI=$($exe.FullName)" >> $env:GITHUB_ENV
       - name: Test embedded pixels and playing-window close
         run: |
           foreach ($name in 'AudioEndpointBuilder','Audiosrv') {

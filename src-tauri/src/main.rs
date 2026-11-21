@@ -33,6 +33,7 @@ fn main() {
         Err(_) => logger.with_writer(std::io::stderr).init(),
     }
     tauri::Builder::default()
+        .manage(window::Picker::default())
         .setup(|app| {
             let win = app
                 .get_webview_window("main")
@@ -58,6 +59,9 @@ fn main() {
                         let requested = Instant::now();
                         let win = win.clone();
                         tauri::async_runtime::spawn_blocking(move || {
+                            if let Ok(hwnd) = win.hwnd() {
+                                win.state::<window::Picker>().shutdown(hwnd.0 as isize);
+                            }
                             if win.state::<PlayerService>().join().is_err() {
                                 tracing::error!("player worker panicked");
                             }

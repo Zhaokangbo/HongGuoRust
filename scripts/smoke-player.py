@@ -101,19 +101,31 @@ def desktop_checks(main, child):
     show = bind("ShowWindow", wt.BOOL, wt.HWND, c.c_int)
     iconic = bind("IsIconic", wt.BOOL, wt.HWND)
     dpi = bind("GetDpiForWindow", wt.UINT, wt.HWND)
-    for handle, _, _ in win32api.EnumDisplayMonitors():
-        left, top, _, _ = win32api.GetMonitorInfo(handle)["Work"]
-        win32gui.SetWindowPos(main, 0, left+25, top+30, 720, 480, 0)
-        until(lambda: win32api.MonitorFromWindow(main) == handle, "window on test monitor")
-        frame(child, {"green"})
-        def correct_bounds():
-            width, height = win32gui.GetClientRect(main)[2:]
-            x, y = win32gui.ClientToScreen(main, (0,0))
-            scale = dpi(main) / 96
-            edges = [x + 18*scale,y + 66*scale,x + width - 18*scale,y + height - 96*scale]
-            return all(abs(a-b) <= 2 for a,b in zip(win32gui.GetWindowRect(child),edges))
-        until(correct_bounds, "scaled client bounds")
-        print(f"Resized native host verified at actual {dpi(main)} DPI", flush=True)
+    tool = os.environ.get("M2_CI_SETDPI") if os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" else None
+    original = subprocess.check_output([tool,"value"], text=True).strip() if tool else ""
+    can_set = original.isdigit() and int(original) >= 100
+    print(f"Display scale before test: reported={dpi(main)} DPI, configurable={can_set}", flush=True)
+    try:
+        for target in ([100,150] if can_set else [None]):
+            if target:
+                print(subprocess.check_output([tool,str(target)],text=True,timeout=10), flush=True)
+                until(lambda: dpi(main) == round(96*target/100), f"actual {target}% display scaling", 12)
+            for handle, _, _ in win32api.EnumDisplayMonitors():
+                left, top, _, _ = win32api.GetMonitorInfo(handle)["Work"]
+                win32gui.SetWindowPos(main, 0, left+25, top+30, 720, 480, 0)
+                until(lambda: win32api.MonitorFromWindow(main) == handle, "window on test monitor")
+                frame(child, {"green"})
+                def correct_bounds():
+                    width, height = win32gui.GetClientRect(main)[2:]
+                    x, y = win32gui.ClientToScreen(main, (0,0))
+                    scale = dpi(main) / 96
+                    edges = [x + 18*scale,y + 66*scale,x + width - 18*scale,y + height - 96*scale]
+                    return all(abs(a-b) <= 2 for a,b in zip(win32gui.GetWindowRect(child),edges))
+                until(correct_bounds, "scaled client bounds")
+                print(f"Resized native host verified at actual {dpi(main)} DPI", flush=True)
+    finally:
+        if can_set:
+            subprocess.run([tool, original],check=True,timeout=10)
     show(main, 6)
     until(lambda: iconic(main), "minimized window")
     show(main, 9)
@@ -150,12 +162,14 @@ def run(exe, clip, second, corrupt, detailed):
             button("打开本地 MP4").invoke()
             dialog = Desktop(backend="win32").window(process=process.pid,class_name="#32770")
             dialog.wait("visible enabled",timeout=15)
-            host = dialog.child_window(control_id=1148)
-            if host.exists(timeout=.3):
-                edit = host.child_window(class_name="Edit").wrapper_object()
-            else:
-                edit = dialog.child_window(control_id=1152,class_name="Edit").wrapper_object()
-            edit.set_edit_text(str(path))
+            edits = [e for e in dialog.descendants(class_name="Edit") if e.is_visible()]
+            candidates = [e for e in edits if e.control_id() in (1148,1152) or
+                          e.parent().control_id() == 1148]
+            if not candidates and len(edits) == 1:
+                candidates = edits
+            if len(candidates) != 1:
+                raise RuntimeError(f"Filename edit controls: {[(e.control_id(),e.parent().control_id()) for e in edits]}")
+            candidates[0].set_edit_text(str(path))
             dialog.child_window(control_id=1).click()
             dialog.wait_not("visible",timeout=15)
         select(clip)
@@ -173,6 +187,10 @@ def run(exe, clip, second, corrupt, detailed):
             desktop_checks(main, child)
             button("停止").invoke()
             until(lambda: text_visible("Idle"), "stopped snapshot")
+            select(clip)
+            select(second)
+            frame(child, {"green"})
+            until(lambda: text_visible(second.name) and text_visible("Playing"), "rapid A/B replacement")
             select(corrupt)
             until(lambda: text_visible("Error"), "corrupt MP4 error")
             select(second)
@@ -180,6 +198,9 @@ def run(exe, clip, second, corrupt, detailed):
             until(lambda: text_visible("Playing"), "recovered playback")
         else:
             until(lambda: text_visible("Playing"), "playing before close")
+        if detailed:
+            button("打开本地 MP4").invoke()
+            Desktop(backend="win32").window(process=process.pid,class_name="#32770").wait("visible",timeout=15)
         children = psutil.Process(process.pid).children(recursive=True)
         if not close(main,0x10,0,0) or process.wait(timeout=15) != 0:
             raise RuntimeError("Normal playing-window close failed")
@@ -191,7 +212,7 @@ def run(exe, clip, second, corrupt, detailed):
             process.kill()
             process.wait()
 
-with tempfile.TemporaryDirectory() as directory:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
     clip = Path(directory) / "视频 test 440Hz.mp4"
     subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
         "-f", "lavfi", "-i", "color=red:s=320x180:r=25:d=1",
