@@ -240,10 +240,10 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     let mut shared = state.lock().unwrap();
                     match request {
                         PlayerControl::Pause(true) => {
-                            shared.player.update(id, PlaybackState::Paused, None);
+                            shared.player.set_user_paused(id, true);
                         }
                         PlayerControl::Pause(false) => {
-                            shared.player.update(id, PlaybackState::Playing, None);
+                            shared.player.set_user_paused(id, false);
                         }
                         _ => {}
                     }
@@ -262,9 +262,21 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                     Ok(Some(Observation::Restart)) => {
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
+                        state.lock().unwrap().player.mark_started(id);
+                    }
+                    Ok(Some(Observation::CacheWaiting(waiting))) => {
                         let mut shared = state.lock().unwrap();
-                        if shared.player.snapshot().state != PlaybackState::Paused {
-                            shared.player.update(id, PlaybackState::Playing, None);
+                        let old = shared.player.snapshot().state;
+                        shared.player.set_cache_waiting(id, waiting);
+                        let new_state = shared.player.snapshot().state;
+                        if old != new_state {
+                            info!(
+                                session_id = id,
+                                waiting_for_cache = waiting,
+                                old_state = ?old,
+                                new_state = ?new_state,
+                                "cache-driven playback transition"
+                            );
                         }
                     }
                     Ok(Some(Observation::End)) => {
