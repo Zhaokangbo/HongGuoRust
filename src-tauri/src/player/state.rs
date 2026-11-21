@@ -137,6 +137,27 @@ mod tests {
     }
 
     #[test]
+    fn progress_is_scoped_to_session_and_cleared_on_stop() {
+        let mut state = PlayerState::default();
+        let a = state.begin("A.mp4".into());
+        state.update(a, PlaybackState::Playing, None);
+        state.progress(a, Some(5.5), Some(120.0));
+        assert_eq!(state.snapshot().position_sec, Some(5.5));
+        assert_eq!(state.snapshot().duration_sec, Some(120.0));
+        let b = state.begin("B.mp4".into());
+        state.progress(a, Some(10.0), Some(120.0));
+        assert_eq!(state.snapshot().position_sec, None);
+        state.update(b, PlaybackState::Playing, None);
+        state.progress(b, Some(2.0), Some(30.0));
+        assert_eq!(state.snapshot().position_sec, Some(2.0));
+        state.progress(b, Some(f64::NAN), Some(f64::INFINITY));
+        assert_eq!(state.snapshot().position_sec, Some(2.0));
+        state.clear(Some(b));
+        assert_eq!(state.snapshot().position_sec, None);
+        assert_eq!(state.snapshot().duration_sec, None);
+    }
+
+    #[test]
     fn replacement_rejects_late_restart_end_error_and_stop() {
         let mut s = PlayerState::default();
         let a = s.begin("A.mp4".into());

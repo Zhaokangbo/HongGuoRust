@@ -26,6 +26,7 @@ pub fn public_https_url(value: &str) -> Result<String, String> {
     } else {
         authority
     };
+    let host = host.to_ascii_lowercase();
     let labels: Vec<_> = host.split('.').collect();
     if labels.len() < 2
         || labels.iter().any(|label| label.is_empty() || label.starts_with('-')
