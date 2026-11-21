@@ -156,3 +156,6 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 /* M9-B1: request lifecycle feedback and explicit cancellation/retry. */
 .catalog-request-error { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: #ffb7a8; font-size: 12px; margin: 12px 0; }
 .catalog-request-error button { padding: 6px 10px; }
+
+/* M9-B2: optional user-owned JSON source import, with explicit destructive confirmation. */
+.catalog-manifest-info { color: #a0e9cd; font-size: 12px; margin: 8px 0; }
