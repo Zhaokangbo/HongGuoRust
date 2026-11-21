@@ -1,5 +1,5 @@
 export interface PlayerSnapshot {
-  state: "Idle" | "Loading" | "Playing" | "Ended" | "Error";
+  state: "Idle" | "Loading" | "Playing" | "Paused" | "Ended" | "Error";
   filename?: string;
   error?: { stage: string; code: string; message: string };
   revision: number;
@@ -10,7 +10,7 @@ export interface PlayerSnapshot {
 declare global {
   interface Window {
     __TAURI__?: {
-      core: { invoke<T>(command: string): Promise<T> };
+      core: { invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> };
     };
   }
 }
