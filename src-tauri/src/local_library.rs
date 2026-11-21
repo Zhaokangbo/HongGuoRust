@@ -244,9 +244,11 @@ impl LocalLibrary {
             return Ok(None);
         }
         let sec = history.position_sec;
-        if sec < 5.0 || history.duration_sec.is_some_and(|d| {
-            !d.is_finite() || d < 10.0 || sec >= d - 5.0 || sec >= d * 0.95
-        }) {
+        if sec < 5.0
+            || history
+                .duration_sec
+                .is_some_and(|d| !d.is_finite() || d < 10.0 || sec >= d - 5.0 || sec >= d * 0.95)
+        {
             return Ok(None);
         }
         Ok(Some(sec))
@@ -391,12 +393,16 @@ mod tests {
         let library = LocalLibrary::from_path(file.clone());
         assert_eq!(library.resume_point(1).unwrap(), None);
         library.mark_started(1).unwrap();
-        library.record_progress(1, Some(40.0), Some(120.0), false).unwrap();
+        library
+            .record_progress(1, Some(40.0), Some(120.0), false)
+            .unwrap();
         drop(library);
 
         let reopened = LocalLibrary::from_path(file);
         assert_eq!(reopened.resume_point(1).unwrap(), Some(40.0));
-        reopened.record_progress(1, Some(117.0), Some(120.0), true).unwrap();
+        reopened
+            .record_progress(1, Some(117.0), Some(120.0), true)
+            .unwrap();
         assert!(reopened.list().unwrap()[0].completed);
         assert!(reopened.resume_point(1).unwrap().is_none());
         reopened.mark_started(1).unwrap();

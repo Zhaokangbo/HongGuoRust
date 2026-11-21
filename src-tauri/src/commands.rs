@@ -142,9 +142,6 @@ pub fn library_play(player: State<'_, PlayerService>, id: u64) -> Result<u64, St
 }
 
 #[tauri::command]
-pub fn library_clear_history(
-    library: State<'_, Arc<LocalLibrary>>,
-    id: u64,
-) -> Result<(), String> {
+pub fn library_clear_history(library: State<'_, Arc<LocalLibrary>>, id: u64) -> Result<(), String> {
     library.clear_history(id)
 }

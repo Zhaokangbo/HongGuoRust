@@ -1,9 +1,9 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::history::{finish, HistorySession};
-use crate::local_library::LocalLibrary;
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
+use crate::local_library::LocalLibrary;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -204,12 +204,7 @@ fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) 
     }
 }
 
-fn run(
-    host: isize,
-    rx: Receiver<Command>,
-    state: Arc<Mutex<Shared>>,
-    library: Arc<LocalLibrary>,
-) {
+fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: Arc<LocalLibrary>) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
     let mut history: Option<HistorySession> = None;
@@ -319,7 +314,11 @@ fn run(
                                     tracing::warn!(session_id = id, error = %e.message, "resume seek failed");
                                 } else {
                                     active.seeked(&library, sec);
-                                    info!(session_id = id, position_sec = sec, "resume seek accepted");
+                                    info!(
+                                        session_id = id,
+                                        position_sec = sec,
+                                        "resume seek accepted"
+                                    );
                                 }
                             }
                         }

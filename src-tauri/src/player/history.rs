@@ -64,23 +64,16 @@ impl HistorySession {
         if !self.started {
             return;
         }
-        if let Err(e) = library.record_progress(
-            self.library_id,
-            self.position,
-            self.duration,
-            completed,
-        ) {
+        if let Err(e) =
+            library.record_progress(self.library_id, self.position, self.duration, completed)
+        {
             warn!(session_id = self.session, error = %e, "history checkpoint save failed");
         }
         self.last_saved = Instant::now();
     }
 }
 
-pub fn finish(
-    active: &mut Option<HistorySession>,
-    library: &LocalLibrary,
-    completed: bool,
-) {
+pub fn finish(active: &mut Option<HistorySession>, library: &LocalLibrary, completed: bool) {
     if let Some(mut history) = active.take() {
         history.save(library, completed);
     }
