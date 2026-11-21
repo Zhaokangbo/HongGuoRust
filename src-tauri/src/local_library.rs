@@ -250,10 +250,8 @@ mod tests {
 
         let reopened = LocalLibrary::from_path(db);
         assert_eq!(reopened.list().unwrap().len(), 1);
-        assert_eq!(
-            reopened.resolve_path(first.id).unwrap(),
-            fs::canonicalize(&media).unwrap()
-        );
+        // Persist the original DOS path instead of the Windows verbatim path.
+        assert_eq!(reopened.resolve_path(first.id).unwrap(), media);
         reopened.remove(first.id).unwrap();
         assert!(media.exists());
         assert!(reopened.list().unwrap().is_empty());
