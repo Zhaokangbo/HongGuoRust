@@ -23,7 +23,19 @@ try {
     if (Test-Path -LiteralPath $dir) { throw 'Refusing to reuse an installation directory' }
     Write-Host "Installing NSIS test candidate into $dir"
     # /D overrides NSIS install directory. It must be the last option, without quotes.
-    Run-Nsis $setup @('/S', "/D=$dir") 'NSIS installation'
+    try {
+        Run-Nsis -file $setup -arguments @('/S', "/D=$dir") -stage 'NSIS installation'
+    } catch {
+        Write-Warning 'NSIS installation failed. Installed file layout (if any):'
+        if (Test-Path -LiteralPath $dir) {
+            Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue |
+                Select-Object -First 50 -ExpandProperty FullName |
+                ForEach-Object { Write-Host "  $_" }
+        } else {
+            Write-Host "  No destination directory created: $dir"
+        }
+        throw
+    }
     $installed = $true
 
     if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
@@ -49,7 +61,7 @@ try {
         throw "Expected exactly one uninstaller, found $($uninstallers.Count)"
     }
     Write-Host "Uninstalling from $dir"
-    Run-Nsis $uninstallers[0].FullName @('/S') 'NSIS uninstallation'
+    Run-Nsis -file $uninstallers[0].FullName -arguments @('/S') -stage 'NSIS uninstallation'
     $limit = [DateTime]::UtcNow.AddSeconds(20)
     while ((Test-Path -LiteralPath $exe) -and [DateTime]::UtcNow -lt $limit) {
         Start-Sleep -Milliseconds 250
