@@ -33,6 +33,22 @@ pub fn stop(player: State<'_, PlayerService>) -> Result<(), String> {
     player.stop()
 }
 
+#[tauri::command]
+pub fn open_https(player: State<'_, PlayerService>, url: String) -> Result<u64, String> {
+    player.open_https(url)
+}
+
+#[tauri::command]
+pub fn get_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    window.is_fullscreen().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<bool, String> {
+    window.set_fullscreen(fullscreen).map_err(|error| error.to_string())?;
+    window.is_fullscreen().map_err(|error| error.to_string())
+}
+
 async fn dispatch_control(window: WebviewWindow, request: PlayerControl) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || window.state::<PlayerService>().control(request))
         .await

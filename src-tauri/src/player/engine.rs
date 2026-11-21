@@ -1,8 +1,9 @@
 use super::controls::PlayerControl;
+use super::source::MediaSource;
 use super::state::Failure;
 use libmpv2::{events::Event, Mpv};
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub fn local_mp4(path: &Path) -> Result<&str, String> {
     let name = path.to_str().ok_or("The path is not valid Unicode")?;
@@ -22,12 +23,14 @@ pub enum Observation {
     Loaded,
     Restart,
     End,
+    Progress { position: Option<f64>, duration: Option<f64> },
 }
 
 pub struct Engine {
     mpv: Mpv,
     pub session: u64,
     pub opened: Instant,
+    progress_checked_at: Instant,
 }
 
 fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
@@ -39,31 +42,36 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
 }
 
 impl Engine {
-    pub fn load(host: isize, path: &Path, session: u64, opened: Instant) -> Result<Self, Failure> {
-        let name = local_mp4(path).map_err(|message| Failure {
-            stage: "validate",
-            code: "invalid_local_mp4".into(),
-            message,
-        })?;
+    pub fn load(host: isize, source: &MediaSource, session: u64, opened: Instant) -> Result<Self, Failure> {
+        let name = match source {
+            MediaSource::Local(path) => local_mp4(path)
+                .map(str::to_owned)
+                .map_err(|message| Failure { stage: "validate", code: "invalid_local_mp4".into(), message })?,
+            MediaSource::Https(url) => url.clone(),
+        };
+        let local = matches!(source, MediaSource::Local(_));
         let mpv = Mpv::with_initializer(|init| {
             init.set_option("wid", host as i64)?;
             init.set_option("load-scripts", false)?;
             init.set_option("ytdl", false)?;
             init.set_option("demuxer", "lavf")?;
-            init.set_option("demuxer-lavf-format", "mov")?;
-            init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
+            if local {
+                init.set_option("demuxer-lavf-format", "mov")?;
+                init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
+            }
             init.set_option("sub-auto", "no")?;
             init.set_option("audio-file-auto", "no")?;
             init.set_option("vo", "gpu-next,gpu,direct3d")?;
             Ok(())
         })
         .map_err(|e| native_error("initialize", e))?;
-        mpv.command("loadfile", &[name])
+        mpv.command("loadfile", &[name.as_str()])
             .map_err(|e| native_error("loadfile", e))?;
         Ok(Self {
             mpv,
             session,
             opened,
+            progress_checked_at: Instant::now(),
         })
     }
 
@@ -104,7 +112,17 @@ impl Engine {
             Some(Ok(Event::PlaybackRestart)) => Ok(Some(Observation::Restart)),
             Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => Ok(Some(Observation::End)),
             Some(Err(e)) => Err(native_error("playback", e)),
-            _ => Ok(None),
+            _ => {
+                if self.progress_checked_at.elapsed() >= Duration::from_millis(250) {
+                    self.progress_checked_at = Instant::now();
+                    let position = self.mpv.get_property::<f64>("time-pos").ok();
+                    let duration = self.mpv.get_property::<f64>("duration").ok();
+                    if position.is_some() || duration.is_some() {
+                        return Ok(Some(Observation::Progress { position, duration }));
+                    }
+                }
+                Ok(None)
+            }
         }
     }
 }

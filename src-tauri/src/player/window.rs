@@ -42,24 +42,29 @@ pub fn create(window: &WebviewWindow) -> Result<isize, String> {
         parent,
         host as isize,
         window.scale_factor().map_err(|e| e.to_string())?,
+        window.is_fullscreen().map_err(|e| e.to_string())?,
     );
     Ok(host as isize)
 }
 
-pub fn layout(parent: HWND, host: isize, scale: f64) {
+pub fn layout(parent: HWND, host: isize, scale: f64, fullscreen: bool) {
     let mut rect = RECT::default();
     if unsafe { GetClientRect(parent, &mut rect) } == 0 {
         return;
     }
     let px = |v: f64| (v * scale).round() as i32;
+    let left = if fullscreen { 0 } else { px(18.) };
+    let top = if fullscreen { 0 } else { px(66.) };
+    let right = if fullscreen { 0 } else { px(18.) };
+    let bottom = if fullscreen { 0 } else { px(96.) };
     unsafe {
         SetWindowPos(
             host as HWND,
             HWND_TOP,
-            px(18.),
-            px(66.),
-            (rect.right - 2 * px(18.)).max(1),
-            (rect.bottom - px(66.) - px(96.)).max(1),
+            left,
+            top,
+            (rect.right - left - right).max(1),
+            (rect.bottom - top - bottom).max(1),
             SWP_NOACTIVATE,
         );
     }

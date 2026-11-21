@@ -26,6 +26,10 @@ pub struct PlayerSnapshot {
     pub session_id: Option<u64>,
     pub app_version: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_sec: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_sec: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Failure>,
@@ -39,6 +43,8 @@ pub struct PlayerState {
     state: PlaybackState,
     filename: Option<String>,
     error: Option<Failure>,
+    position_sec: Option<f64>,
+    duration_sec: Option<f64>,
 }
 
 impl PlayerState {
@@ -48,6 +54,8 @@ impl PlayerState {
             revision: self.revision,
             session_id: self.session,
             app_version: env!("CARGO_PKG_VERSION"),
+            position_sec: self.position_sec,
+            duration_sec: self.duration_sec,
             filename: self.filename.clone(),
             error: self.error.clone(),
         }
@@ -58,6 +66,8 @@ impl PlayerState {
         self.session = Some(self.sequence);
         self.filename = Some(filename);
         self.error = None;
+        self.position_sec = None;
+        self.duration_sec = None;
         self.state = PlaybackState::Loading;
         self.revision += 1;
         self.sequence
@@ -81,12 +91,34 @@ impl PlayerState {
         }
     }
 
+    pub fn progress(&mut self, id: u64, position: Option<f64>, duration: Option<f64>) {
+        if !self.current(id)
+            || !matches!(self.state, PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Loading)
+        { return; }
+        let position = position.filter(|value| value.is_finite() && *value >= 0.0);
+        let duration = duration.filter(|value| value.is_finite() && *value >= 0.0);
+        if let Some(value) = position {
+            if self.position_sec.is_none_or(|old| (old - value).abs() >= 0.05) {
+                self.position_sec = Some(value);
+                self.revision += 1;
+            }
+        }
+        if let Some(value) = duration {
+            if self.duration_sec.is_none_or(|old| (old - value).abs() >= 0.05) {
+                self.duration_sec = Some(value);
+                self.revision += 1;
+            }
+        }
+    }
+
     pub fn clear(&mut self, id: Option<u64>) {
         if self.session.is_some() && self.session == id {
             self.state = PlaybackState::Idle;
             self.session = None;
             self.filename = None;
             self.error = None;
+            self.position_sec = None;
+            self.duration_sec = None;
             self.revision += 1;
         }
     }
