@@ -117,3 +117,7 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 /* M7-A: history indicators reuse the local-media row layout. */
 .local-history-detail { color: #a6e9c9; font-size: 11px; }
 .catalog-tabs { flex-wrap: wrap; }
+
+/* M7-B: progress is informational; position remains owned by the native worker. */
+.local-progress { width: min(300px, 100%); height: 5px; margin-top: 5px; border-radius: 5px; background: #3a5043; overflow: hidden; }
+.local-progress-fill { height: 100%; border-radius: inherit; background: #9fe6c2; }

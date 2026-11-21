@@ -24,6 +24,8 @@ struct StoredMedia {
     path: PathBuf,
     #[serde(default)]
     history: PlaybackHistory,
+    #[serde(default)]
+    favorite: bool,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -64,6 +66,7 @@ pub struct LocalMedia {
     duration_sec: Option<f64>,
     last_played_ms: Option<u64>,
     completed: bool,
+    favorite: bool,
 }
 
 impl From<&StoredMedia> for LocalMedia {
@@ -82,6 +85,7 @@ impl From<&StoredMedia> for LocalMedia {
             duration_sec: item.history.duration_sec,
             last_played_ms: item.history.last_played_ms,
             completed: item.history.completed,
+            favorite: item.favorite,
         }
     }
 }
@@ -213,6 +217,7 @@ impl LocalLibrary {
             title,
             path,
             history: PlaybackHistory::default(),
+            favorite: false,
         };
         let summary = LocalMedia::from(&item);
         next.items.push(item);
@@ -301,6 +306,29 @@ impl LocalLibrary {
             }
         }
         item.history.last_played_ms = Some(now_ms());
+        store_data(&self.file, &next)?;
+        *data = next;
+        Ok(())
+    }
+
+    pub fn set_favorite(&self, id: u64, favorite: bool) -> Result<(), String> {
+        self.ready()?;
+        let mut data = self.data.lock().map_err(|e| e.to_string())?;
+        let item = data
+            .items
+            .iter()
+            .find(|item| item.id == id)
+            .ok_or("媒体条目不存在")?;
+        if item.favorite == favorite {
+            return Ok(());
+        }
+        let mut next = data.clone();
+        let item = next
+            .items
+            .iter_mut()
+            .find(|item| item.id == id)
+            .ok_or("媒体条目不存在")?;
+        item.favorite = favorite;
         store_data(&self.file, &next)?;
         *data = next;
         Ok(())
@@ -413,6 +441,34 @@ mod tests {
         assert_eq!(reopened.resume_point(1).unwrap(), Some(8.0));
         reopened.clear_history(1).unwrap();
         assert!(reopened.list().unwrap()[0].last_played_ms.is_none());
+        assert!(media.exists());
+        drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn favorites_survive_restart_and_do_not_clear_playback_history() {
+        let dir = test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let media = dir.join("favorite.mp4");
+        fs::write(&media, b"test").unwrap();
+        let file = dir.join("library.json");
+        let library = LocalLibrary::from_path(file.clone());
+        let id = library.add(media.clone()).unwrap().id;
+        library
+            .record_progress(id, Some(18.0), Some(120.0), false)
+            .unwrap();
+        library.set_favorite(id, true).unwrap();
+        assert!(library.list().unwrap()[0].favorite);
+        drop(library);
+
+        let reopened = LocalLibrary::from_path(file);
+        assert!(reopened.list().unwrap()[0].favorite);
+        assert_eq!(reopened.resume_point(id).unwrap(), Some(18.0));
+        reopened.clear_history(id).unwrap();
+        assert!(reopened.list().unwrap()[0].favorite);
+        reopened.set_favorite(id, false).unwrap();
+        assert!(!reopened.list().unwrap()[0].favorite);
         assert!(media.exists());
         drop(reopened);
         fs::remove_dir_all(dir).unwrap();

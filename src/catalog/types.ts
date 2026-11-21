@@ -29,4 +29,5 @@ export interface LocalMedia {
   durationSec: number | null;
   lastPlayedMs: number | null;
   completed: boolean;
+  favorite: boolean;
 }

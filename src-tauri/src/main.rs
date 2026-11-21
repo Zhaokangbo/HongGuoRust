@@ -95,6 +95,7 @@ fn main() {
             commands::library_remove,
             commands::library_play,
             commands::library_clear_history,
+            commands::library_set_favorite,
             commands::set_catalog_visible,
             commands::open_local,
             commands::stop,

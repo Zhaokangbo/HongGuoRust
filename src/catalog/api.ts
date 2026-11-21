@@ -33,3 +33,7 @@ export function removeLocalMedia(id: number): Promise<void> {
 export function clearLocalHistory(id: number): Promise<void> {
   return desktopInvoke<void>("library_clear_history", { id });
 }
+
+export function setLocalFavorite(id: number, favorite: boolean): Promise<void> {
+  return desktopInvoke<void>("library_set_favorite", { id, favorite });
+}
