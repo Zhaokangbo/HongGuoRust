@@ -136,3 +136,11 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 .local-browse-tools select { min-width: 158px; }
 .local-browse-count { color: #98b6a4; font-size: 12px; margin-bottom: 9px; }
 .playlist-indicator { color: #bcebd5; font: 11px Consolas, monospace; white-space: nowrap; }
+
+/* M8-B: explicit opt-in, ephemeral auto-next on Rust natural EOF only. */
+.playlist-auto-next {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: #bcebd5; font-size: 11px; flex: none;
+}
+.playlist-auto-next input { width: 14px; height: 14px; accent-color: #a0e9cd; }
+.playlist-auto-error { font-size: 11px; color: #ffb7a8; flex: 0 1 220px; white-space: normal; }

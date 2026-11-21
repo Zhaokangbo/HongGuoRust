@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import { nextAtNaturalEof, type LocalPlaylist } from "./player/autoNext";
 import { CatalogView } from "./catalog/CatalogView";
 import "./style.css";
 
@@ -13,12 +14,6 @@ function clock(value?: number): string {
   if (value === undefined || !Number.isFinite(value)) return "--:--";
   const seconds = Math.floor(Math.max(0, value));
   return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
-}
-
-interface LocalPlaylist {
-  ids: number[];
-  index: number;
-  origin: string;
 }
 
 function App() {
@@ -34,6 +29,11 @@ function App() {
   const [fullscreen, setFullscreen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [playlist, setPlaylist] = useState<LocalPlaylist | null>(null);
+  const [autoNext, setAutoNext] = useState(false);
+  const [autoNextError, setAutoNextError] = useState("");
+  // A native session ID is the sole identity for an EOF event.
+  const consumedEofRef = useRef<number | null>(null);
+  const transitionRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -117,42 +117,92 @@ function App() {
     if (await command("set_catalog_visible", { visible: false })) setCatalogOpen(false);
   }
 
+  /** Queue playback uses the session ID returned by the existing Rust IPC. */
+  async function loadQueuedItem(ids: number[], index: number, origin: string): Promise<boolean> {
+    if (transitionRef.current || index < 0 || index >= ids.length) return false;
+    transitionRef.current = true;
+    setBusy(true);
+    setCommandError("");
+    setAutoNextError("");
+    try {
+      const core = window.__TAURI__?.core;
+      if (!core) throw new Error("Rust desktop bridge unavailable");
+      const sessionId = await core.invoke<number>("library_play", { id: ids[index] });
+      if (!Number.isSafeInteger(sessionId) || sessionId <= 0) {
+        throw new Error("播放接口未返回有效会话 ID");
+      }
+      setPlaylist({ ids: [...ids], index, origin, sessionId });
+      return true;
+    } catch (reason) {
+      setCommandError(String(reason));
+      return false;
+    } finally {
+      transitionRef.current = false;
+      setBusy(false);
+    }
+  }
+
   async function playFromCatalog(seriesId: string, episodeId: string): Promise<boolean> {
-    const played = await command("catalog_play_episode", { seriesId, episodeId });
-    if (!played) return false;
-    setPlaylist(null);
-    await backToPlayer();
-    return true;
+    if (transitionRef.current) return false;
+    transitionRef.current = true;
+    // Invalidate a terminal queue before asynchronous IPC can run.
+    consumedEofRef.current = playlist?.sessionId ?? null;
+    try {
+      const played = await command("catalog_play_episode", { seriesId, episodeId });
+      if (!played) return false;
+      setPlaylist(null);
+      setAutoNextError("");
+      await backToPlayer();
+      return true;
+    } finally {
+      transitionRef.current = false;
+    }
   }
 
   async function playFromLocal(id: number, orderedIds: number[], origin: string): Promise<boolean> {
-    const played = await command("library_play", { id });
-    if (!played) return false;
     const index = orderedIds.indexOf(id);
-    setPlaylist({
-      ids: index >= 0 ? [...orderedIds] : [id],
-      index: index >= 0 ? index : 0,
-      origin,
-    });
-    await backToPlayer();
-    return true;
+    const ids = index < 0 ? [id] : orderedIds;
+    const played = await loadQueuedItem(ids, index < 0 ? 0 : index, origin);
+    if (played) await backToPlayer();
+    return played;
   }
 
   async function movePlaylist(delta: -1 | 1) {
-    if (!playlist || busy) return;
+    if (!playlist || transitionRef.current || busy) return;
     const targetIndex = playlist.index + delta;
     if (targetIndex < 0 || targetIndex >= playlist.ids.length) return;
-    const ok = await command("library_play", { id: playlist.ids[targetIndex] });
-    if (ok) setPlaylist(current =>
-      current && current.ids.join(",") === playlist.ids.join(",")
-        ? { ...current, index: targetIndex } : current);
+    // Never update queue index when the native player rejected a file.
+    await loadQueuedItem(playlist.ids, targetIndex, playlist.origin);
   }
 
   async function playUnqueued(name: "open_local" | "open_https" | "stop",
     args?: Record<string, unknown>) {
-    const ok = await command(name, args);
-    if (ok) setPlaylist(null);
+    if (transitionRef.current) return;
+    transitionRef.current = true;
+    consumedEofRef.current = playlist?.sessionId ?? null;
+    try {
+      const ok = await command(name, args);
+      if (ok) {
+        setPlaylist(null);
+        setAutoNextError("");
+      }
+    } finally {
+      transitionRef.current = false;
+    }
   }
+
+  useEffect(() => {
+    if (transitionRef.current || busy || connectionError) return;
+    const nextIndex = nextAtNaturalEof(playlist, snapshot, autoNext, consumedEofRef.current);
+    if (nextIndex === null || !playlist) return;
+    // Consume this exact EOF synchronously before starting any async command.
+    // A persistent Ended snapshot can never advance twice.
+    consumedEofRef.current = playlist.sessionId;
+    const { ids, origin } = playlist;
+    void loadQueuedItem(ids, nextIndex, origin).then(ok => {
+      if (!ok) setAutoNextError("下一部自动播放失败，已停止本次自动尝试。请手动选择视频。");
+    });
+  }, [playlist, snapshot, autoNext, busy, connectionError]);
 
   const connected = snapshot !== null && !connectionError;
   const active = snapshot?.state === "Playing" || snapshot?.state === "Paused" || snapshot?.state === "Buffering";
@@ -215,11 +265,21 @@ function App() {
         {playlist && <>
           <button disabled={busy || playlist.index === 0}
             onClick={() => void movePlaylist(-1)} title="按本次播放列表顺序播放上一部">上一部</button>
-          <span className="playlist-indicator" title={playlist.origin + " · 本次队列；不自动连播"}>
+          <span className="playlist-indicator" title={playlist.origin + " · 当前临时播放列表"}>
             列表 {playlist.index + 1}/{playlist.ids.length}
           </span>
           <button disabled={busy || playlist.index >= playlist.ids.length - 1}
             onClick={() => void movePlaylist(1)} title="按本次播放列表顺序播放下一部">下一部</button>
+          <label className="playlist-auto-next" title="仅自然播完才自动播放下一部；手动停止或出错不连播">
+            <input type="checkbox" checked={autoNext}
+              onChange={event => setAutoNext(event.target.checked)} />
+            自动连播
+          </label>
+          {autoNext && snapshot?.state === "Ended" &&
+            snapshot.sessionId === playlist.sessionId &&
+            playlist.index === playlist.ids.length - 1 &&
+            <span className="playlist-indicator" role="status">列表已播放完毕</span>}
+          {autoNextError && <span className="playlist-auto-error" role="alert">{autoNextError}</span>}
         </>}
         <label>跳转秒数
           <input aria-label="跳转秒数" type="number" min={0} step={1} value={seekText}
