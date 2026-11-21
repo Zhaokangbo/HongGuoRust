@@ -6,6 +6,8 @@ on:
       - 'scripts/build-windows.ps1'
       - 'scripts/get-mpv.ps1'
       - 'scripts/prepare-mpv-msvc.ps1'
+      - 'scripts/smoke-installer.ps1'
+      - 'scripts/smoke-windows.ps1'
       - 'src-tauri/tauri.bundle.conf.json'
       - 'src-tauri/windows/hooks.nsh'
       - 'docs/acceptance/m5.md'
@@ -67,7 +69,7 @@ jobs:
         run: |
           $setup = @(Get-ChildItem src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' -File)
           if ($setup.Count -ne 1) { throw "Expected one NSIS setup, found $($setup.Count)" }
-          ./scripts/smoke-installer.ps1 -Installer $setup[0].FullName
+          ./scripts/smoke-installer.ps1 -Installer $setup[0].FullName -AuditReport 'build-evidence/m5-package-report.json'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Assert native runtime never entered git tracking
         shell: pwsh
@@ -80,6 +82,14 @@ jobs:
           }
           git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload binary-free candidate audit evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m5-package-evidence
+          path: build-evidence/m5-package-report.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload UI/window diagnostics only if candidate smoke fails
         if: failure()
         uses: actions/upload-artifact@v4
@@ -88,4 +98,5 @@ jobs:
           path: diagnostics/
           if-no-files-found: ignore
           retention-days: 7
-      # Do NOT upload setup.exe before license and clean-Windows acceptance.
+      # Upload ONLY text JSON evidence. Do NOT upload setup.exe, the installed app,
+      # libmpv DLL, or Vulkan DLL before redistribution audit and clean-Windows acceptance.
