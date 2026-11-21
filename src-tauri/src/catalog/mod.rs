@@ -2,9 +2,11 @@
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
 mod local;
+mod manifest;
 mod registry;
 pub(crate) mod request;
 
+pub use manifest::OwnedManifestStore;
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
 
 use request::RequestContext;

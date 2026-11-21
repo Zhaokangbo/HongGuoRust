@@ -194,7 +194,7 @@ impl OwnedManifestStore {
     }
 
     #[cfg(test)]
-    fn from_test_path(path: PathBuf) -> Self {
+    pub(crate) fn from_test_path(path: PathBuf) -> Self {
         Self::from_path(path)
     }
 
@@ -222,9 +222,13 @@ impl OwnedManifestStore {
     pub fn import_file(&self, source: &Path) -> Result<usize, String> {
         if !source
             .extension()
+            .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
         {
             return Err("manifest_file: 请选择 .json 清单文件".into());
+        }
+        if !source.is_file() {
+            return Err("manifest_file: 所选清单文件不存在".into());
         }
         let data = read_manifest(source)?;
         self.replace(data)

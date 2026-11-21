@@ -1,5 +1,8 @@
 use crate::catalog::request::DEFAULT_TIMEOUT_MS;
-use crate::catalog::{CatalogService, MediaTarget, ProviderInfo, SearchPage, Series, SeriesDetail};
+use crate::catalog::{
+    CatalogService, MediaTarget, OwnedManifestStore, ProviderInfo, SearchPage, Series,
+    SeriesDetail,
+};
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
@@ -154,6 +157,27 @@ pub fn catalog_play_episode(
         MediaTarget::Https(url) => player.open_https(url),
         MediaTarget::LocalLibrary(id) => player.open_library(id),
     }
+}
+
+#[tauri::command]
+pub async fn catalog_import_manifest(window: WebviewWindow) -> Result<Option<usize>, String> {
+    let owner = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+    tauri::async_runtime::spawn_blocking(move || {
+        window
+            .state::<window::Picker>()
+            .choose_manifest(owner)?
+            .map(|path| window.state::<Arc<OwnedManifestStore>>().import_file(&path))
+            .transpose()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn catalog_clear_manifest(
+    manifest: State<'_, Arc<OwnedManifestStore>>,
+) -> Result<(), String> {
+    manifest.clear()
 }
 
 #[tauri::command]
