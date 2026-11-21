@@ -7,8 +7,8 @@ pub(crate) mod request;
 
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
 
-use serde::Serialize;
 use request::RequestContext;
+use serde::Serialize;
 
 const PREVIEW_MP4: &str = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
 

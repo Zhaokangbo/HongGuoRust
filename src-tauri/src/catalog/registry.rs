@@ -245,8 +245,7 @@ impl CatalogService {
             Some(ctx) => provider.detail_with_request(local_id, ctx)?,
             None => provider.detail(local_id)?,
         };
-        let mut details =
-            result.ok_or_else(|| "series_not_found: Series not found".to_string())?;
+        let mut details = result.ok_or_else(|| "series_not_found: Series not found".to_string())?;
         if let Some(ctx) = request {
             ctx.check()?;
         }
@@ -474,9 +473,8 @@ mod tests {
 
     #[test]
     fn cancelling_one_provider_request_does_not_poison_the_registry() {
-        let catalog = Arc::new(
-            CatalogService::from_providers(vec![Box::new(SlowProvider)]).unwrap(),
-        );
+        let catalog =
+            Arc::new(CatalogService::from_providers(vec![Box::new(SlowProvider)]).unwrap());
         let worker_catalog = Arc::clone(&catalog);
         let handle = std::thread::spawn(move || {
             worker_catalog.search_page_with_request(None, Some("slow"), 0, 24, 91, 2_000)
@@ -493,6 +491,12 @@ mod tests {
         let err = handle.join().unwrap().unwrap_err();
         assert!(err.starts_with("provider_cancelled:"));
         assert!(!catalog.cancel_request(91));
-        assert_eq!(catalog.search_page(None, Some("slow"), 0, 24).unwrap().total, 0);
+        assert_eq!(
+            catalog
+                .search_page(None, Some("slow"), 0, 24)
+                .unwrap()
+                .total,
+            0
+        );
     }
 }

@@ -108,7 +108,11 @@ mod tests {
         let registry = RequestRegistry::default();
         let guard = registry.begin(7, DEFAULT_TIMEOUT_MS).unwrap();
         assert!(registry.cancel(7));
-        assert!(guard.context().check().unwrap_err().starts_with("provider_cancelled:"));
+        assert!(guard
+            .context()
+            .check()
+            .unwrap_err()
+            .starts_with("provider_cancelled:"));
         assert!(registry.begin(7, DEFAULT_TIMEOUT_MS).is_err());
         drop(guard);
         assert!(!registry.cancel(7));
@@ -131,6 +135,10 @@ mod tests {
         let registry = RequestRegistry::default();
         let guard = registry.begin(8, 50).unwrap();
         thread::sleep(Duration::from_millis(65));
-        assert!(guard.context().check().unwrap_err().starts_with("provider_timeout:"));
+        assert!(guard
+            .context()
+            .check()
+            .unwrap_err()
+            .starts_with("provider_timeout:"));
     }
 }
