@@ -120,3 +120,26 @@ jobs:
           if [[ -n "$existing" ]]; then test "$existing" = "$GITHUB_SHA"; else
             gh api --method POST "$api/refs" -f ref=refs/tags/phase1-m3 -f sha="$GITHUB_SHA"
           fi
+
+  tag-m4:
+    needs: playback
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[phase1-m4]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Tag after both main Windows workflows pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow windows.yml --event push --branch main --commit "$GITHUB_SHA" --json databaseId --jq '.[0].databaseId')
+          test -n "$id"
+          gh run watch -R "$GITHUB_REPOSITORY" "$id" --exit-status --interval 20
+          api="repos/$GITHUB_REPOSITORY/git"
+          existing=$(gh api "$api/matching-refs/tags/phase1-m4" --jq '.[] | select(.ref == "refs/tags/phase1-m4") | .object.sha')
+          if [[ -n "$existing" ]]; then test "$existing" = "$GITHUB_SHA"; else
+            gh api --method POST "$api/refs" -f ref=refs/tags/phase1-m4 -f sha="$GITHUB_SHA"
+          fi

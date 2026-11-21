@@ -99,7 +99,7 @@ function App() {
   }, [fullscreen]);
 
   const connected = snapshot !== null && !connectionError;
-  const active = snapshot?.state === "Playing" || snapshot?.state === "Paused";
+  const active = snapshot?.state === "Playing" || snapshot?.state === "Paused" || snapshot?.state === "Buffering";
   const controllable = connected && active && !busy;
   const error = connectionError || commandError || snapshot?.error?.message;
   const duration = snapshot?.durationSec ?? 0;

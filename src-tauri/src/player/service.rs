@@ -173,8 +173,20 @@ fn failed(state: &Mutex<Shared>, id: u64, failure: Failure) {
         .update(id, PlaybackState::Error, Some(failure));
 }
 
+fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) {
+    if let Some((session_id, started)) = since.take() {
+        info!(
+            session_id,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            reason,
+            "cache-wait interval ended"
+        );
+    }
+}
+
 fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
     let mut engine: Option<Engine> = None;
+    let mut cache_since: Option<(u64, Instant)> = None;
     loop {
         let cmd = if engine.is_some() {
             match rx.try_recv() {
@@ -200,6 +212,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                         continue;
                     }
                 }
+                end_cache_interval(&mut cache_since, "replaced");
                 release(&mut engine);
                 match Engine::load(host, &source, id, accepted) {
                     Ok(player) => {
@@ -221,6 +234,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     info!(session_id=?id, current_session_id=?current_id, "ignored stale stop");
                     continue;
                 }
+                end_cache_interval(&mut cache_since, "stopped");
                 release(&mut engine);
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
@@ -240,10 +254,10 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     let mut shared = state.lock().unwrap();
                     match request {
                         PlayerControl::Pause(true) => {
-                            shared.player.update(id, PlaybackState::Paused, None);
+                            shared.player.set_user_paused(id, true);
                         }
                         PlayerControl::Pause(false) => {
-                            shared.player.update(id, PlaybackState::Playing, None);
+                            shared.player.set_user_paused(id, false);
                         }
                         _ => {}
                     }
@@ -262,12 +276,33 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                     }
                     Ok(Some(Observation::Restart)) => {
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
+                        state.lock().unwrap().player.mark_started(id);
+                    }
+                    Ok(Some(Observation::CacheWaiting(waiting))) => {
+                        if waiting {
+                            if cache_since.is_none() {
+                                cache_since = Some((id, Instant::now()));
+                                info!(session_id = id, "cache-wait interval started");
+                            }
+                        } else {
+                            end_cache_interval(&mut cache_since, "recovered");
+                        }
                         let mut shared = state.lock().unwrap();
-                        if shared.player.snapshot().state != PlaybackState::Paused {
-                            shared.player.update(id, PlaybackState::Playing, None);
+                        let old = shared.player.snapshot().state;
+                        shared.player.set_cache_waiting(id, waiting);
+                        let new_state = shared.player.snapshot().state;
+                        if old != new_state {
+                            info!(
+                                session_id = id,
+                                waiting_for_cache = waiting,
+                                old_state = ?old,
+                                new_state = ?new_state,
+                                "cache-driven playback transition"
+                            );
                         }
                     }
                     Ok(Some(Observation::End)) => {
+                        end_cache_interval(&mut cache_since, "ended");
                         release(&mut engine);
                         state
                             .lock()
@@ -276,6 +311,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                             .update(id, PlaybackState::Ended, None);
                     }
                     Err(e) => {
+                        end_cache_interval(&mut cache_since, "error");
                         release(&mut engine);
                         failed(&state, id, e);
                     }
@@ -292,6 +328,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
         }
     }
     let started = Instant::now();
+    end_cache_interval(&mut cache_since, "closed");
     release(&mut engine);
     info!(
         elapsed_ms = started.elapsed().as_millis() as u64,

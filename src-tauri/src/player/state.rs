@@ -7,6 +7,7 @@ pub enum PlaybackState {
     Loading,
     Playing,
     Paused,
+    Buffering,
     Ended,
     Error,
 }
@@ -45,6 +46,9 @@ pub struct PlayerState {
     error: Option<Failure>,
     position_sec: Option<f64>,
     duration_sec: Option<f64>,
+    started: bool,
+    user_paused: bool,
+    cache_waiting: bool,
 }
 
 impl PlayerState {
@@ -68,6 +72,9 @@ impl PlayerState {
         self.error = None;
         self.position_sec = None;
         self.duration_sec = None;
+        self.started = false;
+        self.user_paused = false;
+        self.cache_waiting = false;
         self.state = PlaybackState::Loading;
         self.revision += 1;
         self.sequence
@@ -77,14 +84,64 @@ impl PlayerState {
         self.session == Some(id)
     }
 
+    /// Cache waiting and user pause are orthogonal; user intent takes priority.
+    fn reconcile_active(&mut self) {
+        let next = if self.user_paused {
+            PlaybackState::Paused
+        } else if self.cache_waiting {
+            PlaybackState::Buffering
+        } else if self.started {
+            PlaybackState::Playing
+        } else {
+            PlaybackState::Loading
+        };
+        if self.state != next {
+            self.state = next;
+            self.revision += 1;
+        }
+    }
+
+    fn active(&self) -> bool {
+        matches!(
+            self.state,
+            PlaybackState::Loading
+                | PlaybackState::Playing
+                | PlaybackState::Paused
+                | PlaybackState::Buffering
+        )
+    }
+
+    pub fn mark_started(&mut self, id: u64) {
+        if self.current(id) && self.active() {
+            self.started = true;
+            self.reconcile_active();
+        }
+    }
+
+    pub fn set_user_paused(&mut self, id: u64, paused: bool) {
+        if self.current(id) && self.active() {
+            self.user_paused = paused;
+            self.reconcile_active();
+        }
+    }
+
+    pub fn set_cache_waiting(&mut self, id: u64, waiting: bool) {
+        if self.current(id) && self.active() {
+            self.cache_waiting = waiting;
+            self.reconcile_active();
+        }
+    }
+
     pub fn update(&mut self, id: u64, next: PlaybackState, error: Option<Failure>) {
-        if self.current(id)
-            && matches!(
-                self.state,
-                PlaybackState::Loading | PlaybackState::Playing | PlaybackState::Paused
-            )
-            && self.state != next
-        {
+        if self.current(id) && self.active() && self.state != next {
+            match next {
+                PlaybackState::Playing => {
+                    self.started = true;
+                    self.user_paused = false;
+                }
+                PlaybackState::Paused => self.user_paused = true,
+                _ => {}
+            }
             self.state = next;
             self.error = error;
             self.revision += 1;
@@ -95,7 +152,10 @@ impl PlayerState {
         if !self.current(id)
             || !matches!(
                 self.state,
-                PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Loading
+                PlaybackState::Playing
+                    | PlaybackState::Paused
+                    | PlaybackState::Loading
+                    | PlaybackState::Buffering
             )
         {
             return;
@@ -130,6 +190,9 @@ impl PlayerState {
             self.error = None;
             self.position_sec = None;
             self.duration_sec = None;
+            self.started = false;
+            self.user_paused = false;
+            self.cache_waiting = false;
             self.revision += 1;
         }
     }
@@ -166,6 +229,92 @@ mod tests {
         state.clear(Some(b));
         assert_eq!(state.snapshot().position_sec, None);
         assert_eq!(state.snapshot().duration_sec, None);
+    }
+
+    #[test]
+    fn cache_waiting_and_user_pause_keep_separate_priority() {
+        let mut s = PlayerState::default();
+        let id = s.begin("stream.mp4".into());
+        assert_eq!(s.snapshot().state, PlaybackState::Loading);
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.mark_started(id);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.set_user_paused(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Paused);
+        s.set_cache_waiting(id, false);
+        assert_eq!(s.snapshot().state, PlaybackState::Paused);
+        s.set_user_paused(id, false);
+        assert_eq!(s.snapshot().state, PlaybackState::Playing);
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.set_user_paused(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Paused);
+        s.set_user_paused(id, false);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.set_cache_waiting(id, false);
+        assert_eq!(s.snapshot().state, PlaybackState::Playing);
+    }
+
+    #[test]
+    fn late_buffer_events_do_not_overwrite_new_or_ended_sessions() {
+        let mut s = PlayerState::default();
+        let first = s.begin("old.mp4".into());
+        let next = s.begin("new.mp4".into());
+        s.set_cache_waiting(first, true);
+        s.mark_started(first);
+        s.set_user_paused(first, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Loading);
+        s.mark_started(next);
+        s.set_cache_waiting(next, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.update(next, PlaybackState::Ended, None);
+        s.set_cache_waiting(next, false);
+        s.set_user_paused(next, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Ended);
+        s.clear(Some(next));
+        assert_eq!(s.snapshot().state, PlaybackState::Idle);
+    }
+
+    #[test]
+    fn buffering_progress_does_not_revert_playback_state() {
+        let mut s = PlayerState::default();
+        let id = s.begin("slow-https.mp4".into());
+        s.mark_started(id);
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        s.progress(id, Some(13.5), Some(20.0));
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        assert_eq!(s.snapshot().position_sec, Some(13.5));
+        assert_eq!(s.snapshot().duration_sec, Some(20.0));
+        let revision = s.snapshot().revision;
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().revision, revision);
+        s.set_cache_waiting(id, false);
+        assert_eq!(s.snapshot().state, PlaybackState::Playing);
+    }
+
+    #[test]
+    fn terminal_error_and_stop_ignore_late_cache_notifications() {
+        let mut s = PlayerState::default();
+        let id = s.begin("broken.mp4".into());
+        s.set_cache_waiting(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Buffering);
+        let failure = Failure {
+            stage: "network",
+            code: "mock_error".into(),
+            message: "connection failed".into(),
+        };
+        s.update(id, PlaybackState::Error, Some(failure));
+        s.set_cache_waiting(id, false);
+        s.mark_started(id);
+        s.set_user_paused(id, true);
+        assert_eq!(s.snapshot().state, PlaybackState::Error);
+        assert_eq!(s.snapshot().error.unwrap().code, "mock_error");
+        s.clear(Some(id));
+        assert_eq!(s.snapshot().state, PlaybackState::Idle);
+        assert_eq!(s.snapshot().session_id, None);
+        assert!(s.snapshot().error.is_none());
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use super::controls::PlayerControl;
 use super::source::MediaSource;
 use super::state::Failure;
-use libmpv2::{events::Event, Mpv};
-use std::path::Path;
+use libmpv2::{events::Event, mpv_end_file_reason, Mpv};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 pub fn local_mp4(path: &Path) -> Result<&str, String> {
@@ -23,6 +23,7 @@ pub enum Observation {
     Loaded,
     Restart,
     End,
+    CacheWaiting(bool),
     Progress {
         position: Option<f64>,
         duration: Option<f64>,
@@ -34,6 +35,9 @@ pub struct Engine {
     pub session: u64,
     pub opened: Instant,
     progress_checked_at: Instant,
+    cache_checked_at: Instant,
+    file_loaded: bool,
+    cache_waiting: bool,
 }
 
 fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
@@ -41,7 +45,7 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
     // -13 is libmpv's generic loading failure. It is not proof of HTTP 403:
     // the source may be denied, unavailable, return non-media, or fail locally.
     let message = if code.contains("Raw(-13)") {
-        "媒体加载失败（libmpv -13）。请检查网络及资源权限，并确认 HTTPS 地址直接返回 MP4，而不是 403/XML/HTML 错误页面。".into()
+        "媒体加载失败（libmpv -13）。请检查 VPN 或代理端口是否有效、网络和资源权限，确认 HTTPS 地址返回 MP4 而非 403/XML/HTML。".into()
     } else {
         e.to_string()
     };
@@ -50,6 +54,44 @@ fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
         code,
         message,
     }
+}
+
+/// A successful EndFile event is not necessarily a natural EOF.
+/// libmpv2 reports a non-zero playback error as Err before this function.
+fn classify_end_reason(reason: libmpv2::EndFileReason) -> Result<Option<Observation>, Failure> {
+    if reason == mpv_end_file_reason::Eof {
+        return Ok(Some(Observation::End));
+    }
+    if reason == mpv_end_file_reason::Redirect {
+        // mpv redirects a playlist by continuing with its new entries.
+        // Do not tear down its handle as if playback had failed.
+        return Ok(None);
+    }
+    Err(Failure {
+        stage: "playback",
+        code: format!("unexpected_end_reason_{reason}"),
+        message: "Playback stopped without natural EOF (native stop, quit or unsupported redirect)"
+            .into(),
+    })
+}
+
+/// Opt-in native mpv diagnostics for network failures. The log may contain
+/// full media URLs (including signed query strings), so never enable it by
+/// default or upload the raw file without reviewing secrets first.
+fn optional_mpv_diagnostic_path(session: u64) -> Option<String> {
+    if std::env::var("HONGGUORUST_MPV_DEBUG").ok().as_deref() != Some("1") {
+        return None;
+    }
+    let root = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("HongGuoRust")
+        .join("logs");
+    if std::fs::create_dir_all(&root).is_err() {
+        return None;
+    }
+    let path = root.join(format!("mpv-{}-{session}.log", std::process::id()));
+    Some(path.to_string_lossy().into_owned())
 }
 
 impl Engine {
@@ -72,7 +114,12 @@ impl Engine {
             MediaSource::Https(url) => url.clone(),
         };
         let local = matches!(source, MediaSource::Local(_));
+        let diagnostic = optional_mpv_diagnostic_path(session);
         let mpv = Mpv::with_initializer(|init| {
+            if let Some(path) = diagnostic.as_deref() {
+                init.set_option("log-file", path)?;
+                init.set_option("msg-level", "all=v")?;
+            }
             init.set_option("wid", host as i64)?;
             init.set_option("load-scripts", false)?;
             init.set_option("ytdl", false)?;
@@ -87,6 +134,9 @@ impl Engine {
             Ok(())
         })
         .map_err(|e| native_error("initialize", e))?;
+        if let Some(path) = diagnostic.as_deref() {
+            tracing::info!(session_id=session, native_log=%path, "opt-in libmpv diagnostic enabled");
+        }
         mpv.command("loadfile", &[name.as_str()])
             .map_err(|e| native_error("loadfile", e))?;
         Ok(Self {
@@ -94,6 +144,9 @@ impl Engine {
             session,
             opened,
             progress_checked_at: Instant::now(),
+            cache_checked_at: Instant::now(),
+            file_loaded: false,
+            cache_waiting: false,
         })
     }
 
@@ -130,11 +183,34 @@ impl Engine {
 
     pub fn poll(&mut self) -> Result<Option<Observation>, Failure> {
         match self.mpv.wait_event(0.025) {
-            Some(Ok(Event::FileLoaded)) => Ok(Some(Observation::Loaded)),
+            Some(Ok(Event::FileLoaded)) => {
+                self.file_loaded = true;
+                Ok(Some(Observation::Loaded))
+            }
             Some(Ok(Event::PlaybackRestart)) => Ok(Some(Observation::Restart)),
-            Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => Ok(Some(Observation::End)),
+            Some(Ok(Event::EndFile(reason))) => classify_end_reason(reason),
+            Some(Ok(Event::Shutdown)) => Err(Failure {
+                stage: "playback",
+                code: "unexpected_shutdown".into(),
+                message: "libmpv shut down unexpectedly".into(),
+            }),
             Some(Err(e)) => Err(native_error("playback", e)),
             _ => {
+                // Native mpv property distinguishes network cache suspension
+                // from the user's own pause request.
+                // A remote MP4 may take time to open: do not make repeated
+                // synchronous property calls while libmpv is still loading
+                // its network stream, or query cache state on every event.
+                if self.file_loaded && self.cache_checked_at.elapsed() >= Duration::from_millis(200)
+                {
+                    self.cache_checked_at = Instant::now();
+                    if let Ok(waiting) = self.mpv.get_property::<bool>("paused-for-cache") {
+                        if waiting != self.cache_waiting {
+                            self.cache_waiting = waiting;
+                            return Ok(Some(Observation::CacheWaiting(waiting)));
+                        }
+                    }
+                }
                 if self.progress_checked_at.elapsed() >= Duration::from_millis(250) {
                     self.progress_checked_at = Instant::now();
                     let position = self.mpv.get_property::<f64>("time-pos").ok();
@@ -152,6 +228,25 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_natural_eof_reaches_ended() {
+        assert!(matches!(
+            classify_end_reason(mpv_end_file_reason::Eof),
+            Ok(Some(Observation::End))
+        ));
+        for reason in [
+            mpv_end_file_reason::Stop,
+            mpv_end_file_reason::Quit,
+            mpv_end_file_reason::Error,
+        ] {
+            assert!(classify_end_reason(reason).is_err());
+        }
+        assert!(matches!(
+            classify_end_reason(mpv_end_file_reason::Redirect),
+            Ok(None)
+        ));
+    }
 
     #[test]
     fn local_file_selection_keeps_unicode_and_rejects_other_types() {

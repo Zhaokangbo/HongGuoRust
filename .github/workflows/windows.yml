@@ -61,10 +61,10 @@ jobs:
       - name: Stage Windows validation files
         run: |
           New-Item -ItemType Directory -Path validation | Out-Null
-          Copy-Item src-tauri/target/release/hongguorust.exe,scripts/get-mpv.ps1,scripts/prepare-mpv-msvc.ps1,docs/acceptance/run-windows.md,docs/acceptance/m3.md -Destination validation
+          Copy-Item src-tauri/target/release/hongguorust.exe,scripts/get-mpv.ps1,scripts/prepare-mpv-msvc.ps1,scripts/check-https-network.ps1,docs/acceptance/run-windows.md,docs/acceptance/m3.md,docs/acceptance/m4.md -Destination validation
       - uses: actions/upload-artifact@v4
         with:
-          name: HongGuoRust-M3-windows-x64
+          name: HongGuoRust-M4-windows-x64
           path: validation/
           if-no-files-found: error
       - name: Verify live IPC and normal process exit
