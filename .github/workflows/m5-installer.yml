@@ -51,7 +51,7 @@ jobs:
         run: |
           $config = Get-Content src-tauri/tauri.bundle.conf.json -Raw | ConvertFrom-Json
           if (-not $config.bundle.active -or $config.bundle.targets[0] -ne 'nsis') { throw 'NSIS configuration is disabled' }
-          foreach ($script in @('scripts/build-windows.ps1','scripts/get-mpv.ps1')) {
+          foreach ($script in @('scripts/build-windows.ps1','scripts/get-mpv.ps1','scripts/smoke-installer.ps1')) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script).Path, [ref]$tokens, [ref]$errors)
@@ -61,6 +61,13 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/build-windows.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Validate candidate installation, actual IPC, bundled DLL and uninstall
+        shell: pwsh
+        run: |
+          $setup = @(Get-ChildItem src-tauri/target/release/bundle/nsis -Filter '*-setup.exe' -File)
+          if ($setup.Count -ne 1) { throw "Expected one NSIS setup, found $($setup.Count)" }
+          ./scripts/smoke-installer.ps1 -Installer $setup[0].FullName
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Assert native runtime never entered git tracking
         shell: pwsh
