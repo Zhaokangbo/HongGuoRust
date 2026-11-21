@@ -1,6 +1,7 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
 use super::local::LocalLibraryProvider;
+use super::request::{RequestContext, RequestRegistry};
 use super::{ContentProvider, LocalDemoProvider, MediaTarget, Series, SeriesDetail};
 use crate::local_library::LocalLibrary;
 use serde::Serialize;
@@ -32,6 +33,7 @@ pub struct SearchPage {
 
 pub struct CatalogService {
     providers: Vec<Box<dyn ContentProvider>>,
+    requests: RequestRegistry,
 }
 
 fn valid_provider_id(value: &str) -> bool {
@@ -95,7 +97,10 @@ impl CatalogService {
                 return Err("invalid_provider_registry: Duplicate or invalid provider ID".into());
             }
         }
-        Ok(Self { providers })
+        Ok(Self {
+            providers,
+            requests: RequestRegistry::default(),
+        })
     }
 
     pub fn sources(&self) -> Vec<ProviderInfo> {
@@ -119,6 +124,34 @@ impl CatalogService {
             .ok_or_else(|| format!("provider_not_found: Unknown provider {source}"))
     }
 
+    pub fn cancel_request(&self, id: u64) -> bool {
+        self.requests.cancel(id)
+    }
+
+    /// A fresh request token never alters legacy IPC behavior.
+    pub fn search_page_with_request(
+        &self,
+        query: Option<&str>,
+        source: Option<&str>,
+        offset: usize,
+        limit: usize,
+        request_id: u64,
+        timeout_ms: u64,
+    ) -> Result<SearchPage, String> {
+        let guard = self.requests.begin(request_id, timeout_ms)?;
+        self.search_page_inner(query, source, offset, limit, Some(guard.context()))
+    }
+
+    pub fn detail_with_request(
+        &self,
+        id: &str,
+        request_id: u64,
+        timeout_ms: u64,
+    ) -> Result<SeriesDetail, String> {
+        let guard = self.requests.begin(request_id, timeout_ms)?;
+        self.detail_inner(id, Some(guard.context()))
+    }
+
     /// Existing M6 IPC still searches only the built-in demo source.
     pub fn search(&self, query: Option<&str>) -> Result<Vec<Series>, String> {
         Ok(self
@@ -135,6 +168,20 @@ impl CatalogService {
         offset: usize,
         limit: usize,
     ) -> Result<SearchPage, String> {
+        self.search_page_inner(query, source, offset, limit, None)
+    }
+
+    fn search_page_inner(
+        &self,
+        query: Option<&str>,
+        source: Option<&str>,
+        offset: usize,
+        limit: usize,
+        request: Option<&RequestContext>,
+    ) -> Result<SearchPage, String> {
+        if let Some(request) = request {
+            request.check()?;
+        }
         let query = query.unwrap_or("").trim();
         if query.len() > MAX_QUERY_BYTES {
             return Err("invalid_query: Search text exceeds 128 bytes".into());
@@ -151,9 +198,19 @@ impl CatalogService {
             if source != "all" && provider.id() != source {
                 continue;
             }
-            for item in provider.search(query)? {
+            let matches = match request {
+                Some(ctx) => provider.search_with_request(query, ctx)?,
+                None => provider.search(query)?,
+            };
+            for item in matches {
+                if let Some(ctx) = request {
+                    ctx.check()?;
+                }
                 all.push(scope_series(provider.as_ref(), item)?);
             }
+        }
+        if let Some(ctx) = request {
+            ctx.check()?;
         }
         let total = all.len();
         let end = offset.saturating_add(limit).min(total);
@@ -171,11 +228,28 @@ impl CatalogService {
     }
 
     pub fn detail(&self, id: &str) -> Result<SeriesDetail, String> {
+        self.detail_inner(id, None)
+    }
+
+    fn detail_inner(
+        &self,
+        id: &str,
+        request: Option<&RequestContext>,
+    ) -> Result<SeriesDetail, String> {
+        if let Some(ctx) = request {
+            ctx.check()?;
+        }
         let (source, local_id) = split_series_id(id)?;
         let provider = self.provider(source)?;
-        let mut details = provider
-            .detail(local_id)?
-            .ok_or_else(|| "series_not_found: Series not found".to_string())?;
+        let result = match request {
+            Some(ctx) => provider.detail_with_request(local_id, ctx)?,
+            None => provider.detail(local_id)?,
+        };
+        let mut details =
+            result.ok_or_else(|| "series_not_found: Series not found".to_string())?;
+        if let Some(ctx) = request {
+            ctx.check()?;
+        }
         details.series = scope_series(provider, details.series)?;
         Ok(details)
     }
