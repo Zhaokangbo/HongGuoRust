@@ -66,6 +66,32 @@ try {
     }
     Write-Host "PASS: app-local Vulkan loader SHA256=$((Get-FileHash -LiteralPath $vulkan -Algorithm SHA256).Hash)"
 
+
+    # Confirm the NSIS installer contains exactly the vetted source-file copies
+    # for the preliminary license materials. This is necessary but not proof of
+    # complete binary redistribution compliance.
+    $legalSources = [ordered]@{
+        'LICENSE-GPL-3.0.txt'        = (Join-Path $PSScriptRoot '../LICENSE')
+        'THIRD-PARTY-NOTICES.txt'   = (Join-Path $PSScriptRoot '../src-tauri/legal/THIRD-PARTY-NOTICES.txt')
+        'VULKAN-LOADER-LICENSE.txt' = (Join-Path $PSScriptRoot '../src-tauri/legal/VULKAN-LOADER-LICENSE.txt')
+        'VULKAN-HEADERS-LICENSE.md' = (Join-Path $PSScriptRoot '../src-tauri/legal/VULKAN-HEADERS-LICENSE.md')
+    }
+    $installedLegalPaths = @(
+        foreach ($name in $legalSources.Keys) {
+            $found = @(Get-ChildItem -LiteralPath $dir -Filter $name -File -Recurse)
+            if ($found.Count -ne 1) {
+                throw "Expected one installed legal file '$name', found $($found.Count)"
+            }
+            $expectedLegalHash = (Get-FileHash -LiteralPath $legalSources[$name] -Algorithm SHA256).Hash
+            $actualLegalHash = (Get-FileHash -LiteralPath $found[0].FullName -Algorithm SHA256).Hash
+            if ($expectedLegalHash -ne $actualLegalHash) {
+                throw "Installed legal file '$name' is not identical to the repository copy"
+            }
+            $found[0].FullName
+        }
+    )
+    Write-Host "PASS: installed all $($installedLegalPaths.Count) legal reference files without changes"
+
     # Inventory only metadata from the installed app. No binaries are copied
     # into the report or into the GitHub Actions artifact.
     if (![string]::IsNullOrWhiteSpace($AuditReport)) {
@@ -100,6 +126,8 @@ try {
             installer_sha256 = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
             installed_files = $inventory
             installed_notice_candidates = $noticeCandidates
+            required_legal_files_verified = $true
+            required_legal_file_names = @($legalSources.Keys)
             clean_windows_10_11_verified = $false
             redistribution_provenance_reviewed = $false
             distribution_authorized = $false
@@ -137,6 +165,11 @@ try {
     if (Test-Path -LiteralPath $exe) { throw 'Uninstaller left application EXE behind' }
     if (Test-Path -LiteralPath $dll) { throw 'Uninstaller left app-private libmpv DLL behind' }
     if (Test-Path -LiteralPath $vulkan) { throw 'Uninstaller left app-private Vulkan DLL behind' }
+    foreach ($legalPath in $installedLegalPaths) {
+        if (Test-Path -LiteralPath $legalPath) {
+            throw "Uninstaller left app-private legal file behind: $legalPath"
+        }
+    }
     $uninstalled = $true
     Write-Host 'PASS: NSIS silent install, app IPC, DLL SHA-256 and uninstall'
     if ($auditEvidence) {
