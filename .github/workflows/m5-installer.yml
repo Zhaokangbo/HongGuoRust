@@ -55,7 +55,7 @@ jobs:
         run: |
           $config = Get-Content src-tauri/tauri.bundle.conf.json -Raw | ConvertFrom-Json
           if (-not $config.bundle.active -or $config.bundle.targets[0] -ne 'nsis') { throw 'NSIS configuration is disabled' }
-          foreach ($resource in @('../LICENSE','legal/THIRD-PARTY-NOTICES.txt','legal/VULKAN-LOADER-LICENSE.txt','legal/VULKAN-HEADERS-LICENSE.md')) {
+          foreach ($resource in @('../LICENSE','legal/THIRD-PARTY-NOTICES.txt','legal/VULKAN-LOADER-LICENSE.txt','legal/VULKAN-HEADERS-LICENSE.md','legal/MPV-LGPL-2.1.txt','legal/FFMPEG-LGPL-3.0.txt','legal/MPV-COPYRIGHT-REFERENCE.txt','legal/FFMPEG-LICENSE-REFERENCE.md')) {
             if (-not $config.bundle.resources.PSObject.Properties[$resource]) {
               throw "Missing installer legal resource mapping: $resource"
             }

@@ -10,7 +10,11 @@
       "../LICENSE": "legal/LICENSE-GPL-3.0.txt",
       "legal/THIRD-PARTY-NOTICES.txt": "legal/THIRD-PARTY-NOTICES.txt",
       "legal/VULKAN-LOADER-LICENSE.txt": "legal/VULKAN-LOADER-LICENSE.txt",
-      "legal/VULKAN-HEADERS-LICENSE.md": "legal/VULKAN-HEADERS-LICENSE.md"
+      "legal/VULKAN-HEADERS-LICENSE.md": "legal/VULKAN-HEADERS-LICENSE.md",
+      "legal/MPV-LGPL-2.1.txt": "legal/MPV-LGPL-2.1.txt",
+      "legal/FFMPEG-LGPL-3.0.txt": "legal/FFMPEG-LGPL-3.0.txt",
+      "legal/MPV-COPYRIGHT-REFERENCE.txt": "legal/MPV-COPYRIGHT-REFERENCE.txt",
+      "legal/FFMPEG-LICENSE-REFERENCE.md": "legal/FFMPEG-LICENSE-REFERENCE.md"
     },
     "windows": {
       "webviewInstallMode": {

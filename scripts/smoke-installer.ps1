@@ -75,6 +75,10 @@ try {
         'THIRD-PARTY-NOTICES.txt'   = (Join-Path $PSScriptRoot '../src-tauri/legal/THIRD-PARTY-NOTICES.txt')
         'VULKAN-LOADER-LICENSE.txt' = (Join-Path $PSScriptRoot '../src-tauri/legal/VULKAN-LOADER-LICENSE.txt')
         'VULKAN-HEADERS-LICENSE.md' = (Join-Path $PSScriptRoot '../src-tauri/legal/VULKAN-HEADERS-LICENSE.md')
+        'MPV-LGPL-2.1.txt'         = (Join-Path $PSScriptRoot '../src-tauri/legal/MPV-LGPL-2.1.txt')
+        'FFMPEG-LGPL-3.0.txt'      = (Join-Path $PSScriptRoot '../src-tauri/legal/FFMPEG-LGPL-3.0.txt')
+        'MPV-COPYRIGHT-REFERENCE.txt' = (Join-Path $PSScriptRoot '../src-tauri/legal/MPV-COPYRIGHT-REFERENCE.txt')
+        'FFMPEG-LICENSE-REFERENCE.md' = (Join-Path $PSScriptRoot '../src-tauri/legal/FFMPEG-LICENSE-REFERENCE.md')
     }
     $installedLegalPaths = @(
         foreach ($name in $legalSources.Keys) {
