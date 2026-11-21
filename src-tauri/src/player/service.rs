@@ -102,6 +102,10 @@ impl PlayerService {
     }
 }
 
+fn stop_targets_active_session(requested: Option<u64>, current: Option<u64>) -> bool {
+    requested.is_some() && requested == current
+}
+
 fn release(engine: &mut Option<Engine>) {
     if let Some(current) = engine.take() {
         let id = current.session;
@@ -164,7 +168,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
                 // A Stop can be queued before a subsequent Open. Never release
                 // the newly selected session's engine for a stale Stop.
                 let current_id = state.lock().unwrap().player.snapshot().session_id;
-                if id.is_none() || current_id != id {
+                if !stop_targets_active_session(id, current_id) {
                     info!(session_id=?id, current_session_id=?current_id, "ignored stale stop");
                     continue;
                 }
@@ -213,4 +217,18 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>) {
         elapsed_ms = started.elapsed().as_millis() as u64,
         "player worker exited"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stop_targets_active_session;
+
+    #[test]
+    fn late_stop_never_targets_replacement_session() {
+        assert!(stop_targets_active_session(Some(2), Some(2)));
+        assert!(!stop_targets_active_session(Some(1), Some(2)));
+        assert!(!stop_targets_active_session(Some(1), None));
+        assert!(!stop_targets_active_session(None, Some(2)));
+        assert!(!stop_targets_active_session(None, None));
+    }
 }
