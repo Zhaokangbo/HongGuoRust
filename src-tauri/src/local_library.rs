@@ -159,7 +159,7 @@ impl LocalLibrary {
         }
     }
 
-    fn from_path(path: PathBuf) -> Self {
+    pub(crate) fn from_path(path: PathBuf) -> Self {
         let (data, load_error) = match read_data(&path) {
             Ok(db) => (db, None),
             Err(error) => (LibraryData::default(), Some(error)),
