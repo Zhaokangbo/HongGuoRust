@@ -72,7 +72,7 @@ try {
         $inventory = @(Get-ChildItem -LiteralPath $dir -File -Recurse |
             Sort-Object FullName | ForEach-Object {
                 [ordered]@{
-                    path = $_.FullName.Substring($dir.Length + 1).Replace('\\', '/')
+                    path = $_.FullName.Substring($dir.Length + 1).Replace('\', '/')
                     bytes = $_.Length
                     sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
                 }
