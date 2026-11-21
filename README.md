@@ -13,7 +13,7 @@
 | M4 | 播放状态、可靠性测试和日志 |
 | M5 | Windows x64 安装包验收 |
 
-默认 Windows 客户端使用 Rust 服务和 libmpv 播放本地 MP4。支持选择文件、替换和停止。运行验证包请参阅[本机启动说明](docs/acceptance/run-windows.md)。[M2 验收记录](docs/acceptance/m2.md) · [M1 验收记录](docs/acceptance/m1.md) · [第一阶段架构](docs/architecture/HongGuoRust-Phase1-Plan.md) · [许可证评估](docs/architecture/licensing.md)
+目前 Windows 客户端由 Rust 独占 libmpv 会话，支持本地 MP4、用户提供的公开 HTTPS MP4、暂停/继续、Seek、倍速、音量和全屏，并具备面向缓冲的七态播放状态机。运行未安装版仍需要配套 `libmpv-2.dll`。M5 正在开发带固定依赖的 NSIS 安装包；**目前没有通过干净机器验收、也没有可公开发布的正式安装器**。详见 [M4 验收](docs/acceptance/m4.md)、[M5 打包验收](docs/acceptance/m5.md)、[本机启动说明](docs/acceptance/run-windows.md)、[许可证评估](docs/architecture/licensing.md)。
 
 ## Windows 开发构建
 
