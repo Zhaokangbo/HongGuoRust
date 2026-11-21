@@ -86,17 +86,42 @@ def displayed_pixel(child):
 
 
 def frame(child, accepted):
+    # A valid video can occupy only part of its HWND (aspect-ratio letterboxing).
+    # Sampling several interior points also exposes a stale/misaligned HWND rect
+    # on the hosted desktop, instead of silently blaming libmpv.
+    last = None
     def sample():
-        red, green, blue = displayed_pixel(child)
-        if red > 165 and max(blue,green) < 85:
-            return "red" if "red" in accepted else None
-        if blue > 165 and max(red,green) < 85:
-            return "blue" if "blue" in accepted else None
-        if green > 80 and max(red,blue) < 65:
-            return "green" if "green" in accepted else None
+        nonlocal last
+        bounds = wt.RECT()
+        if not rect_of(child, c.byref(bounds)):
+            raise RuntimeError("Video host rectangle disappeared")
+        width = bounds.right - bounds.left
+        height = bounds.bottom - bounds.top
+        points = [
+            (bounds.left + width//2, bounds.top + height//2),
+            (bounds.left + width//4, bounds.top + height//2),
+            (bounds.left + 3*width//4, bounds.top + height//2),
+            (bounds.left + width//2, bounds.top + height//3),
+            (bounds.left + width//2, bounds.top + 2*height//3),
+        ]
+        colors = []
+        for x, y in points:
+            pixel = ImageGrab.grab(bbox=(x,y,x+1,y+1), all_screens=True).getpixel((0,0))[:3]
+            colors.append(pixel)
+            red, green, blue = pixel
+            if "red" in accepted and red > 165 and max(blue,green) < 85:
+                return "red"
+            if "blue" in accepted and blue > 165 and max(red,green) < 85:
+                return "blue"
+            if "green" in accepted and green > 80 and max(red,blue) < 65:
+                return "green"
+        last = (tuple(bounds), list(zip(points, colors)))
         return None
-    return until(sample, "fixture pixels " + str(accepted))
-
+    try:
+        return until(sample, "fixture pixels " + str(accepted))
+    except RuntimeError:
+        print(f"Pixel probe diagnostic: {last}", flush=True)
+        raise
 
 def desktop_checks(main, child):
     show = bind("ShowWindow", wt.BOOL, wt.HWND, c.c_int)
