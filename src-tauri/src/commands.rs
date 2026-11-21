@@ -1,3 +1,4 @@
+use crate::catalog::request::DEFAULT_TIMEOUT_MS;
 use crate::catalog::{CatalogService, MediaTarget, ProviderInfo, SearchPage, Series, SeriesDetail};
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
@@ -100,21 +101,46 @@ pub fn catalog_search_page(
     source_id: Option<String>,
     offset: Option<usize>,
     limit: Option<usize>,
+    request_id: Option<u64>,
+    timeout_ms: Option<u64>,
 ) -> Result<SearchPage, String> {
-    catalog.search_page(
-        query.as_deref(),
-        source_id.as_deref(),
-        offset.unwrap_or(0),
-        limit.unwrap_or(24),
-    )
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(24);
+    if let Some(request_id) = request_id {
+        catalog.search_page_with_request(
+            query.as_deref(),
+            source_id.as_deref(),
+            offset,
+            limit,
+            request_id,
+            timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+        )
+    } else {
+        catalog.search_page(query.as_deref(), source_id.as_deref(), offset, limit)
+    }
 }
 
 #[tauri::command]
 pub fn catalog_detail(
     catalog: State<'_, CatalogService>,
     series_id: String,
+    request_id: Option<u64>,
+    timeout_ms: Option<u64>,
 ) -> Result<SeriesDetail, String> {
-    catalog.detail(&series_id)
+    if let Some(request_id) = request_id {
+        catalog.detail_with_request(
+            &series_id,
+            request_id,
+            timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+        )
+    } else {
+        catalog.detail(&series_id)
+    }
+}
+
+#[tauri::command]
+pub fn catalog_cancel_request(catalog: State<'_, CatalogService>, request_id: u64) -> bool {
+    catalog.cancel_request(request_id)
 }
 
 #[tauri::command]

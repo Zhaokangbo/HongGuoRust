@@ -3,9 +3,11 @@
 
 mod local;
 mod registry;
+pub(crate) mod request;
 
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
 
+use request::RequestContext;
 use serde::Serialize;
 
 const PREVIEW_MP4: &str = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
@@ -52,6 +54,30 @@ pub trait ContentProvider: Send + Sync {
     fn search(&self, query: &str) -> Result<Vec<Series>, String>;
     fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String>;
     fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String>;
+
+    /// Future I/O providers can override this method to poll cancellation
+    /// between network reads. Built-in synchronous providers finish quickly.
+    fn search_with_request(
+        &self,
+        query: &str,
+        request: &RequestContext,
+    ) -> Result<Vec<Series>, String> {
+        request.check()?;
+        let items = self.search(query)?;
+        request.check()?;
+        Ok(items)
+    }
+
+    fn detail_with_request(
+        &self,
+        series_id: &str,
+        request: &RequestContext,
+    ) -> Result<Option<SeriesDetail>, String> {
+        request.check()?;
+        let detail = self.detail(series_id)?;
+        request.check()?;
+        Ok(detail)
+    }
 }
 
 #[derive(Default)]

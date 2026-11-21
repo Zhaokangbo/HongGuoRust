@@ -92,6 +92,7 @@ fn main() {
             commands::catalog_search,
             commands::catalog_sources,
             commands::catalog_search_page,
+            commands::catalog_cancel_request,
             commands::catalog_detail,
             commands::catalog_play_episode,
             commands::library_list,
