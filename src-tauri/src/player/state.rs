@@ -314,7 +314,7 @@ mod tests {
         s.clear(Some(id));
         assert_eq!(s.snapshot().state, PlaybackState::Idle);
         assert_eq!(s.snapshot().session_id, None);
-        assert_eq!(s.snapshot().error, None);
+        assert!(s.snapshot().error.is_none());
     }
 
     #[test]
