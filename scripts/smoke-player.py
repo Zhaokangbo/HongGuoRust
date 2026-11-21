@@ -101,15 +101,35 @@ def desktop_checks(main, child):
     show = bind("ShowWindow", wt.BOOL, wt.HWND, c.c_int)
     iconic = bind("IsIconic", wt.BOOL, wt.HWND)
     dpi = bind("GetDpiForWindow", wt.UINT, wt.HWND)
+    system_dpi = bind("GetDpiForSystem", wt.UINT)
     tool = os.environ.get("M2_CI_SETDPI") if os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" else None
-    original = subprocess.check_output([tool,"value"], text=True).strip() if tool else ""
+    original = subprocess.check_output([tool, "value"], text=True).strip() if tool else ""
     can_set = original.isdigit() and int(original) >= 100
-    print(f"Display scale before test: reported={dpi(main)} DPI, configurable={can_set}", flush=True)
+    print(f"Display scale before test: window={dpi(main)}, system={system_dpi()}, configurable={can_set}", flush=True)
     try:
-        for target in ([100,150] if can_set else [None]):
+        for target in ([100, 150] if can_set else [None]):
             if target:
-                print(subprocess.check_output([tool,str(target)],text=True,timeout=10), flush=True)
-                until(lambda: dpi(main) == round(96*target/100), f"actual {target}% display scaling", 12)
+                before_window, before_system = dpi(main), system_dpi()
+                print(subprocess.check_output([tool, str(target)], text=True, timeout=10), flush=True)
+                expected = round(96 * target / 100)
+                try:
+                    until(lambda: dpi(main) == expected, f"actual {target}% display scaling", 12)
+                except RuntimeError:
+                    after_window, after_system = dpi(main), system_dpi()
+                    if target == 150 and after_window == before_window and after_system == before_system:
+                        # SetDPI can update the *configured* scale without applying it
+                        # in the GitHub runner's existing interactive desktop session.
+                        # This is not evidence of either application success or failure.
+                        print(
+                            f"SKIP: 150% DPI was not applied to runner desktop "
+                            f"(window={after_window}, system={after_system}); "
+                            "150% requires physical Windows desktop acceptance",
+                            flush=True,
+                        )
+                        continue
+                    # If Windows actually changed DPI but our HWND did not follow,
+                    # preserve the test failure: this can be an application bug.
+                    raise
             for handle, _, _ in win32api.EnumDisplayMonitors():
                 left, top, _, _ = win32api.GetMonitorInfo(handle)["Work"]
                 win32gui.SetWindowPos(main, 0, left+25, top+30, 720, 480, 0)
