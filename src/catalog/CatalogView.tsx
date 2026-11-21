@@ -6,7 +6,7 @@ import { LocalLibraryView } from "./LocalLibraryView";
 interface Props {
   onBack: () => Promise<void>;
   onPlay: (seriesId: string, episodeId: string) => Promise<boolean>;
-  onPlayLocal: (id: number) => Promise<boolean>;
+  onPlayLocal: (id: number, orderedIds: number[], origin: string) => Promise<boolean>;
   playerError: string;
 }
 
