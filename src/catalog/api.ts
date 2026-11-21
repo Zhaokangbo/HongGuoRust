@@ -1,4 +1,4 @@
-import type { CatalogProvider, CatalogSearchPage, LocalMedia, Series, SeriesDetail } from "./types";
+import type { CatalogProvider, CatalogSearchPage, LocalMedia, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
 
 export interface CatalogRequestOptions {
   signal?: AbortSignal;
@@ -119,4 +119,8 @@ export function clearLocalHistory(id: number): Promise<void> {
 
 export function setLocalFavorite(id: number, favorite: boolean): Promise<void> {
   return desktopInvoke<void>("library_set_favorite", { id, favorite });
+}
+
+export function getCatalogEpisodeProgress(seriesId: string): Promise<ProviderEpisodeProgress[]> {
+  return desktopInvoke<ProviderEpisodeProgress[]>("catalog_episode_progress", { seriesId });
 }
