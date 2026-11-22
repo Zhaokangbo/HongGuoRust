@@ -104,6 +104,7 @@ fn main() {
             commands::catalog_detail,
             commands::catalog_play_episode,
             commands::catalog_episode_progress,
+            commands::catalog_recently_watched,
             commands::library_list,
             commands::library_add_local,
             commands::library_remove,
