@@ -408,6 +408,36 @@ mod tests {
     }
 
     #[test]
+    fn public_cover_validation_preserves_signed_https_queries_and_rejects_private_urls() {
+        let valid = "https://covers.example.org/signed.webp?token=a%2Fb&expires=1892345678";
+        assert_eq!(valid_cover_url(valid), Some(valid));
+        for url in [
+            "http://covers.example.org/poster.webp",
+            "file:///C:/secrets/poster.jpg",
+            "https://127.0.0.1/a.jpg",
+            "https://192.168.1.2/a.jpg",
+            "https://localhost/a.jpg",
+            "https://private.internal/a.webp",
+            "https://user:password@covers.example.org/a.jpg",
+            "https://covers.example.org:8443/a.jpg",
+            "https://covers.example.org/a.jpg#frag",
+            "https://covers.example.org/a.jpg\\nHeader:secret",
+        ] {
+            assert!(valid_cover_url(url).is_none(), "unexpected allowed cover URL");
+        }
+        let mapped = HgCommunityProvider::map_series(&serde_json::json!({
+            "id": "real-123",
+            "title": "合成元数据",
+            "description": "合法封面字段",
+            "genre": "测试",
+            "episodes": 2,
+            "coverUrl": valid
+        }))
+        .unwrap();
+        assert_eq!(mapped.cover_url.as_deref(), Some(valid));
+    }
+
+    #[test]
     fn no_opt_in_means_no_source_registration() {
         if std::env::var("HONGGUORUST_HG2A_EXPERIMENT").ok().as_deref() != Some("1") {
             assert!(HgCommunityProvider::from_env().is_none());
