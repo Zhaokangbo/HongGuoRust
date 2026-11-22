@@ -129,7 +129,10 @@ struct PreviewDir(PathBuf);
 
 impl PreviewDir {
     fn create() -> Option<Self> {
-        let serial = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_nanos();
+        let serial = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()?
+            .as_nanos();
         let path = std::env::temp_dir().join(format!(
             "hongguorust-preview-{}-{serial}",
             std::process::id()
@@ -218,9 +221,7 @@ fn render_image(
     }
     let started = Instant::now();
     loop {
-        if latest.load(Ordering::Acquire) != generation
-            || started.elapsed() >= PREVIEW_TIMEOUT
-        {
+        if latest.load(Ordering::Acquire) != generation || started.elapsed() >= PREVIEW_TIMEOUT {
             return None;
         }
         match mpv.wait_event(0.05) {
