@@ -1,6 +1,7 @@
 use super::controls::PlayerControl;
 use super::source::MediaSource;
 use super::state::Failure;
+use super::tracks::{safe_track_label, track_available, MediaTrack, TrackKind, TrackList};
 use libmpv2::{events::Event, mpv_end_file_reason, Mpv};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -179,6 +180,96 @@ impl Engine {
         self.mpv
             .command(name, &args)
             .map_err(|e| native_error("control", e))
+    }
+
+    /// Only the owning libmpv worker calls this. Enumerate a bounded number
+    /// of tracks using scalar properties instead of exporting raw native nodes.
+    /// A Loading session has no usable track metadata yet.
+    pub fn tracks(&self) -> TrackList {
+        let mut list = TrackList {
+            session_id: self.session,
+            audio: Vec::new(),
+            subtitles: Vec::new(),
+        };
+        if !self.file_loaded {
+            return list;
+        }
+        let count = self
+            .mpv
+            .get_property::<i64>("track-list/count")
+            .unwrap_or(0)
+            .clamp(0, 64);
+        for index in 0..count {
+            let prefix = format!("track-list/{index}");
+            let kind = match self
+                .mpv
+                .get_property::<String>(&format!("{prefix}/type"))
+                .ok()
+                .as_deref()
+            {
+                Some("audio") => TrackKind::Audio,
+                Some("sub") => TrackKind::Subtitle,
+                _ => continue,
+            };
+            let id = match self.mpv.get_property::<i64>(&format!("{prefix}/id")) {
+                Ok(id) if id > 0 => id,
+                _ => continue,
+            };
+            let track = MediaTrack {
+                id,
+                selected: self
+                    .mpv
+                    .get_property::<bool>(&format!("{prefix}/selected"))
+                    .unwrap_or(false),
+                language: self
+                    .mpv
+                    .get_property::<String>(&format!("{prefix}/lang"))
+                    .ok()
+                    .and_then(safe_track_label),
+                title: self
+                    .mpv
+                    .get_property::<String>(&format!("{prefix}/title"))
+                    .ok()
+                    .and_then(safe_track_label),
+            };
+            let target = match kind {
+                TrackKind::Audio => &mut list.audio,
+                TrackKind::Subtitle => &mut list.subtitles,
+            };
+            if !target.iter().any(|item| item.id == id) {
+                target.push(track);
+            }
+        }
+        list
+    }
+
+    /// Validate that the ID exists in this session's track list immediately
+    /// before changing libmpv aid/sid. Subtitle None means sid=no.
+    pub fn select_track(
+        &mut self,
+        kind: TrackKind,
+        track_id: Option<i64>,
+    ) -> Result<TrackList, String> {
+        if !self.file_loaded {
+            return Err("媒体尚未加载完成，无法切换轨道".into());
+        }
+        let available = self.tracks();
+        let candidates = match kind {
+            TrackKind::Audio => &available.audio,
+            TrackKind::Subtitle => &available.subtitles,
+        };
+        if let Some(id) = track_id {
+            if !track_available(candidates, id) {
+                return Err("该轨道不存在或已失效，请刷新轨道列表".into());
+            }
+        } else if kind == TrackKind::Audio {
+            return Err("音频轨必须选择有效轨道".into());
+        }
+        let id_text = track_id.map(|id| id.to_string()).unwrap_or_else(|| "no".into());
+        self.mpv
+            .command("set", &[kind.mpv_property(), id_text.as_str()])
+            .map_err(|_| "libmpv 拒绝切换轨道".to_owned())?;
+        Ok(self.tracks())
     }
 
     pub fn poll(&mut self) -> Result<Option<Observation>, Failure> {
