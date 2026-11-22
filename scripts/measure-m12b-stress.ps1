@@ -22,11 +22,11 @@ if ($TargetPid -gt 0) {
     throw "PID $TargetPid does not match ProcessName '$ProcessName'"
   }
 } else {
-  $matches = @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)
-  if ($matches.Count -ne 1) {
-    throw "Expected exactly one '$ProcessName' process, found $($matches.Count). Use -TargetPid to select one."
+  $candidates = @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)
+  if ($candidates.Count -ne 1) {
+    throw "Expected exactly one '$ProcessName' process, found $($candidates.Count). Use -TargetPid to select one."
   }
-  $process = $matches[0]
+  $process = $candidates[0]
 }
 $targetId = [int]$process.Id
 $originalStart = $process.StartTime.ToUniversalTime().Ticks
