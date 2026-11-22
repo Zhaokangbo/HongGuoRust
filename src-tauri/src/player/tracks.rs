@@ -58,7 +58,9 @@ pub fn safe_track_label(value: String) -> Option<String> {
     let clean = value.trim();
     if clean.is_empty()
         || clean.contains("://")
-        || clean.chars().any(|ch| matches!(ch, '/' | '\\' | '?' | '&' | '='))
+        || clean
+            .chars()
+            .any(|ch| matches!(ch, '/' | '\\' | '?' | '&' | '='))
         || clean.chars().any(char::is_control)
     {
         return None;
@@ -77,10 +79,7 @@ mod tests {
     #[test]
     fn ipc_kind_is_explicit_and_track_properties_are_scoped() {
         assert_eq!(TrackKind::from_ipc("audio"), Ok(TrackKind::Audio));
-        assert_eq!(
-            TrackKind::from_ipc("subtitle"),
-            Ok(TrackKind::Subtitle)
-        );
+        assert_eq!(TrackKind::from_ipc("subtitle"), Ok(TrackKind::Subtitle));
         assert!(TrackKind::from_ipc("video").is_err());
         assert!(TrackKind::from_ipc("sid").is_err());
         assert_eq!(TrackKind::Audio.mpv_property(), "aid");
@@ -104,7 +103,10 @@ mod tests {
 
     #[test]
     fn metadata_never_leaks_urls_paths_or_controls() {
-        assert_eq!(safe_track_label(" 简体中文 ".into()), Some("简体中文".into()));
+        assert_eq!(
+            safe_track_label(" 简体中文 ".into()),
+            Some("简体中文".into())
+        );
         assert!(safe_track_label("https://example.com/secret?token=xx".into()).is_none());
         assert!(safe_track_label("C:\\private\\file".into()).is_none());
         assert!(safe_track_label("foo\nbar".into()).is_none());
