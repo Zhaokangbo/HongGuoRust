@@ -114,7 +114,16 @@ async function main() {
   const sdk = await createClient({
     profile: memoryProfileStore(), retryAttempts: 0, deviceResets: 0, timeoutMs: 8000,
   });
-  createCommunityGateway({ sdk, token }).listen(PORT, "127.0.0.1", () => {
+  const server = createCommunityGateway({ sdk, token });
+  server.on("error", (error) => {
+    // Port conflicts can happen after the PowerShell preflight check.
+    // Do not show a stack trace or silently reuse an earlier session/token.
+    process.stderr.write(error?.code === "EADDRINUSE"
+      ? "HG2A_PORT_IN_USE: 127.0.0.1:19091 is already occupied. Inspect the listener PID.\n"
+      : "HG2A_LISTEN_FAILED: local SDK bridge could not bind.\n");
+    process.exitCode = 1;
+  });
+  server.listen(PORT, "127.0.0.1", () => {
     process.stdout.write("Nonofficial HG2A SDK bridge listening at 127.0.0.1:" + PORT + "\n");
   });
 }
