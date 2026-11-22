@@ -253,9 +253,10 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
             return ui.child_window(title=name,control_type="Button").wrapper_object()
         # UI-3 starts in the browse-first Home surface. Enter the player
         # explicitly before asserting player-only IPC text or file-picker controls.
-        until(lambda: ui.child_window(title="播放器", control_type="Button").exists(timeout=.3),
-              "player surface entry", 90)
-        button("播放器").invoke()
+        player_entry = ui.child_window(title="播放器", control_type="Button")
+        until(lambda: player_entry.exists(timeout=.3), "player surface entry", 90)
+        until(lambda: player_entry.is_enabled(), "enabled player surface entry", 90)
+        player_entry.wrapper_object().invoke()
         until(lambda: text_visible("Idle"), "IPC Idle", 90)
         def select(path):
             until(lambda: button("打开本地 MP4").is_enabled(), "available file picker")
