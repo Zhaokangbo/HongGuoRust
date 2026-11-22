@@ -1,6 +1,7 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::history::{finish, HistorySession};
+use super::preferences::{PlayerPreferences, PreferencesStore};
 use super::preview::{PreviewFrame, PreviewService};
 use super::provider_history::{finish_provider, ProviderHistorySession};
 use super::source::MediaSource;
@@ -64,6 +65,7 @@ pub struct PlayerService {
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
     preview: PreviewService,
+    preferences: Arc<PreferencesStore>,
 }
 
 impl PlayerService {
@@ -71,15 +73,19 @@ impl PlayerService {
         host: isize,
         library: Arc<LocalLibrary>,
         provider_progress: Arc<ProviderProgressStore>,
+        preferences: Arc<PreferencesStore>,
     ) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(Shared::default()));
         let shared = Arc::clone(&state);
         let worker_library = Arc::clone(&library);
         let worker_progress = Arc::clone(&provider_progress);
+        let worker_preferences = Arc::clone(&preferences);
         let worker = thread::Builder::new()
             .name("libmpv-player".into())
-            .spawn(move || run(host, rx, shared, worker_library, worker_progress))?;
+            .spawn(move || {
+                run(host, rx, shared, worker_library, worker_progress, worker_preferences)
+            })?;
         Ok(Self {
             state,
             tx,
@@ -87,6 +93,7 @@ impl PlayerService {
             library,
             provider_progress,
             preview: PreviewService::default(),
+            preferences,
         })
     }
 
@@ -355,6 +362,7 @@ fn run(
     state: Arc<Mutex<Shared>>,
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
+    preferences: Arc<PreferencesStore>,
 ) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
@@ -392,7 +400,11 @@ fn run(
                 finish(&mut history, &library, false);
                 finish_provider(&mut provider_history, &provider_progress, false);
                 release(&mut engine);
-                match Engine::load(host, &source, id, accepted) {
+                let settings = preferences.snapshot().unwrap_or_else(|error| {
+                    tracing::warn!(error=%error, "invalid settings file; use runtime defaults");
+                    PlayerPreferences::default()
+                });
+                match Engine::load(host, &source, id, accepted, settings) {
                     Ok(player) => {
                         info!(
                             session_id = id,
@@ -435,11 +447,45 @@ fn run(
                     let _ = reply.send(Err("Playback session changed or is not ready".into()));
                     continue;
                 }
-                let result = engine
+                let mut result = engine
                     .as_mut()
                     .unwrap()
                     .control(request)
                     .map_err(|failure| failure.message);
+                // A native control is only considered successful when its new
+                // user preference was durably saved. On disk failure try to
+                // restore the previous native value and report the error.
+                if result.is_ok() {
+                    let persisted = match request {
+                        PlayerControl::SetRate(rate) => preferences.set_rate(rate).map(|_| ()),
+                        PlayerControl::SetVolume(volume) => {
+                            preferences.set_volume(volume).map(|_| ())
+                        }
+                        _ => Ok(()),
+                    };
+                    if let Err(error) = persisted {
+                        let before = preferences.snapshot().unwrap_or_default();
+                        let rollback = match request {
+                            PlayerControl::SetRate(_) => {
+                                Some(PlayerControl::SetRate(before.playback_rate))
+                            }
+                            PlayerControl::SetVolume(_) => {
+                                Some(PlayerControl::SetVolume(before.volume))
+                            }
+                            _ => None,
+                        };
+                        if let Some(old) = rollback {
+                            if let Err(failure) = engine.as_mut().unwrap().control(old) {
+                                tracing::warn!(
+                                    session_id=id,
+                                    stage=failure.stage,
+                                    "failed to restore native settings after persistence error"
+                                );
+                            }
+                        }
+                        result = Err(format!("播放器设置无法保存：{error}"));
+                    }
+                }
                 if result.is_ok() {
                     let mut shared = state.lock().unwrap();
                     match request {
