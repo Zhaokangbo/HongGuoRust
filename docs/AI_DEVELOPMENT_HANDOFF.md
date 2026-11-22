@@ -33,9 +33,10 @@
 | M10-C2 首页继续观看、剧集进度与本地历史合并 | [PR #21](https://github.com/Zhaokangbo/HongGuoRust/pull/21), `feat/m10c2-history-home`, HEAD `096d73b4b12247343b9e4277ea5e360ad38f4e9a` | M1/M2 通过；Windows **第 1–8 项明确通过**，第 9–11 项未被逐项确认 | 先验收并合并 #20，补齐 #21 余下验收，重检最终 HEAD 后合并 |
 | M11-A 键盘快捷键/帮助 | [PR #22](https://github.com/Zhaokangbo/HongGuoRust/pull/22), `feat/m11a-player-shortcuts`, HEAD `ba4160dfd422d1f1124b42ec7cfb173c189029a9` | M1/M2 通过；**Windows 10/10 已由用户明确报告全通过** | 先完成并合并 #20、#21，再确认 stacked diff/CI，才合并 #22 |
 | M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | **同一最终 HEAD Windows M1/M2 全部成功**：M1 #44987943244、M2 #44987943231；调试 ZIP/EXE 哈希已验证；**用户已明确报告 Windows 12/12 实机全部通过** | 测试真实 JPEG 缩略图、主播放器无 Seek/音画不中断、跨 session 隔离、弱网降级；#20–#22 先满足合并门槛 |
-| M11-C1 音轨/内嵌字幕选择 | [PR #24](https://github.com/Zhaokangbo/HongGuoRust/pull/24), `feat/m11c1-track-selection`, HEAD `f1e281c8f53b25d185efb6a0b28896159689b1ad` | 上一代码 HEAD `8f62012fe938188358fb6704f9aff65695bc3de1` M1 #44989920235 / M2 #44989920248 均成功；此后**仅修改了测试素材脚本的 FFmpeg 默认路径**，最新 HEAD CI 未核对；Windows 12 项实机仍待验收 | 在 Windows 生成双音轨+字幕 MP4 并验证；#20–#23 合并前置条件保留 |
+| M11-C1 音轨/内嵌字幕选择 | [PR #24](https://github.com/Zhaokangbo/HongGuoRust/pull/24), `feat/m11c1-track-selection`, HEAD `f1e281c8f53b25d185efb6a0b28896159689b1ad` | 前一代码 SHA `8f62012fe938188358fb6704f9aff65695bc3de1` 的 M1/M2 均成功，后续仅调整 FFmpeg 测试脚本路径；**用户明确报告 M11-C1 Windows 12/12 全部通过** | 仍 Draft/未合并：前置 #20–#23 尚需各自验收/用户合并授权 |
+| M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `c56b5178514e1f13993cf5dce2ce0b1c4c70cdae` | **已实现并提交，CI 正在运行但结果未确认**：Windows M1 #44991602348 / M2 #44991602375；Windows 12/12 手动测试尚未开始 | 等用户通知 CI 编译完成；失败查看日志修复；全绿后提供私人调试 ZIP/哈希/PowerShell 脚本，执行 [M11-C2 真机验收](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m11c2-persistent-player-preferences/docs/acceptance/m11-c2.md) |
 
-**验收口径**：用户已分别明确反馈 M11-A 10/10 与 M11-B 12/12 通过；之前 #20/#21 尚待逐项反馈的条目不可推定通过。
+**验收口径**：用户已分别明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12 通过；之前 #20/#21 尚待逐项反馈的条目不可推定通过。
 
 ## 4. M11-B 当前开发实现与风险
 
@@ -50,12 +51,12 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **M11-C1 PR #24 最新 HEAD 为 `f1e281c8f53b25d185efb6a0b28896159689b1ad`**：由用户请求将 `scripts/create-m11c1-fixture.ps1` 的默认 FFmpeg 路径设为 `D:\\26-008\\26-008\\voip4\\run\\run_windows\\bin\\ffmpeg.exe`（可通过 `-FfmpegPath` 覆盖）。先前播放器代码 HEAD `8f62012fe938188358fb6704f9aff65695bc3de1` 的 Windows M1/M2 已全绿，后续仅更改素材生成脚本。**最新 HEAD 的 CI 结果尚未确认，不要自动当作全绿；用户未通知时不持续轮询。**
-2. 新增独立 Rust worker 的 `track-list` 查询与 `aid/sid` 切换；`player_tracks`、`player_select_track` 都带原生 session ID，返回无 URL/路径的纯元数据，UI 增加音轨和内嵌字幕选择器；不自动扫描外部字幕、不持久化偏好。用户需用含多轨媒体验证实际选中状态和声音/字幕切换。
-3. `docs/acceptance/m11-c1.md` 包含 **Windows 12 项真机验收**；`scripts/create-m11c1-fixture.ps1` 使用本机 FFmpeg 合成带 2 条不同音频（440Hz/660Hz）+ 1 条内嵌字幕的 MP4。测试前应确认 FFmpeg 可用，或用户自备有权播放的多轨 MP4。
-4. **上一代码提交 CI 已通过，但脚本修改后最新 HEAD 尚未重新核对；Windows 真机验收仍待完成**：M2 artifact `HongGuoRust-M2-debug-x64`（ID `14740969204`）已下载并验证；文件 `HongGuoRust-M11C1-debug-x64.zip`（4,463,600 bytes，SHA-256 `490f6179b65004514be063ade76063fd5c160feee76d07152d7f96df8240559a`）内含 `hongguorust.exe`（14,177,792 bytes，SHA-256 `3d06e9a6a30a46b36b4115f628d534c956730f16ebc68c4d0cd436c559c898f0`）。本次对话还生成 `HongGuoRust-M11C1-deploy.ps1`；新对话不能虚构旧 sandbox 文件链接，需要重新下载/校验。
-5. 在 Windows `%LOCALAPPDATA%\\HongGuoRust-M11C1-Test` 独立部署；从 M11-B 已测试目录复制 DLL，不修改 `%LOCALAPPDATA%\\HongGuoRust`。按 [M11-C1 验收文档](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m11c1-track-selection/docs/acceptance/m11-c1.md) 进行 **12 项实机验收**；含 2 条音轨和 1 条内嵌字幕的测试片可由 `scripts/create-m11c1-fixture.ps1` + 用户本机 FFmpeg 制作。只在用户确认后更新验收状态；如失败诊断并在 #24 修复。
-6. 合并顺序严格 #20 -> #21 -> #22 -> #23 -> #24；#20 若干手动项和 #21 第 9–11 项仍未逐项确认。所有 PR 保持 Draft，**未经用户明确授权不得合并**。下次开发阶段结束同步维护 main 交接文件。
+1. **当前工作分支 M11-C2 PR #25**：`feat/m11c2-persistent-player-preferences`，准确 HEAD `c56b5178514e1f13993cf5dce2ce0b1c4c70cdae`，从已通过 Windows M11-C1 12/12 验收的 #24 分支派生。PR #20–#25 均 Draft/未合并，`main` 为 CI 触发目标而非合并授权。
+2. 已增加 `src-tauri/src/player/preferences.rs`：本地 `%LOCALAPPDATA%\\HongGuoRust\\player-settings.json`，schema=1，保存 volume、lastAudibleVolume、playbackRate、autoNext，16KiB 上限，原子磁盘替换，坏 JSON/未来版本不静默覆盖；不存储媒体路径、URL 或跨媒体音轨/字幕 ID。
+3. `Engine::load` 创建新 libmpv 实例时自动应用保存的音量与倍速；worker 只在 native 控制成功时落盘，失败时尝试回滚；React 初次加载保存的数值，不再每次换 session 重置默认值；M8 本地自动连播偏好也已保存，但 **Provider 集数仍手动下一集**。
+4. **最终 HEAD M1 #44991602348 和 M2 #44991602375 已开始，最近确认均 in_progress；未收到用户完成通知前禁止持续轮询。** 用户说“编译完成”后仅核对 PR #25 最新 HEAD 的两条 CI；失败则取 job 日志并直接修复。成功才下载对应 M2 artifact，实际核验 ZIP/EXE SHA-256 和创建独立 Windows 部署脚本。
+5. `docs/acceptance/m11-c2.md` 定义 Windows 12 项手动验收：音量/倍速跨重启、静音恢复上次音量、本地自动连播偏好与 Provider 手动切集、损坏设置文件防覆盖、M11-A/B/C1 和 M7–M10-C2 回归。
+6. 前置 PR **#20 -> #21 -> #22 -> #23 -> #24 -> #25** 需按顺序补齐各自验收并取得明确合并授权。尤其 #20 的若干手动项和 #21 第 9–11 项仍未逐项确认，不能因后面阶段通过就假定完成。每次开发交接同步维护 main 交接文件。
 
 ## 6. 构建/交付标准与协作手册
 
@@ -78,4 +79,4 @@
 
 - 仓库主文档：`README.md`、`docs/roadmap.md`。
 - 既有验收：`docs/acceptance/m10-c1.md`、`m10-c2.md`、`m11-a.md`、`m11-b.md`（**部分只在对应功能分支**）。
-- 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)。
+- 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)。
