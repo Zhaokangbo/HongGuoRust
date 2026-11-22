@@ -22,7 +22,8 @@
     "test:m12b-trend": "node --test tests/m12b-trend.test.mjs",
     "test:m12c-fault-fixtures": "node --test tests/m12c-fault-fixtures.test.mjs",
     "test:hg2a-community": "node --test tests/hg2a-community-gateway.test.mjs",
-    "build": "npm run typecheck && npm run test:discovery && npm run test:episode-queue && npm run test:provider-progress && npm run test:recent-activity && npm run test:player-shortcuts && npm run test:thumbnail-preview && npm run test:media-tracks && npm run test:player-preferences && npm run test:runtime-health && npm run test:m12b-trend && npm run test:m12c-fault-fixtures && npm run test:hg2a-community && vite build",
+    "test:hg2b-covers": "node --experimental-strip-types --test tests/hg2b-cover.test.mjs",
+    "build": "npm run typecheck && npm run test:discovery && npm run test:episode-queue && npm run test:provider-progress && npm run test:recent-activity && npm run test:player-shortcuts && npm run test:thumbnail-preview && npm run test:media-tracks && npm run test:player-preferences && npm run test:runtime-health && npm run test:m12b-trend && npm run test:m12c-fault-fixtures && npm run test:hg2a-community && npm run test:hg2b-covers && vite build",
     "tauri": "cargo tauri"
   },
   "dependencies": {
