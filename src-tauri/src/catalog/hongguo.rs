@@ -78,6 +78,7 @@ fn safe_series(item: ApprovedSeries) -> Result<Series, String> {
         genre: item.genre,
         badge: "授权样例（非红果真实内容）".into(),
         artwork: "studio".into(),
+        cover_url: None,
         episode_count: item.episodes,
         provider_id: "hongguo".into(),
     })
@@ -255,6 +256,7 @@ impl ContentProvider for HongGuoAuthorizedProvider {
                 number: item.number,
                 title: item.title,
                 runtime_label: "—".into(),
+                playable: true,
             });
         }
         episodes.sort_by_key(|episode| episode.number);
