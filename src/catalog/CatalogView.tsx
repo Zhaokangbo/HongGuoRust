@@ -22,6 +22,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const [mode, setMode] = useState<"home" | "demo" | "local" | "history" | "favorites">("home");
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
+  const [genreFilter, setGenreFilter] = useState("all");
   const [sourceId, setSourceId] = useState("demo");
   const [sources, setSources] = useState<CatalogProvider[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -155,6 +156,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setGenreFilter("all");
     setDetail(null);
     setSearch(input.trim());
   }
@@ -201,9 +203,21 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     setSourceId(fromSource);
     setInput(fromQuery);
     setSearch(fromQuery);
+    setGenreFilter("all");
     setError("");
     setDetail(null);
     setMode("demo");
+  }
+
+  function selectSource(id: string) {
+    setMode("demo");
+    setSourceId(id);
+    setInput("");
+    setSearch("");
+    setGenreFilter("all");
+    setError("");
+    setConfirmManifestClear(false);
+    setManifestInfo("");
   }
 
   async function importManifest() {
@@ -306,8 +320,97 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     ? watchedEpisodeCount(detail.episodes.map(item => item.id), episodeProgress) : 0;
   const communityPlayEnabled = detail?.series.providerId !== "hgcommunity" ||
     sources.some(provider => provider.id === "hgcommunity" && provider.supportsPlay);
+  const firstEpisode = sortedEpisodes[0];
+  const explorerGenres = Array.from(new Set(items.map(item => item.genre.trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "zh-CN"));
+  const visibleItems = genreFilter === "all" ? items : items.filter(item => item.genre.trim() === genreFilter);
+  const sourceLabel = sources.find(source => source.id === sourceId)?.name ??
+    (sourceId === "all" ? "全部内容源" : sourceId === "demo" ? "演示内容" :
+      sourceId === "hongguo" ? "红果接入" : sourceId === "hgcommunity" ? "社区接口实验" :
+        sourceId === "manifest" ? "自有媒体清单" : sourceId);
+  const sidebarSources = sources.length ? sources.filter(source => source.id !== "local") : [
+    { id: "demo", name: "演示内容", supportsSearch: true, supportsDetail: true, supportsPlay: true },
+    { id: "hongguo", name: "红果接入", supportsSearch: false, supportsDetail: false, supportsPlay: false },
+  ];
 
-  return <section className="catalog-view" aria-label="内容剧库">
+  return <section className="catalog-view catalog-layout" aria-label="内容剧库">
+    <aside className="catalog-sidebar" aria-label="剧库导航">
+      <div className="catalog-sidebar-brand">
+        <span className="catalog-sidebar-mark" aria-hidden="true">H</span>
+        <span><strong>内容空间</strong><small>PERSONAL LIBRARY</small></span>
+      </div>
+
+      <nav className="catalog-sidebar-group" aria-label="发现">
+        <span className="catalog-sidebar-label">发现</span>
+        <button type="button" className="catalog-side-link"
+          aria-label="首页" aria-current={mode === "home" ? "page" : undefined}
+          onClick={() => { setMode("home"); setError(""); setDetail(null); }}>
+          <span className="catalog-side-icon" aria-hidden="true">⌂</span><span>首页</span>
+        </button>
+        <button type="button" className="catalog-side-link"
+          aria-label="探索全部内容" aria-current={mode === "demo" && sourceId === "all" ? "page" : undefined}
+          onClick={() => selectSource("all")}>
+          <span className="catalog-side-icon" aria-hidden="true">⌕</span><span>探索全部</span>
+        </button>
+      </nav>
+
+      <nav className="catalog-sidebar-group" aria-label="我的媒体">
+        <span className="catalog-sidebar-label">我的媒体</span>
+        <button type="button" className="catalog-side-link"
+          aria-label="我的视频" aria-current={mode === "local" ? "page" : undefined}
+          onClick={() => { setMode("local"); setError(""); }}>
+          <span className="catalog-side-icon" aria-hidden="true">▣</span><span>我的视频</span>
+        </button>
+        <button type="button" className="catalog-side-link"
+          aria-label="最近播放" aria-current={mode === "history" ? "page" : undefined}
+          onClick={() => { setMode("history"); setError(""); }}>
+          <span className="catalog-side-icon" aria-hidden="true">◷</span><span>最近播放</span>
+        </button>
+        <button type="button" className="catalog-side-link"
+          aria-label="我的收藏" aria-current={mode === "favorites" ? "page" : undefined}
+          onClick={() => { setMode("favorites"); setError(""); }}>
+          <span className="catalog-side-icon" aria-hidden="true">☆</span><span>我的收藏</span>
+        </button>
+      </nav>
+
+      <nav className="catalog-sidebar-group catalog-sidebar-sources" aria-label="内容来源">
+        <span className="catalog-sidebar-label">内容来源</span>
+        {sidebarSources.map(provider => <button type="button" key={provider.id}
+          className="catalog-side-link catalog-side-source"
+          aria-label={provider.name}
+          aria-current={mode === "demo" && sourceId === provider.id ? "page" : undefined}
+          onClick={() => selectSource(provider.id)}>
+          <span className="catalog-side-source-dot" aria-hidden="true" />
+          <span>{provider.name}</span>
+          {provider.id === "hgcommunity" && <small>实验</small>}
+        </button>)}
+      </nav>
+
+      <div className="catalog-sidebar-footer">
+        <span className="catalog-sidebar-status-dot" aria-hidden="true" />
+        <span><strong>本机媒体中心</strong><small>内容与观看记录保存在本机</small></span>
+      </div>
+    </aside>
+
+    <div className="catalog-main">
+      <div className={"catalog-heading" + (detail ? " catalog-heading-detail" : "")}>
+        {detail ? <div className="catalog-breadcrumb">
+          <button type="button" className="catalog-back-link" disabled={working}
+            onClick={() => setDetail(null)}>← 返回内容</button>
+          <span>作品详情</span>
+        </div> : <div>
+          <p className="catalog-eyebrow">HONGGUORUST · MEDIA CENTER</p>
+          <h2>{mode === "home" ? "首页" : mode === "favorites" ? "我的收藏"
+            : mode === "history" ? "最近播放" : mode === "local" ? "我的视频"
+              : sourceId === "all" ? "探索全部内容" : sourceLabel}</h2>
+          <p>{mode === "home" ? "从你的内容来源中发现作品，继续上次观看，或浏览完整片库。"
+            : mode === "history"
+              ? "查看本机保存的观看记录与播放进度。"
+              : mode === "favorites" ? "集中管理你收藏的本地视频。"
+                : mode === "local" ? "管理你主动添加的本地 MP4 文件。"
+                  : "搜索、筛选并浏览已接入内容源返回的真实作品。"}</p>
+        </div>}
+      </div>
     <div className="catalog-heading">
       <div>
         <p className="catalog-eyebrow">M10 · MEDIA EXPERIENCE</p>
@@ -325,65 +428,28 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         onClick={() => setDetail(null)}>← 返回列表</button>}
     </div>
 
-    {!detail && <nav className="catalog-tabs" aria-label="内容来源">
-      <button type="button" className={mode === "home" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => { setMode("home"); setError(""); }}>首页</button>
-      <button type="button" className={mode === "demo" && sourceId !== "hongguo" && sourceId !== "hgcommunity" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => { setMode("demo"); setSourceId("demo"); setError(""); }}>演示内容</button>
-      <button type="button"
-        className={mode === "demo" && sourceId === "hongguo" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => {
-          setMode("demo"); setSourceId("hongguo"); setInput("");
-          setSearch(""); setError("");
-        }}>红果接入</button>
-      {sources.some(source => source.id === "hgcommunity") && <button type="button"
-        className={mode === "demo" && sourceId === "hgcommunity" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => {
-          setMode("demo"); setSourceId("hgcommunity"); setInput("");
-          setSearch(""); setError("");
-        }}>社区接口实验</button>}
-      <button type="button" className={mode === "local" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => { setMode("local"); setError(""); }}>我的视频</button>
-      <button type="button" className={mode === "history" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => { setMode("history"); setError(""); }}>最近播放</button>
-      <button type="button" className={mode === "favorites" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => { setMode("favorites"); setError(""); }}>我的收藏</button>
-    </nav>}
-
     {!detail && mode === "demo" && <div className="catalog-source-tools">
-      <label htmlFor="catalog-provider-select">内容源</label>
-      <select id="catalog-provider-select" aria-label="选择内容源"
-        value={sourceId} disabled={working || loadingMore}
-        onChange={event => {
-          setSourceId(event.target.value);
-          setInput("");
-          setSearch("");
-          setConfirmManifestClear(false);
-          setManifestInfo("");
-        }}>
-        {sources.length === 0 && <option value="demo">演示内容</option>}
-        {sources.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}
-        <option value="all">全部内容源</option>
-      </select>
-      <button type="button" className="catalog-ghost"
-        disabled={working || loadingMore}
-        onClick={refreshCatalog}>刷新内容</button>
-      <button type="button" className="catalog-ghost"
-        disabled={!(loading || loadingMore || detailLoading)}
-        onClick={cancelPending}>取消请求</button>
-      {(sourceId === "manifest" || sourceId === "all") && <>
+      <div className="catalog-source-current">
+        <small>当前浏览来源</small>
+        <strong>{sourceLabel}</strong>
+      </div>
+      <div className="catalog-source-actions">
         <button type="button" className="catalog-ghost"
-          disabled={manifestBusy || working}
-          onClick={() => void importManifest()}>
-          {manifestBusy ? "处理中..." : "导入自有 JSON 清单"}
-        </button>
+          disabled={working || loadingMore} onClick={refreshCatalog}>刷新内容</button>
         <button type="button" className="catalog-ghost"
-          disabled={manifestBusy || working}
-          onClick={() => void clearManifest()}>
-          {confirmManifestClear ? "再次点击确认清空" : "清空自有清单"}
-        </button>
-      </>}
-      {!loading && <span role="status">共 {total} 条内容</span>}
+          disabled={!(loading || loadingMore || detailLoading)} onClick={cancelPending}>取消请求</button>
+        {(sourceId === "manifest" || sourceId === "all") && <>
+          <button type="button" className="catalog-ghost"
+            disabled={manifestBusy || working} onClick={() => void importManifest()}>
+            {manifestBusy ? "处理中..." : "导入 JSON 清单"}
+          </button>
+          <button type="button" className="catalog-ghost"
+            disabled={manifestBusy || working} onClick={() => void clearManifest()}>
+            {confirmManifestClear ? "再次点击确认清空" : "清空自有清单"}
+          </button>
+        </>}
+      </div>
+      {!loading && <span className="catalog-source-count" role="status">共 {total} 部作品</span>}
     </div>}
 
     {!detail && mode === "demo" && sourceId === "hgcommunity" && <div className="catalog-manifest-info" role="status">
@@ -399,10 +465,24 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     </div>}
 
     {!detail && mode === "demo" && sourceId !== "hongguo" && <form className="catalog-search" onSubmit={submit}>
+      <span className="catalog-search-icon" aria-hidden="true">⌕</span>
       <input type="search" value={input} onChange={event => setInput(event.target.value)}
         placeholder="搜索作品名称、类型或关键词" aria-label="搜索内容" maxLength={128} />
       <button type="submit">搜索</button>
     </form>}
+    {!detail && mode === "demo" && items.length > 0 && <div className="catalog-explorer-filters">
+      <span>类型筛选</span>
+      <div className="catalog-explorer-chips">
+        <button type="button" aria-pressed={genreFilter === "all"}
+          className={genreFilter === "all" ? "active" : ""}
+          onClick={() => setGenreFilter("all")}>全部类型</button>
+        {explorerGenres.map(name => <button type="button" key={name}
+          aria-pressed={genreFilter === name}
+          className={genreFilter === name ? "active" : ""}
+          onClick={() => setGenreFilter(name)}>{name}</button>)}
+      </div>
+      <small>显示 {visibleItems.length} / {total} 部</small>
+    </div>
 
     {manifestInfo && <p className="catalog-manifest-info" role="status">{manifestInfo}</p>}
     {error && <div className="catalog-request-error" role="alert">
@@ -422,15 +502,34 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} playerError={playerError} />
         </>
       : detail ? <div className="catalog-detail">
-      <div className={"catalog-detail-art artwork-" + detail.series.artwork} aria-hidden="true">
+      <div className={"catalog-detail-backdrop artwork-" + detail.series.artwork} aria-hidden="true">
         <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} eager priority />
-        <span>{detail.series.providerId === "manifest" ? "自有清单"
-          : detail.series.providerId === "local" ? "本地媒体"
-           : detail.series.providerId === "hgcommunity" ? "社区 SDK · 实验" : "DEMO"}</span>
       </div>
-      <div className="catalog-detail-body">
-        <div className="catalog-meta">{detail.series.genre} · {detail.series.badge}</div>
-        <p>{detail.series.description}</p>
+      <div className="catalog-detail-layout">
+        <div className={"catalog-detail-poster artwork-" + detail.series.artwork} aria-hidden="true">
+          <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} eager />
+          <span>{detail.series.providerId === "manifest" ? "自有清单"
+            : detail.series.providerId === "local" ? "本地媒体"
+              : detail.series.providerId === "hgcommunity" ? "社区 SDK · 实验" : "演示内容"}</span>
+        </div>
+        <div className="catalog-detail-body">
+          <div className="catalog-detail-kicker">
+            <span>{sources.find(source => source.id === detail.series.providerId)?.name ?? "已接入内容"}</span>
+            <span>{detail.series.genre}</span>
+            <span>{detail.series.badge}</span>
+          </div>
+          <h1>{detail.series.title}</h1>
+          <p className="catalog-detail-description">{detail.series.description}</p>
+          <div className="catalog-detail-facts">
+            <span>{detail.episodes.length} 集</span>
+            {detail.series.providerId !== "local" && <span>已观看 {playedEpisodes} 集</span>}
+            <span>{communityPlayEnabled ? "可查看剧集状态" : "仅浏览模式"}</span>
+          </div>
+          {!lastEpisode && firstEpisode && <button type="button" className="catalog-primary-action"
+            disabled={working || !communityPlayEnabled || firstEpisode.playable === false}
+            onClick={() => void play(detail.series.id, firstEpisode.id)}>
+            {firstEpisode.playable === false ? "首集暂不可播放" : "从第 " + firstEpisode.number + " 集开始"}
+          </button>}
         {detail.series.providerId === "hgcommunity" && !communityPlayEnabled &&
           <p className="catalog-availability-info" role="status">
             当前为真实剧集目录浏览模式。尚未配置允许的媒体域名，不会尝试解析或播放视频。
@@ -457,7 +556,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           onClick={() => void play(detail.series.id, nextEpisode.id)}>
           上次观看的剧集已完播 · 播放下一集（第 {nextEpisode.number} 集）
         </button>}
-        <h3>选集 <span>共 {detail.episodes.length} 集
+        <h3 className="catalog-episodes-heading">剧集列表 <span>共 {detail.episodes.length} 集
           {detail.series.providerId !== "local" && (progressLoading
             ? " · 正在读取观看记录" : progressError ? " · 历史不可用"
               : " · 已观看 " + playedEpisodes + " 集")}
@@ -467,6 +566,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
             const saved = episodeProgress.find(item => item.episodeId === episode.id);
             const percent = saved ? watchedPercent(saved.positionSec, saved.durationSec, saved.completed) : null;
             return <button key={episode.id} type="button"
+              className={"catalog-episode-card" + (episode.playable === false ? " is-unavailable" : "") +
+                (saved?.completed ? " is-complete" : "")}
               disabled={working || !communityPlayEnabled || episode.playable === false}
               title={episode.playable === false ? "上游标记该集不可播放" : !communityPlayEnabled ? "当前仅可浏览" : undefined}
               onClick={() => void play(detail.series.id, episode.id)}>
@@ -483,7 +584,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           })}
         </div>
       </div>
-    </div> : mode === "home"
+        </div>
+      </div> : mode === "home"
       ? <DiscoveryHome sources={sources} busy={working}
           onSelect={id => void showDetail(id)} onExplore={openExplorer}
           onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
@@ -493,20 +595,27 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           ? "红果接入接口尚未授权，当前不提供真实作品搜索或播放。已完成可扩展的 Provider 接入入口。"
           : "没有匹配的内容，试试“城市”或“自然”。"}
       </p>
-      : <div className="catalog-grid">
-        {items.map((item, index) => <button key={item.id} type="button"
-          className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
-          <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
-             <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
-               eager={index < 8} priority={index < 2} />
-            <span>{item.providerId === "manifest" ? "HGR / 自有清单"
-              : item.providerId === "local" ? "HGR / LOCAL"
-               : item.providerId === "hgcommunity" ? "社区 SDK / 实验" : "HGR / DEMO"}</span>
-          </span>
-          <strong>{item.title}</strong>
-          <span className="catalog-meta">{item.genre} · {item.episodeCount} 集</span>
-          <span className="catalog-card-badge">{item.providerId === "local" ? "本地媒体 · " + item.badge : item.badge}</span>
-        </button>)}
+      : <div className="catalog-results">
+        <div className="catalog-results-heading">
+          <div><h3>全部作品</h3><p>按照当前内容源返回顺序展示，不代表热度或评分排名。</p></div>
+          <span>{visibleItems.length} 部</span>
+        </div>
+        <div className="catalog-grid">
+          {visibleItems.map((item, index) => <button key={item.id} type="button"
+            className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
+            <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
+              <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
+                eager={index < 10} priority={index < 3} />
+              <span>{item.providerId === "manifest" ? "自有清单"
+                : item.providerId === "local" ? "本地媒体"
+                  : item.providerId === "hgcommunity" ? "社区 SDK · 实验" : "演示内容"}</span>
+              <span className="catalog-card-hover">查看详情 <i aria-hidden="true">→</i></span>
+            </span>
+            <strong>{item.title}</strong>
+            <span className="catalog-meta">{item.genre} · {item.episodeCount} 集</span>
+            <span className="catalog-card-badge">{item.badge}</span>
+          </button>)}
+        </div>
       </div>}
     {mode === "demo" && !detail && nextOffset !== null && <div className="catalog-pagination">
       <span>已显示 {items.length} / {total} 条</span>
@@ -514,5 +623,6 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         onClick={() => void loadMore()}>{loadingMore ? "正在加载..." : "加载更多"}</button>
     </div>}
     {mode === "demo" && <p className="catalog-disclaimer">演示内容仅用于功能验证；本地来源只读取你主动添加的 MP4。自有清单仅接收用户选择的 JSON，引用公开 HTTPS MP4，导入前请确认内容使用权限；不会扫描或上传本地视频。</p>}
+    </div>
   </section>;
 }
