@@ -41,8 +41,8 @@ fn is_host(value: &str) -> bool {
 }
 
 /// Only display public HTTPS cover images provided by the opt-in SDK.
- /// Never accept credentials, private IP literals, fragments or unsafe schemes.
- /// This is syntactic validation, not a network DNS/redirect pinning guarantee.
+/// Never accept credentials, private IP literals, fragments or unsafe schemes.
+/// This is syntactic validation, not a network DNS/redirect pinning guarantee.
 fn valid_cover_url(value: &str) -> Option<&str> {
     if value.len() > 2048
         || !value.starts_with("https://")
