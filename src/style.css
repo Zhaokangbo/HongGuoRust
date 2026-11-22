@@ -263,3 +263,27 @@ main.fullscreen header, main.fullscreen footer { display: none; }
   .recent-grid { grid-template-columns: 1fr; }
   .recent-card { padding: 14px; }
 }
+
+/* M11-A: keyboard reference stays outside the native video host and never grabs focus. */
+.player-help-trigger { font-size: 12px; padding: 6px 10px; border: 1px solid #67927a;
+  background: #203e30; color: #d9f5e4; border-radius: 6px; }
+.player-help-trigger[aria-expanded="true"] { background: #a0e9cd; color: #14271e; }
+.player-shortcut-help {
+  position: fixed; right: 18px; bottom: 132px; z-index: 1500;
+  width: min(360px, calc(100vw - 36px)); max-height: min(60vh, 460px);
+  overflow-y: auto; border-radius: 12px; padding: 16px 18px;
+  border: 1px solid #90c9a6; background: #162b22; color: #effaf1;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, .5);
+}
+.shortcut-help-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.shortcut-help-heading strong { font-size: 16px; }
+.shortcut-help-heading button { border-radius: 6px; padding: 5px 10px; font-size: 12px; }
+.player-shortcut-help dl { margin: 12px 0; display: grid; gap: 6px; }
+.player-shortcut-help dl > div { display: grid; grid-template-columns: 106px 1fr; gap: 9px;
+  padding: 5px 0; border-bottom: 1px solid #365544; }
+.player-shortcut-help dt { font: 12px Consolas, monospace; color: #a0e9cd; }
+.player-shortcut-help dd { font-size: 12px; margin: 0; }
+.player-shortcut-help p { color: #a7c9b6; line-height: 1.55; font-size: 11px; margin: 8px 0 0; }
+@media (max-width: 700px) {
+  .player-shortcut-help { right: 9px; bottom: 190px; width: calc(100vw - 18px); }
+}
