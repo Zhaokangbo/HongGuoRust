@@ -17,7 +17,7 @@ export type TrackKind = "audio" | "subtitle";
 export function usableTrackList(
   response: TrackList | null, sessionId: number | null,
 ): response is TrackList {
-  return response !== null
+  return response != null
     && sessionId !== null
     && Number.isSafeInteger(response.sessionId)
     && response.sessionId === sessionId
