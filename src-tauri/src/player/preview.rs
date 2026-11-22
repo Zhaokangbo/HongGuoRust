@@ -304,11 +304,15 @@ mod tests {
         assert_eq!(encode_base64(b"foo"), "Zm9v");
         let mut cache = Cache::default();
         for bucket in 0..(MAX_CACHE_ITEMS + 5) {
-            cache.insert(1, bucket as u64, PreviewFrame {
-                session_id: 1,
-                time_sec: bucket as f64,
-                data_url: format!("data:image/jpeg;base64,{bucket}"),
-            });
+            cache.insert(
+                1,
+                bucket as u64,
+                PreviewFrame {
+                    session_id: 1,
+                    time_sec: bucket as f64,
+                    data_url: format!("data:image/jpeg;base64,{bucket}"),
+                },
+            );
         }
         assert_eq!(cache.entries.len(), MAX_CACHE_ITEMS);
         assert!(cache.get(1, 0).is_none());
