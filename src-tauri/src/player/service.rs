@@ -1,8 +1,8 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::history::{finish, HistorySession};
-use super::provider_history::{finish_provider, ProviderHistorySession};
 use super::preview::{PreviewFrame, PreviewService};
+use super::provider_history::{finish_provider, ProviderHistorySession};
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use crate::catalog::progress::ProviderProgressStore;
