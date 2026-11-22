@@ -126,13 +126,13 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
   return <section className="discovery-home" aria-label="首页内容发现">
     <div className="discovery-intro">
       <div>
-        <p className="catalog-eyebrow">M10 · CONTENT DISCOVERY</p>
-        <h3>从已接入的内容中，发现下一部想看的视频</h3>
-        <p>汇总演示内容、你导入的本地视频和自有 JSON 清单。不使用虚构榜单或未经授权的片源。</p>
+        <p className="catalog-eyebrow">HONGGUORUST · DISCOVER</p>
+        <h3>发现下一部想看的作品</h3>
+        <p>汇集已接入的内容、你添加的本地视频和自有媒体清单。只展示实际获取到的目录信息。</p>
       </div>
       <button type="button" className="discovery-explore"
         onClick={() => onExplore(source, query)}>
-        浏览完整目录
+        探索全部内容
       </button>
     </div>
 
@@ -193,11 +193,11 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
             <span>{discoverySourceLabel(hero.providerId, names)}</span>
           </span>
           <span className="discovery-hero-copy">
-            <small>首页焦点 · 来自现有内容源</small>
+            <small>为你发现 · 来自已接入内容源</small>
             <strong>{hero.title}</strong>
             <span>{hero.genre} · {hero.episodeCount} 集 · {discoverySourceLabel(hero.providerId, names)}</span>
             <span className="discovery-description">{hero.description || "查看作品详情与可用剧集。"}</span>
-            <span className="discovery-hero-cta">查看详情与选集</span>
+            <span className="discovery-hero-cta">查看作品详情</span>
           </span>
         </button>
         {others.length > 0 && <>
