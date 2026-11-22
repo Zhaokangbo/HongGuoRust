@@ -68,7 +68,9 @@ impl Default for RuntimeHealthMeter {
 }
 
 fn duration_ms(start: Instant, now: Instant) -> u64 {
-    now.saturating_duration_since(start).as_millis().min(u64::MAX as u128) as u64
+    now.saturating_duration_since(start)
+        .as_millis()
+        .min(u64::MAX as u128) as u64
 }
 
 impl RuntimeHealthMeter {
@@ -140,7 +142,11 @@ impl RuntimeHealthMeter {
                 self.buffer_at = Some((session, now));
                 self.current.buffer_events = self.current.buffer_events.saturating_add(1);
             }
-        } else if self.buffer_at.as_ref().is_some_and(|(id, _)| *id == session) {
+        } else if self
+            .buffer_at
+            .as_ref()
+            .is_some_and(|(id, _)| *id == session)
+        {
             self.finish_buffer(now);
         }
     }
@@ -226,17 +232,41 @@ mod tests {
         let mut meter = RuntimeHealthMeter::default();
         meter.open(1, now, now);
         meter.buffer(1, true, now);
-        meter.open(2, now + Duration::from_millis(100), now + Duration::from_millis(100));
+        meter.open(
+            2,
+            now + Duration::from_millis(100),
+            now + Duration::from_millis(100),
+        );
         meter.loaded(1, now + Duration::from_millis(110));
         meter.buffer(1, true, now + Duration::from_millis(130));
         meter.ended(1, now + Duration::from_millis(200));
         meter.failed(1, now + Duration::from_millis(300));
-        assert_eq!(meter.snapshot(now + Duration::from_millis(350)).active_session_id, Some(2));
-        assert_eq!(meter.snapshot(now + Duration::from_millis(350)).buffer_total_ms, 100);
-        assert_eq!(meter.snapshot(now + Duration::from_millis(350)).playback_failed, 0);
+        assert_eq!(
+            meter
+                .snapshot(now + Duration::from_millis(350))
+                .active_session_id,
+            Some(2)
+        );
+        assert_eq!(
+            meter
+                .snapshot(now + Duration::from_millis(350))
+                .buffer_total_ms,
+            100
+        );
+        assert_eq!(
+            meter
+                .snapshot(now + Duration::from_millis(350))
+                .playback_failed,
+            0
+        );
         meter.stopped(2, now + Duration::from_millis(400));
         meter.stopped(2, now + Duration::from_millis(500));
-        assert_eq!(meter.snapshot(now + Duration::from_millis(550)).playback_stopped, 1);
+        assert_eq!(
+            meter
+                .snapshot(now + Duration::from_millis(550))
+                .playback_stopped,
+            1
+        );
     }
 
     #[test]
@@ -246,7 +276,14 @@ mod tests {
         meter.open(1, now, now);
         meter.failed(1, now);
         let json = serde_json::to_string(&meter.snapshot(now)).unwrap();
-        for forbidden in ["filename", "filePath", "source", "url", "errorMessage", "token"] {
+        for forbidden in [
+            "filename",
+            "filePath",
+            "source",
+            "url",
+            "errorMessage",
+            "token",
+        ] {
             assert!(!json.contains(forbidden));
         }
         assert!(json.contains("\"playbackFailed\":1"));
