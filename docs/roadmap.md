@@ -232,6 +232,14 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - 在 Windows 上记录实际目录/搜索/详情可访问性、限流/空响应/设备验证提示，不做设备池、签名算法逆向或隐藏的批量重试；若 SDK 实际不可用，优先核对已发布版本或经授权的替代接口，而不是输出假成功。
 - 公开分发之前单独处理 API/内容许可、签名 URL、真实 CDN DNS/IP/重定向、隐私和凭证策略，避免将开发实验自动升级为正式产品。
 
+**HG-2B（本阶段）：真实 CDN 封面、详情与分集播放标志**
+
+- 用户已经在 HG-2A 社区 SDK 实验页面实际搜索到不同真实作品和集数，确认目前的蓝绿色卡片只是统一 CSS 占位图片；并非由此能推定视频可播放。HG-2B 从 PR #31 `50ff5f07018e84bae93def02bea54543b840d7e7` 派生，仍沿用非官方 SDK + 开发者明确 opt-in 模式。
+- Node `server.mjs` 转发经校验的 SDK `cover_url` 为可选 `coverUrl`，保留 CDN 原始签名参数，不加载任意 scheme/用户信息/私有 IP/其他端口。Rust `Series` 新增可选封面，非实验 Provider 不变；WebView 前端 `CoverImage` 显示 HTTPS 真实封面、失败回退原渐变，占位图不再冒充实际图。详情、搜索、首页焦点卡片全部支持。
+- Tauri CSP 仅开放 HTTPS 图片 `img-src`，不扩大 `connect-src` 或播放器访问；图片使用 no-referrer 和懒加载。**安全警告**：下载 CDN 远端图片仍会向对方暴露客户端 IP；字符串域名验证不等于阻断 DNS 重绑定/不受控重定向，公开发行须再审查域名白名单、授权及缓存/代理。
+- Node 不再筛掉 `playable=false` 分集；Rust `Episode` 引入真实 `playable` 标志，并在 native resolve 层再校验。React 不可播放条目保留可见但按钮禁用；未设置显式媒体主机 allowlist 时页面显示“仅可浏览”，不误导用户。
+- 测试：`tests/hg2b-cover.test.mjs` + 扩展 `tests/hg2a-community-gateway.test.mjs`；Windows [HG-2B 10 项验收](acceptance/hg2b.md) 必须在准确 SHA M1/M2 全绿后用户实测。**尚未宣称真实红果片源可播放或 HG-2B 真机通过。**
+
 **HG-3 / HG-4（后续）：获授权媒体播放及产品整合**
 
 - 受控 `MediaTarget` 与播放器联动，处理合法的媒体协议/过期链接/授权；接入首页分类、收藏、历史、续看。没有明确许可不抓取付费/DRM 媒体。
