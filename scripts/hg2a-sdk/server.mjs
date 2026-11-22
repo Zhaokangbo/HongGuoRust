@@ -84,7 +84,7 @@ export function createCommunityGateway({ sdk, token }) {
   if (!sdk || !/^[a-f0-9]{48,128}$/i.test(token || "")) throw Error("Strong local token required");
   return http.createServer(async (req, res) => {
     if (req.socket.remoteAddress !== "127.0.0.1" ||
-        req.headers.host !== "127.0.0.1:" + PORT ||
+        req.headers.host !== "127.0.0.1:" + req.socket.localPort ||
         req.method !== "GET" || req.headers.origin ||
         req.headers["x-hg2a-token"] !== token) {
       reply(res, 403, { error: "local_session_required" }); return;
