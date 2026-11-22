@@ -189,7 +189,7 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
         <button type="button" disabled={busy} className="discovery-hero"
           onClick={() => onSelect(hero.id)}>
           <span className={"discovery-hero-art artwork-" + hero.artwork} aria-hidden="true">
-            <CoverImage url={hero.coverUrl} diagnostic={hero.providerId === "hgcommunity"} />
+            <CoverImage url={hero.coverUrl} diagnostic={hero.providerId === "hgcommunity"} eager priority />
             <span>{discoverySourceLabel(hero.providerId, names)}</span>
           </span>
           <span className="discovery-hero-copy">
@@ -203,10 +203,11 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
         {others.length > 0 && <>
           <h3 className="discovery-section-title">更多可浏览内容</h3>
           <div className="catalog-grid">
-            {others.map(item => <button type="button" key={item.id}
+            {others.map((item, index) => <button type="button" key={item.id}
               className="catalog-card" disabled={busy} onClick={() => onSelect(item.id)}>
               <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
-                <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"} />
+                <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
+                   eager={index < 6} priority={index === 0} />
                 <span>{discoverySourceLabel(item.providerId, names)}</span>
               </span>
               <strong>{item.title}</strong>

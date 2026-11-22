@@ -32,6 +32,21 @@ UI 对实验来源分别显示「SDK 未获取到封面」（数据无 URL 或�
 
 **复测需要精确 SHA 的 Windows M1/M2 再次完成 success，重新部署对应新 EXE 并更新仓库中的 Node SDK bridge 脚本**。仅更换 EXE 不更新 `scripts/hg2a-sdk/server.mjs` 会使旧桥接继续返回无封面。复测搜索“重生”后查看带前缀 `HG2B_COVER_DIAG` 的终端统计，同时查看列表封面。诊断只需要分享该统计行和截图，禁止复制完整带签名的 CDN URL、会话 token 或请求 Header。
 
+## HG-2B 封面加载缓慢：第二轮 Windows 实测与前端补丁
+
+用户在 2026-11-22 Windows 实测中多次刷新，发现**偶尔只有一张封面显示且速度很慢**，原 HG-2B Debug EXE 搭配最新 Node 网关的无敏感统计为：
+
+```text
+HG2B_COVER_DIAG results=8 direct=8 batch=0 missing=0 lookup=not-needed
+HG2B_COVER_DIAG results=6 direct=0 batch=6 missing=0 lookup=ok
+```
+
+其他样本同样 `missing=0`。**能够确认 SDK→Node 已有符合安全 URL 校验的封面字段，但不能单凭该计数判断图片 CDN 的 HTTP 状态、内容类型、网络代理或是否成功渲染。** 图像显示问题仍待确认；旧 EXE 不显示新诊断文字属于混合版本预期。
+
+针对首屏迟迟不发起图片请求的可能性，本修订让目录第一页前 8 张封面与首页前 6 张、详情和 Hero 使用 `loading=eager`；只有前 2 张及焦点/详情使用高下载优先级，其他条目保留 lazy，避免整个分页瞬间抢占网络。在实验社区来源中，如果图片下载超过 8 秒，显示“封面请求超过 8 秒”；图像实际加载成功会消除提示，`onError` 仍回退渐变并显示“封面图片加载失败”。没有新增图片网络请求或重试循环，没有打印封面 URL/签名，也没有更改任何 DRM/媒体权限。
+
+**该补丁是启动时机优化及可观察性增强，尚不能宣称解决 CDN 或 WebView2 网络问题。** 如果更新后的 EXE 仍长时间超时或失败，需检查 Windows WebView2 DevTools Network 里的状态（可只反馈状态码、耗时、失败原因，勿贴 signed URL、Cookie、Token）并与系统代理配置比较。只在新 HEAD Windows M1/M2 都成功后部署调试包并复测。
+
 ## Windows 验收流程
 
 首先确认最新 HG-2B HEAD 的 Windows M1/M2 同 SHA 均全绿（其中新增 Node + TypeScript、Rust 类型/原生测试）。在 **HG-2B Debug EXE** 部署到独立目录后，仍沿用 HG-2A 的显式本机 SDK 启动方式。用户先关闭普通模式播放器，再从仓库 HG-2B 分支启动开发脚本：
