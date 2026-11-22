@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createCommunityGateway, enrichCatalogCovers, loadSeriesDetail, classifySdkError, convertHeicToJpeg } from "../scripts/hg2a-sdk/server.mjs";
+import { createCommunityGateway, enrichCatalogCovers, loadSeriesDetail, classifySdkError, convertHeicToJpeg, heicRuntimeAvailable } from "../scripts/hg2a-sdk/server.mjs";
 
 const token = "0123456789abcdef".repeat(4);
 const fakeSdk = {
@@ -155,7 +155,7 @@ test("HG-2B only one bounded metadata lookup, no spoofed IDs or overwrite of ori
   let requested = [];
   const input = Array.from({ length: 25 }, (_, n) => ({
     id: String(760000 + n), title: "synthetic " + n,
-    cover_url: n === 0 ? "https://direct.example.org/direct.webp" : undefined,
+    cover_url: n === 0 ? "https://p3-reading-sign.fqnovelpic.com/direct.webp" : undefined,
   }));
   const sdk = {
     async getSeriesBatch(ids) {
@@ -163,15 +163,15 @@ test("HG-2B only one bounded metadata lookup, no spoofed IDs or overwrite of ori
       requested = ids;
       return [
         { series: { id: "999999", cover_url: "https://evil.example.org/not-requested.jpg" } },
-        ...ids.map(id => ({ series: { id, cover_url: "https://detail.example.org/" + id + ".webp" } })),
+        ...ids.map(id => ({ series: { id, cover_url: "https://p3-reading-sign.fqnovelpic.com/detail-" + id + ".webp" } })),
       ];
     },
   };
   const { rows, diagnostics } = await enrichCatalogCovers(sdk, input);
   assert.equal(batches, 1);
   assert.equal(requested.length, 10);
-  assert.equal(rows[0].cover_url, "https://direct.example.org/direct.webp");
-  assert.equal(rows[1].cover_url, "https://detail.example.org/760001.webp");
+  assert.equal(rows[0].cover_url, "https://p3-reading-sign.fqnovelpic.com/direct.webp");
+  assert.equal(rows[1].cover_url, "https://p3-reading-sign.fqnovelpic.com/detail-760001.webp");
   assert.equal(rows[11].cover_url, undefined);
   assert.equal(diagnostics.direct, 1);
   assert.equal(diagnostics.recovered, 10);
@@ -345,6 +345,7 @@ test("HG-2B cover relay refuses unapproved hosts and unknown opaque IDs", async 
   });
 });
 
-test("HG-2B HEIC decoder dependencies load and malformed input fails closed", async () => {
+test("HG-2B HEIC WASM decoder dependencies load and malformed input fails closed", async () => {
+  assert.equal(await heicRuntimeAvailable(), true);
   await assert.rejects(convertHeicToJpeg(Buffer.from("not-a-heic-file")), /cover_decode_failed/);
 });

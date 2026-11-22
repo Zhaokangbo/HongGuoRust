@@ -219,18 +219,32 @@ export async function fetchPublicCover(raw) {
  * libheif-js is a pure-JS/WASM dependency; no native codec or Windows extension
  * is required. Raw upstream decoder errors are intentionally not propagated.
  */
+async function loadHeicDependencies() {
+  const [heifModule, jpegModule] = await Promise.all([
+    import("libheif-js/wasm-bundle"), import("jpeg-js"),
+  ]);
+  const heif = heifModule.default || heifModule;
+  const jpeg = jpegModule.default || jpegModule;
+  if (typeof heif.HeifDecoder !== "function" || typeof jpeg.encode !== "function") {
+    throw new Error("decoder_unavailable");
+  }
+  return { heif, jpeg };
+}
+
+export async function heicRuntimeAvailable() {
+  try {
+    await loadHeicDependencies();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function convertHeicToJpeg(input) {
   let image;
   let decoder;
   try {
-    const [heifModule, jpegModule] = await Promise.all([
-      import("libheif-js/wasm-bundle"), import("jpeg-js"),
-    ]);
-    const heif = heifModule.default || heifModule;
-    const jpeg = jpegModule.default || jpegModule;
-    if (typeof heif.HeifDecoder !== "function" || typeof jpeg.encode !== "function") {
-      throw new Error("decoder_unavailable");
-    }
+    const { heif, jpeg } = await loadHeicDependencies();
     decoder = new heif.HeifDecoder();
     const decoded = decoder.decode(Buffer.from(input));
     image = Array.isArray(decoded) ? decoded[0] : null;
@@ -316,9 +330,9 @@ const series = (raw, covers, coverOrigin) => {
  */
 export async function enrichCatalogCovers(sdk, inputRows) {
   const rows = Array.isArray(inputRows) ? inputRows : [];
-  const direct = rows.filter(row => publicCoverUrl(row?.cover_url)).length;
+  const direct = rows.filter(row => isApprovedCoverUrl(row?.cover_url)).length;
   const candidates = [...new Set(rows
-    .filter(row => idPattern.test(row?.id || "") && !publicCoverUrl(row?.cover_url))
+    .filter(row => idPattern.test(row?.id || "") && !isApprovedCoverUrl(row?.cover_url))
     .map(row => row.id))].slice(0, 10);
   let state = candidates.length ? "unavailable" : "not-needed";
   let recovered = 0;
@@ -332,14 +346,14 @@ export async function enrichCatalogCovers(sdk, inputRows) {
       const coverById = new Map();
       for (const detail of details) {
         const id = detail?.series?.id;
-        const cover = publicCoverUrl(detail?.series?.cover_url);
+        const cover = isApprovedCoverUrl(detail?.series?.cover_url) ? detail.series.cover_url : null;
         // A mismatched result must never mutate an unrelated search entry.
         if (typeof id === "string" && requested.has(id) && cover) {
           coverById.set(id, cover);
         }
       }
       resultRows = rows.map(row => {
-        if (publicCoverUrl(row?.cover_url) || !coverById.has(row?.id)) return row;
+        if (isApprovedCoverUrl(row?.cover_url) || !coverById.has(row?.id)) return row;
         recovered++;
         return { ...row, cover_url: coverById.get(row.id) };
       });

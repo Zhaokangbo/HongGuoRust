@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { publicCoverUrl } from "../scripts/hg2a-sdk/server.mjs";
+import { publicCoverUrl, isApprovedCoverUrl } from "../scripts/hg2a-sdk/server.mjs";
 import { safeCoverUrl } from "../src/catalog/coverUrl.ts";
 
 const accepted = [
@@ -29,6 +29,13 @@ const rejected = [
   "https://cdn.example.com/cover.webp\\nHeader: escaped",
   "https://example.com/" + "x".repeat(2100),
 ];
+
+test("HG-2B image relay only approves the observed community poster CDN", () => {
+  assert.equal(isApprovedCoverUrl("https://p3-reading-sign.fqnovelpic.com/poster.heic?sig=test"), true);
+  assert.equal(isApprovedCoverUrl("https://fqnovelpic.com/poster.heic"), true);
+  assert.equal(isApprovedCoverUrl("https://fqnovelpic.com.evil.example/poster.heic"), false);
+  assert.equal(isApprovedCoverUrl("https://covers.example.org/poster.jpg"), false);
+});
 
 test("HG-2B UI accepts only the fixed opaque loopback cover URL", () => {
   const local = "http://127.0.0.1:19091/v1/covers/0123456789abcdef0123456789abcdef";
