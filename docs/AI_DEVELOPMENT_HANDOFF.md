@@ -80,6 +80,21 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
+### 当前优先工作流：UI-4 个人媒体中心
+
+- **Draft PR #37**：[feat(ui-4): unify personal media library, history and favorites](https://github.com/Zhaokangbo/HongGuoRust/pull/37)，分支 \`feat/ui-4-personal-library\`，base \`main\`，当前精确 HEAD \`2914b25c2d4fa3e12139255f6f2f6cb70073de4e\`，仍 Open / Draft / 未合并。
+- 基线为 UI-3 已通过实机验收的精确 HEAD \`d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224\`。UI-3 PR #36 仍 Draft/未合并；用户的实机通过确认只代表验收通过，不构成合并授权。
+- 已实现本地媒体、最近播放（本地历史部分）和收藏的响应式卡片、统计、搜索/状态筛选/排序、空/加载/错误状态、刷新、收藏/移除/清除历史确认；队列使用当前可见顺序并排除不可用文件。
+- 本地媒体当前没有封面/缩略图数据契约，因此 UI 使用中性 MP4 文件占位，不伪造海报、不扫描/复制/上传文件、不提取缩略图。
+- 最新代码复核修复：本地库不再重复显示 CatalogView 已显示的 playerError；本地操作错误使用安全、动作级提示，不向 UI 透传原始 OS 错误；播放/移除/清除历史按钮增加条目级 accessible name。搜索测试补充标题和去空格关键词覆盖。
+- 新增 \`tests/local-library.test.mjs\` 共 7 个测试用例，加入 \`npm run build\`；\`docs/acceptance/ui-4.md\` 有 21 项 Windows 实机验收，重点覆盖本地文件与历史/收藏独立、队列顺序、不可用文件、错误与空状态、无障碍、480×320 和 UI-3/播放器回归。
+- **Windows M1/M2 CI 状态：尚未按最新 HEAD 查询**。遵守仓库 \`AGENTS.md\`：CI 启动后不要轮询，等待用户说“编译完成”再一次性核对精确 HEAD \`2914b25c2d4fa3e12139255f6f2f6cb70073de4e\`。上一个 HEAD \`f4abe675ce4b08ec06d047629a31e88865c80072\` 的本地 Node 22.16 临时 harness 曾有 7/7 通过，但后续新增标题搜索断言和错误/无障碍修订尚未在本轮重新运行，不能把旧结果当作最新 HEAD 测试通过。
+- **下一步**：用户 Windows/GitHub 构建完成后通知“编译完成” → 仅查最新 HEAD 的 M1/M2 → 若双绿则下载同 SHA M2 Debug artifact、核验 ZIP/EXE SHA-256 并准备隔离目录测试包 → 用户按 21 项清单实机验收。PR #37 保持 Draft，不合并。
+
+### 并行验收工作流：HG-2B
+
+
+
 1. **HG-2B 详情页实机验收（2026-11-22）已取得关键通过项**：[Draft PR #32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)，`feat/hg2b-real-covers-and-episode-status`，经重新核对仍为 Open / Draft / 未合并，HEAD `ac6614c94ef35095666054971a7c42c302982e2e`。用户最新 Windows 截图显示真实作品封面、作品简介、共 107 集的真实剧集列表，以及顶部明确的“真实剧集目录浏览模式 / 未配置允许的媒体域名 / 不会尝试解析或播放视频”提示；每个剧集按钮均显示“仅可浏览”。本次记为：详情封面通过、简介通过、107 集列表通过、全局仅浏览/播放保护通过。**单集上游 `playable=false` 状态与全局仅浏览禁用的视觉区分尚未由该截图证明**，仍需单独验收；也未据此宣称封面失败回退、搜索刷新竞态及 M7–HG2A 全回归通过。此前同一 HEAD 的 Windows M1/M2 CI 均 completed/success（见下方 run）；截图本身未展示 EXE 哈希，若后续测试包不是该 HEAD 对应产物需重新核对。PR 不得擅自合并。
 2. **核心改动已提交**：`scripts/hg2a-sdk/server.mjs` 现在从开源 `openhongguo@0.4.0` 返回的 `cover_url` 转发安全合法的 `coverUrl`，保留签名查询参数；`src-tauri/src/catalog/mod.rs` 的 `Series.cover_url: Option<String>`，`src-tauri/src/catalog/hgcommunity.rs` 独立 URL 校验；`src/catalog/coverUrl.ts` 和 `CoverImage.tsx` 懒加载，错误回退旧渐变封面；页面卡片、首页焦点/普通卡片和作品详情使用真海报。Tauri CSP 仅放行 `img-src https:`，`connect-src` 不变，图片发往 CDN 仍有 IP/远端可观测性问题；字符串校验不是完整 SSRF/DNS/redirect 安全方案。
 3. **分集状态**：Node SDK 保留 `playable=false` 条目而不删掉，Rust `Episode.playable: bool` 各现有 Provider 默认 true，HG community 从上游真实字段读取；界面保留禁播集数并提示上游不可播放，native resolve 再次强制检验；未明确允许媒体主机时社区源详情只能浏览、选集按钮不可点。真实元数据可见不等于 DRM/会员/播放授权，禁止绕过。
@@ -100,7 +115,7 @@
 
 **新对话可直接发送下面这段话：**
 
-> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。先读取 main 上的 `AGENTS.md` 和本交接文档，再通过 GitHub 核对 PR、branch、HEAD、Windows Actions 和代码。当前阶段为 **UI-4 个人媒体中心改造**：Draft PR #37，分支 `feat/ui-4-personal-library`，当前 HEAD `f4abe675ce4b08ec06d047629a31e88865c80072`，从 UI-3 已通过实机验收的 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 派生。UI-3 PR #36 的 Windows M1/M2 已双绿，用户已确认 Windows 实机测试通过；但 PR #31/#32/#33/#34/#36 均仍 Draft/未合并，依赖顺序保持 #31 → #32 → #33 → #34 → #36 → #37，未经我明确授权不得合并。UI-4 正在改造本地视频、观看历史、收藏页面：响应式媒体卡片、统计、搜索/状态筛选/排序、统一操作；本地媒体没有封面/缩略图契约，因此只使用明确标识的中性 MP4 文件占位，不伪造海报，不扫描磁盘、不提取缩略图、不复制/上传视频。保留本地文件、观看历史、收藏、播放列表语义；不修改 Rust/libmpv worker、native session ID、Tauri IPC、Provider 契约、播放权限或 HWND 几何。UI-4 新增 7 项纯逻辑测试和 21 项 Windows 实机验收清单。PR #37 创建后不要持续轮询 Actions，等我说“编译完成”后再检查当前精确 HEAD 的 M1/M2；CI 双绿后再准备同 SHA Windows Debug 包，我负责 Windows 实机验收。你负责直接维护 GitHub 代码、Draft PR、CI 修复和 Windows 调试包。**每完成一个阶段都要更新 main 上的交接文档**，不要擅自合并 PR。
+> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。先读取 main 上的 `AGENTS.md` 和本交接文档，再通过 GitHub 核对 PR、branch、HEAD、代码与 CI。当前阶段为 **UI-4 个人媒体中心改造**：Draft PR #37，分支 `feat/ui-4-personal-library`，当前 HEAD `2914b25c2d4fa3e12139255f6f2f6cb70073de4e`，从 UI-3 已通过实机验收的 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 派生。UI-3 PR #36 的 Windows M1/M2 已双绿，用户已确认 Windows 实机验收通过；#31/#32/#33/#34/#36/#37 均不得擅自合并，依赖顺序保持 #31 → #32 → #33 → #34 → #36 → #37。UI-4 正在统一本地视频、观看历史、收藏页面：响应式媒体卡片、统计、标题/文件名搜索、状态筛选、排序、当前可见顺序播放队列。由于 LocalMedia 没有封面/缩略图契约，只用中性 MP4 文件占位，不伪造海报、不扫描磁盘、不提取缩略图、不复制/上传视频。最新代码复核还修复了重复错误提示、限制本地操作错误文本并补充逐项无障碍标签。保留本地文件、观看历史、收藏、播放列表语义；不修改 Rust/libmpv worker、native session ID、Tauri IPC、Provider 契约、播放权限或 HWND 几何。UI-4 有 7 项 Node 纯逻辑测试和 21 项 Windows 实机验收清单。**不要轮询 GitHub Actions**：等待我明确说“编译完成”后，仅核对当前精确 HEAD 的 Windows M1/M2；双绿后准备同 SHA Windows Debug 包，我负责实机验收。你负责直接维护 GitHub 代码、Draft PR、CI 修复和调试包。每完成一个阶段都更新 main 上的交接文档；未经我授权不合并任何 PR。
 
 **交接文件更新纪律：**每个阶段至少维护：当前阶段、PR/branch/HEAD、构建状态+artifact ID、已经明确通过的验收条目、尚待验证的条目、遇到的问题/修复、下一步动作。**禁止把未运行/未通过状态写成通过。**优先将本文件更新到 main，确保下一段对话不会从旧功能分支获取过期状态；如果 main 提交权限不可用，才更新工作分支并明确告知用户路径。
 
@@ -128,7 +143,7 @@
 - UI-2 PR #34：Open / Draft / 未合并，base `main`，分支 `feat/ui-2-streaming-catalog`，最新 HEAD `78eee73d5a3d84e4f26d76ca23905439b860c600`。
 - UI-1 精确 HEAD 的 Windows M1 run `45026280804` 与 Windows M2 playback run `45026280683` 均 completed / success。M2 Debug artifact：`HongGuoRust-M2-debug-x64`，artifact ID `14756091026`，SHA-256 `0a9cde3cb2dd1e9ced4cb906ac4341d7da57ef8d67d44ed2c3e54ecaea0ab38d`。
 - 用户已明确确认 UI-1 的 Windows 实机验收全部通过（10 项）；但用户反馈视觉变化不明显，认为 UI-1 更接近主题换肤而非完整产品改版。UI-1 可作为稳定样式基础，不代表整体 UI/UX 改版已完成。
-- PR #31、#32、#33、#34、#36 均保持 Open / Draft / 未合并；PR #35 是 UI-3 同分支重复 PR，已关闭且未合并。不得擅自合并。当前依赖顺序为 #31 → #32 → #33 → #34 → #36。
+- PR #31、#32、#33、#34、#36、#37 均按 stacked Draft 流程保持未合并；PR #35 是 UI-3 同分支重复 PR，已关闭且未合并。不得擅自合并。当前依赖顺序为 #31 → #32 → #33 → #34 → #36 → #37。
 
 ### UI-1 已完成并验收
 
@@ -214,7 +229,7 @@
 
 - UI-2：Draft PR #34；精确 HEAD CI 已全绿，Windows 实机验收仍待用户明确确认。
 - UI-3：Draft PR #36；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 Windows M1/M2 CI 已双绿，用户已明确确认 Windows 实机验收通过。
-- UI-4：本地媒体、历史、收藏进一步海报化/统一交互；需保留现有磁盘与观看记录语义。
+- UI-4：本地媒体、历史和收藏的统一个人媒体中心；本地媒体无封面契约，使用中性 MP4 占位，保留现有磁盘与观看记录语义。
 - UI-5：详情页与播放器控制栏的深度体验优化、性能与 Windows 全量回归。
 - HG2B 的独立验收状态不得因 UI-1 通过而误标完成；PR #31/#32/#33/#34/#36 均不得自动合并。
 
@@ -277,8 +292,9 @@
 - UI-3 PR #36 remains open / Draft / unmerged. The earlier stacked dependencies #31/#32/#33/#34 also remain open / Draft / unmerged; do not merge or bypass the established sequence.
 - Created UI-4 branch `feat/ui-4-personal-library` directly from UI-3 accepted code HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`. Current UI-4 PR #37 is open / Draft / unmerged, base `main`, current HEAD `f4abe675ce4b08ec06d047629a31e88865c80072`: https://github.com/Zhaokangbo/HongGuoRust/pull/37.
 - UI-4 implementation commit `0c825943b0cdf413f96f35881666b14564875da6` added responsive local media/history/favorites cards, summary counters, shared search/status filters/sorting, empty/loading/error states, manual refresh, favorite toggle, explicit clear-history/remove-entry confirmation, and a neutral MP4 file tile. It deliberately does not invent local posters because LocalMedia has no cover/thumbnail contract.
-- Follow-up test-only commit `f4abe675ce4b08ec06d047629a31e88865c80072` refined the locale-aware natural-title sort assertion. Added `tests/local-library.test.mjs` (7 pure view-model tests), `npm run test:local-library` in the required `npm run build` chain, and `docs/acceptance/ui-4.md` with 21 Windows manual acceptance checks. `docs/roadmap.md` on the UI-4 branch now records UI-3 owner acceptance and UI-4 development.
-- The UI-4 diff relative to UI-3 HEAD is limited to: `src/catalog/LocalLibraryView.tsx`, `src/catalog/localBrowse.ts`, `src/style.css`, `package.json`, new `tests/local-library.test.mjs`, new `docs/acceptance/ui-4.md`, and `docs/roadmap.md`. No Rust source, persistence format, Tauri IPC command, libmpv worker, native session, HWND geometry, Provider contract, playback authorization or media-file operations changed.
-- Pure local-library view-model tests were exercised in a temporary Node 22.16 harness: 7/7 passed. This is a local logic check only, not the GitHub Windows CI result. PR #37 has just been created; **do not query/poll Actions until the user reports “编译完成”**.
-- UI-4 invariants: queue IDs are generated from current visible sorted/filtered records and omit unavailable files; remove-library-entry only removes the index record and must not delete the original disk file; clearing history must not remove the file or favorite; un-favoriting must not clear history; local absolute paths and signed media URLs must not be displayed. Provider Continue Watching remains on its existing validated path.
-- Next: wait for the user to report UI-4 build completion, then check exact HEAD `f4abe675ce4b08ec06d047629a31e88865c80072` Windows M1/M2 once. If both pass, download that exact M2 Debug artifact, verify ZIP/EXE SHA-256, prepare an isolated Windows test kit and let the user run all 21 checks in `docs/acceptance/ui-4.md`. Keep PR #37 Draft; no merge without explicit authorization and prerequisite sequence.
+- Follow-up commit `f4abe675ce4b08ec06d047629a31e88865c80072` refined the locale-aware natural-title sort assertion. Added `tests/local-library.test.mjs` (7 pure view-model tests), `npm run test:local-library` in the required `npm run build` chain, and `docs/acceptance/ui-4.md` with 21 Windows manual acceptance checks.
+- Code-review follow-up commits: `5cc5ce0952c8c5c44fcdc1d87f5a5048415435fe` removes duplicate player-error rendering, replaces raw local-operation error strings with safe action-specific UI messages, and adds item-specific accessible labels; `54f80eed3d695069bc7cea9952e0e2627ece550b` updates CatalogView call sites; `77f049c0d0ecba5e728d7d1b32a9bb51800d741a` adds title and whitespace-normalized search assertions; docs commits `aabdffcc9dca94f1fd365d3d3069ca1e6301457b` and `2914b25c2d4fa3e12139255f6f2f6cb70073de4e` update acceptance and roadmap. Latest branch HEAD is `2914b25c2d4fa3e12139255f6f2f6cb70073de4e`.
+- The current UI-4 diff relative to UI-3 HEAD includes `src/catalog/LocalLibraryView.tsx`, `src/catalog/localBrowse.ts`, `src/catalog/CatalogView.tsx`, `src/style.css`, `package.json`, `tests/local-library.test.mjs`, `docs/acceptance/ui-4.md`, and `docs/roadmap.md`. No Rust source, persistence format, Tauri IPC command, libmpv worker, native session, HWND geometry, Provider contract, playback authorization or media-file operations changed.
+- The original 7 pure local-library test cases passed in a temporary Node 22.16 harness before the latest title-search assertion/error/accessibility follow-up; the latest branch has not yet been rerun locally or checked by Windows M1/M2 CI. Do not reuse the old pass as evidence for current HEAD. Per `AGENTS.md`, **do not query/poll Actions until the user reports “编译完成”**.
+- UI-4 invariants: queue IDs are generated from current visible sorted/filtered records and omit unavailable files; removing a library entry only removes the index record and must not delete the original disk file; clearing history must not remove the file or favorite; un-favoriting must not clear history; local absolute paths, signed media URLs and raw OS error details must not be displayed. Provider Continue Watching remains on its existing validated path.
+- Next: wait for the user to report UI-4 build completion, then check exact HEAD `2914b25c2d4fa3e12139255f6f2f6cb70073de4e` Windows M1/M2 once. If both pass, download that exact M2 Debug artifact, verify ZIP/EXE SHA-256, prepare an isolated Windows test kit and let the user run all 21 checks in `docs/acceptance/ui-4.md`. Keep PR #37 Draft; no merge without explicit authorization and prerequisite sequence.
