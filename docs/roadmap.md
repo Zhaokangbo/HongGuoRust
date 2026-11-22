@@ -180,10 +180,14 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - 参考 [M12-A Windows 真机验收](acceptance/m12-a.md) 完成 10 项测试；CI/用户实机通过后才视为子阶段验收通过，且仍受 #20–#25 前置 PR 合并门槛制约。
 - **测量口径注意**：libmpv playback-restart 不等于 GPU 实际呈现的第一帧时间；一次资源采样也不能证明长时间无泄漏。
 
-**M12-B（后续）：长时间播放、弱网资源趋势与退出稳定性**
+**M12-A Windows 实机验收结果**：用户已明确反馈 10/10 全部通过，PR #26 的 Windows M1/M2 在最终 SHA `91a4f488a41391a06bb6e6190149b0e00b534f07` 均成功；该 PR 仍 Draft/未合并，需满足前置 PR 合并要求。
 
-- 在 M12-A 指标基线上设计 30–120 分钟的受控长运行、弱网退化/恢复、快速切集/Stop/Close 资源压力测试。
-- 对比 CPU 使用趋势、工作集/Private Bytes、句柄和线程数，依据证据修复泄漏或无上限增长，而不是提前承诺阈值。
+**M12-B（开发中）：长时间播放、弱网资源趋势与退出稳定性**
+
+- 新增不干扰播放的 Windows 长运行采样器 `scripts/measure-m12b-stress.ps1`：1–120 分钟可配置、PID+StartTime 锁定、CPU 时间/整机折算 CPU%、工作集/PrivateMiB/句柄/线程，只读，`-CsvPath` 显式指定才写入新 CSV。
+- 新增离线 `scripts/m12b-trend.mjs` 和 `scripts/analyze-m12b-resources.mjs`：严格数值 CSV 校验、样本去预热、前后窗口中位数、增量和线性趋势斜率；无自动泄漏判定，必须同负载至少两次测量。
+- `tests/m12b-trend.test.mjs` 验证边界及统计逻辑，纳入 Windows CI；按 [M12-B Windows 真机验收](acceptance/m12-b.md) 进行 30–120 分钟运行、快速切集/Stop/Close、受控合法 HTTPS 弱网恢复及 M7–M12-A 回归。
+- 实际物理机器采样/弱网与资源泄漏确认**仍需用户真实验证**；根据证据再立项具体泄漏修复，不能以 CI 或一次指标上涨推断结论。
 
 
 
