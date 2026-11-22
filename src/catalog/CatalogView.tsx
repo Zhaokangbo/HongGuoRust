@@ -5,6 +5,8 @@ import {
 } from "./api";
 import type { CatalogProvider, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
 import { latestEpisodeProgress, formatEpisodePosition } from "./progress";
+import { watchedEpisodeCount, watchedPercent } from "./recentActivity";
+import { RecentActivity } from "./RecentActivity";
 import { LocalLibraryView } from "./LocalLibraryView";
 import { DiscoveryHome } from "./DiscoveryHome";
 
@@ -33,6 +35,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
   const [episodeProgress, setEpisodeProgress] = useState<ProviderEpisodeProgress[]>([]);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const recentPlayRef = useRef(false);
   const [progressError, setProgressError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -110,11 +114,14 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     let active = true;
     setEpisodeProgress([]);
     setProgressError("");
+    setProgressLoading(Boolean(detail));
     if (detail) {
       void getCatalogEpisodeProgress(detail.series.id).then(records => {
         if (active) setEpisodeProgress(records);
       }).catch(reason => {
         if (active) setProgressError(String(reason));
+      }).finally(() => {
+        if (active) setProgressLoading(false);
       });
     }
     return () => { active = false; };
@@ -251,8 +258,51 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
+  async function playRecentProvider(seriesId: string, episodeId: string): Promise<boolean> {
+    if (recentPlayRef.current || working) return false;
+    recentPlayRef.current = true;
+    setWorking(true);
+    setError("");
+    try {
+      // Refresh detail before playing so deleted/replaced episodes never use stale metadata.
+      const current = await getCatalogSeries(seriesId);
+      if (current.series.id !== seriesId ||
+          !current.episodes.some(item => item.id === episodeId)) {
+        throw new Error("此剧集已失效，请刷新内容后重试");
+      }
+      return await onPlay(seriesId, episodeId, current);
+    } catch (reason) {
+      setError(catalogErrorMessage(reason));
+      return false;
+    } finally {
+      recentPlayRef.current = false;
+      setWorking(false);
+    }
+  }
+
+  async function playRecentLocal(id: number): Promise<boolean> {
+    if (recentPlayRef.current || working) return false;
+    recentPlayRef.current = true;
+    setWorking(true);
+    setError("");
+    try {
+      return await onPlayLocal(id, [id], "最近播放");
+    } catch (reason) {
+      setError(String(reason));
+      return false;
+    } finally {
+      recentPlayRef.current = false;
+      setWorking(false);
+    }
+  }
+
   const lastProgress = detail ? latestEpisodeProgress(detail.episodes, episodeProgress) : null;
   const lastEpisode = lastProgress && detail?.episodes.find(item => item.id === lastProgress.episodeId);
+  const sortedEpisodes = detail ? [...detail.episodes].sort((a, b) => a.number - b.number) : [];
+  const nextEpisode = lastEpisode && lastProgress?.completed
+    ? sortedEpisodes[sortedEpisodes.findIndex(item => item.id === lastEpisode.id) + 1] : undefined;
+  const playedEpisodes = detail
+    ? watchedEpisodeCount(detail.episodes.map(item => item.id), episodeProgress) : 0;
 
   return <section className="catalog-view" aria-label="内容剧库">
     <div className="catalog-heading">
@@ -263,7 +313,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           : mode === "local" ? "我的视频" : "探索内容"}</h2>
         <p>{mode === "home" ? "从已接入的内容中发现作品，按真实来源与分类浏览，直接进入详情选集。"
           : mode === "history"
-          ? "播放进度由 Rust 播放器记录，重新播放会从上次位置继续。"
+          ? "显示自有清单、演示剧集和本地 MP4 的最近播放记录；进度保存在本机。"
           : mode === "favorites" ? "收藏你自己的本地视频，独立保存观看进度。"
           : mode === "local" ? "管理你自己选择的本地 MP4，文件始终保留在原始位置。"
           : "通过统一 Content Provider 检索演示与本机媒体；演示条目仅使用公开测试素材。"}</p>
@@ -336,9 +386,15 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     </div>}
     {playerError && <p role="alert" className="catalog-error">{playerError}</p>}
 
-    {mode === "local" || mode === "history" || mode === "favorites"
-      ? <LocalLibraryView key={mode} historyOnly={mode === "history"}
-          favoritesOnly={mode === "favorites"} onPlay={onPlayLocal} playerError={playerError} />
+    {mode === "local" || mode === "favorites"
+      ? <LocalLibraryView key={mode} favoritesOnly={mode === "favorites"}
+          onPlay={onPlayLocal} playerError={playerError} />
+      : mode === "history" ? <>
+          <RecentActivity includeLocal={false} limit={24} busy={working} refreshKey={refreshKey}
+            onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
+          <h3 className="discovery-section-title">本地媒体观看历史</h3>
+          <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} playerError={playerError} />
+        </>
       : detail ? <div className="catalog-detail">
       <div className={"catalog-detail-art artwork-" + detail.series.artwork} aria-hidden="true">
         <span>{detail.series.providerId === "manifest" ? "自有清单"
@@ -364,21 +420,37 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
             {lastProgress.completed ? "重看本集" : "继续观看"}
           </button>
         </div>}
-        <h3>选集 <span>共 {detail.episodes.length} 集 · 点击播放后可在底部切换上一集/下一集</span></h3>
+        {nextEpisode && <button type="button" className="catalog-next-episode"
+          disabled={working} onClick={() => void play(detail.series.id, nextEpisode.id)}>
+          上次观看的剧集已完播 · 播放下一集（第 {nextEpisode.number} 集）
+        </button>}
+        <h3>选集 <span>共 {detail.episodes.length} 集
+          {detail.series.providerId !== "local" && (progressLoading
+            ? " · 正在读取观看记录" : progressError ? " · 历史不可用"
+              : " · 已观看 " + playedEpisodes + " 集")}
+          {" · "}点击播放后可在底部切换上一集/下一集</span></h3>
         <div className="catalog-episodes">
-          {[...detail.episodes].sort((a, b) => a.number - b.number).map(episode =>
-            <button key={episode.id} type="button" disabled={working}
+          {sortedEpisodes.map(episode => {
+            const saved = episodeProgress.find(item => item.episodeId === episode.id);
+            const percent = saved ? watchedPercent(saved.positionSec, saved.durationSec, saved.completed) : null;
+            return <button key={episode.id} type="button" disabled={working}
               onClick={() => void play(detail.series.id, episode.id)}>
               <strong>{episode.number.toString().padStart(2, "0")}</strong>
               <span>{episode.title}</span>
-              <small>{episode.runtimeLabel}</small>
-            </button>
-          )}
+              <small>{saved
+                ? saved.completed ? "✓ 已看完" : "上次看到 " + formatEpisodePosition(saved.positionSec)
+                : episode.runtimeLabel}</small>
+              {percent !== null && <span className="catalog-episode-progress" role="progressbar"
+                aria-label={"第 " + episode.number + " 集观看进度"} aria-valuemin={0} aria-valuemax={100}
+                aria-valuenow={percent}><i style={{ width: percent + "%" }} /></span>}
+            </button>;
+          })}
         </div>
       </div>
     </div> : mode === "home"
       ? <DiscoveryHome sources={sources} busy={working}
-          onSelect={id => void showDetail(id)} onExplore={openExplorer} />
+          onSelect={id => void showDetail(id)} onExplore={openExplorer}
+          onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
       : loading ? <p className="catalog-empty" role="status">正在加载内容…</p>
       : items.length === 0 ? <p className="catalog-empty">没有匹配的内容，试试“城市”或“自然”。</p>
       : <div className="catalog-grid">
