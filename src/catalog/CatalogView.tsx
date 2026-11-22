@@ -424,7 +424,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         </>
       : detail ? <div className="catalog-detail">
       <div className={"catalog-detail-art artwork-" + detail.series.artwork} aria-hidden="true">
-        <CoverImage url={detail.series.coverUrl} />
+        <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} />
         <span>{detail.series.providerId === "manifest" ? "自有清单"
           : detail.series.providerId === "local" ? "本地媒体"
            : detail.series.providerId === "hgcommunity" ? "社区 SDK · 实验" : "DEMO"}</span>
@@ -498,7 +498,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         {items.map(item => <button key={item.id} type="button"
           className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
           <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
-             <CoverImage url={item.coverUrl} />
+             <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"} />
             <span>{item.providerId === "manifest" ? "HGR / 自有清单"
               : item.providerId === "local" ? "HGR / LOCAL"
                : item.providerId === "hgcommunity" ? "社区 SDK / 实验" : "HGR / DEMO"}</span>
