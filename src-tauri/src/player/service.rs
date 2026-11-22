@@ -5,6 +5,7 @@ use super::preview::{PreviewFrame, PreviewService};
 use super::provider_history::{finish_provider, ProviderHistorySession};
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
+use super::tracks::{TrackKind, TrackList};
 use crate::catalog::progress::ProviderProgressStore;
 use crate::local_library::LocalLibrary;
 use std::path::PathBuf;
@@ -35,6 +36,16 @@ enum Command {
         id: u64,
         request: PlayerControl,
         reply: mpsc::SyncSender<Result<(), String>>,
+    },
+    Tracks {
+        id: u64,
+        reply: mpsc::SyncSender<Result<TrackList, String>>,
+    },
+    SelectTrack {
+        id: u64,
+        kind: TrackKind,
+        track_id: Option<i64>,
+        reply: mpsc::SyncSender<Result<TrackList, String>>,
     },
     Close,
 }
@@ -198,6 +209,48 @@ impl PlayerService {
         receiver
             .recv_timeout(std::time::Duration::from_secs(5))
             .map_err(|_| "Playback control timed out".to_owned())?
+    }
+
+    /// Enumerate metadata via the single owner worker. Never pass a native
+    /// libmpv handle, media URL or filesystem source to the UI.
+    pub fn tracks(&self, id: u64) -> Result<TrackList, String> {
+        let shared = self.state.lock().unwrap();
+        if shared.closing || shared.player.snapshot().session_id != Some(id) {
+            return Err("播放会话已变化".into());
+        }
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::Tracks { id, reply })
+            .map_err(|_| "播放线程已退出")?;
+        drop(shared);
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "读取音轨信息超时".to_owned())?
+    }
+
+    pub fn select_track(
+        &self,
+        id: u64,
+        kind: TrackKind,
+        track_id: Option<i64>,
+    ) -> Result<TrackList, String> {
+        let shared = self.state.lock().unwrap();
+        if shared.closing || shared.player.snapshot().session_id != Some(id) {
+            return Err("播放会话已变化".into());
+        }
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::SelectTrack {
+                id,
+                kind,
+                track_id,
+                reply,
+            })
+            .map_err(|_| "播放线程已退出")?;
+        drop(shared);
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "切换轨道超时".to_owned())?
     }
 
     /// The preview uses its own Mpv image-output handle on a blocking task.
@@ -417,6 +470,33 @@ fn run(
                         }
                     }
                 }
+                let _ = reply.send(result);
+            }
+            Some(Command::Tracks { id, reply }) => {
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                let result = if current_id == Some(id)
+                    && engine.as_ref().map(|e| e.session) == Some(id)
+                {
+                    Ok(engine.as_ref().unwrap().tracks())
+                } else {
+                    Err("播放会话已变化或未加载完成".into())
+                };
+                let _ = reply.send(result);
+            }
+            Some(Command::SelectTrack {
+                id,
+                kind,
+                track_id,
+                reply,
+            }) => {
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                let result = if current_id == Some(id)
+                    && engine.as_ref().map(|e| e.session) == Some(id)
+                {
+                    engine.as_mut().unwrap().select_track(kind, track_id)
+                } else {
+                    Err("播放会话已变化或未加载完成".into())
+                };
                 let _ = reply.send(result);
             }
             Some(Command::Close) => break,
