@@ -54,7 +54,7 @@
 1. **当前工作分支 M11-C2 PR #25**：`feat/m11c2-persistent-player-preferences`，准确新 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`，从 Windows M11-C1 12/12 已通过验收的 PR #24 派生。PR #20–#25 均保持 Draft/未合并，main 只是触发 CI 的 PR base，不是合并授权。
 2. 已增加 `src-tauri/src/player/preferences.rs`：本地 `%LOCALAPPDATA%\\HongGuoRust\\player-settings.json`，schema=1，保存 volume、lastAudibleVolume、playbackRate、autoNext，16KiB 上限，原子磁盘替换，坏 JSON/未来版本不静默覆盖；不存储媒体路径、URL 或跨媒体音轨/字幕 ID。
 3. `Engine::load` 创建新 libmpv 实例时自动应用保存的音量与倍速；worker 只在 native 控制成功时落盘，失败时尝试回滚；React 初次加载保存的数值，不再每次换 session 重置默认值；M8 本地自动连播偏好也已保存，但 **Provider 集数仍手动下一集**。
-4. **首轮 CI 已完成且失败**：旧 HEAD `c56b5178514e1f13993cf5dce2ce0b1c4c70cdae` 的 M1 #44991602348 / M2 #44991602375 都在 `cargo fmt --check` 失败（`service.rs` 2 处格式差异；尚未运行原生编译）。已按 GitHub CI 日志精确修改并提交 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`。**新一轮 CI 结果未确认，请等待用户下次通知“编译完成”后再查，不要持续轮询。** 全绿后再下载最终 HEAD 对应 M2 artifact，计算 ZIP/EXE SHA-256，创建独立部署脚本。
+4. **首轮 CI 已完成且失败**：旧 HEAD `c56b5178514e1f13993cf5dce2ce0b1c4c70cdae` 的 M1 #44991602348 / M2 #44991602375 都在 `cargo fmt --check` 失败（`service.rs` 2 处格式差异；尚未运行原生编译）。已按 GitHub CI 日志精确修改并提交 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`。**新一轮 CI 已启动：Windows M1 #44992071107、M2 #44992071153，首次核对为 in_progress；请等待用户下次通知“编译完成”后再查，不要持续轮询。** 全绿后再下载最终 HEAD 对应 M2 artifact，计算 ZIP/EXE SHA-256，创建独立部署脚本。
 5. `docs/acceptance/m11-c2.md` 定义 Windows 12 项手动验收：音量/倍速跨重启、静音恢复上次音量、本地自动连播偏好与 Provider 手动切集、损坏设置文件防覆盖、M11-A/B/C1 和 M7–M10-C2 回归。
 6. 前置 PR **#20 -> #21 -> #22 -> #23 -> #24 -> #25** 需按顺序补齐各自验收并取得明确合并授权。尤其 #20 的若干手动项和 #21 第 9–11 项仍未逐项确认，不能因后面阶段通过就假定完成。每次开发交接同步维护 main 交接文件。
 
