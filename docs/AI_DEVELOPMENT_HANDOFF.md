@@ -34,7 +34,7 @@
 | M11-A 键盘快捷键/帮助 | [PR #22](https://github.com/Zhaokangbo/HongGuoRust/pull/22), `feat/m11a-player-shortcuts`, HEAD `ba4160dfd422d1f1124b42ec7cfb173c189029a9` | M1/M2 通过；**Windows 10/10 已由用户明确报告全通过** | 先完成并合并 #20、#21，再确认 stacked diff/CI，才合并 #22 |
 | M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | **同一最终 HEAD Windows M1/M2 全部成功**：M1 #44987943244、M2 #44987943231；调试 ZIP/EXE 哈希已验证；**用户已明确报告 Windows 12/12 实机全部通过** | 测试真实 JPEG 缩略图、主播放器无 Seek/音画不中断、跨 session 隔离、弱网降级；#20–#22 先满足合并门槛 |
 | M11-C1 音轨/内嵌字幕选择 | [PR #24](https://github.com/Zhaokangbo/HongGuoRust/pull/24), `feat/m11c1-track-selection`, HEAD `f1e281c8f53b25d185efb6a0b28896159689b1ad` | 前一代码 SHA `8f62012fe938188358fb6704f9aff65695bc3de1` 的 M1/M2 均成功，后续仅调整 FFmpeg 测试脚本路径；**用户明确报告 M11-C1 Windows 12/12 全部通过** | 仍 Draft/未合并：前置 #20–#23 尚需各自验收/用户合并授权 |
-| M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `816721a89848f275159b6c1a70306c3b3e8af63e` | 首轮 M1 #44991602348 / M2 #44991602375 **均在 rustfmt 检查失败**（`service.rs` 2 处格式差异）；已精确修复提交新 HEAD，**新 CI 结果尚未核对**；Windows 12/12 未实机验收 | 等用户通知新一轮编译完成再核对最终 SHA；通过后打包 Windows 调试版 |
+| M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `816721a89848f275159b6c1a70306c3b3e8af63e` | **最新 HEAD Windows M1 #44992071107、M2 #44992071153 均 completed/success**；M2 调试包与 EXE 的 SHA-256 已实际核对；**Windows 12/12 手动验收待反馈** | 按 M11-C2 验收文档执行跨重启/损坏设置文件/回归测试，未经授权仍不合并 |
 
 **验收口径**：用户已分别明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12 通过；之前 #20/#21 尚待逐项反馈的条目不可推定通过。
 
@@ -51,11 +51,11 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **当前工作分支 M11-C2 PR #25**：`feat/m11c2-persistent-player-preferences`，准确新 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`，从 Windows M11-C1 12/12 已通过验收的 PR #24 派生。PR #20–#25 均保持 Draft/未合并，main 只是触发 CI 的 PR base，不是合并授权。
+1. **当前工作分支 M11-C2 PR #25**：`feat/m11c2-persistent-player-preferences`，准确 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`，从 Windows M11-C1 12/12 验收通过的 PR #24 派生。PR #20–#25 全部 Draft/未合并，main 是 CI 触发 base，不是合并授权。
 2. 已增加 `src-tauri/src/player/preferences.rs`：本地 `%LOCALAPPDATA%\\HongGuoRust\\player-settings.json`，schema=1，保存 volume、lastAudibleVolume、playbackRate、autoNext，16KiB 上限，原子磁盘替换，坏 JSON/未来版本不静默覆盖；不存储媒体路径、URL 或跨媒体音轨/字幕 ID。
 3. `Engine::load` 创建新 libmpv 实例时自动应用保存的音量与倍速；worker 只在 native 控制成功时落盘，失败时尝试回滚；React 初次加载保存的数值，不再每次换 session 重置默认值；M8 本地自动连播偏好也已保存，但 **Provider 集数仍手动下一集**。
-4. **首轮 CI 已完成且失败**：旧 HEAD `c56b5178514e1f13993cf5dce2ce0b1c4c70cdae` 的 M1 #44991602348 / M2 #44991602375 都在 `cargo fmt --check` 失败（`service.rs` 2 处格式差异；尚未运行原生编译）。已按 GitHub CI 日志精确修改并提交 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`。**新一轮 CI 已启动：Windows M1 #44992071107、M2 #44992071153，首次核对为 in_progress；请等待用户下次通知“编译完成”后再查，不要持续轮询。** 全绿后再下载最终 HEAD 对应 M2 artifact，计算 ZIP/EXE SHA-256，创建独立部署脚本。
-5. `docs/acceptance/m11-c2.md` 定义 Windows 12 项手动验收：音量/倍速跨重启、静音恢复上次音量、本地自动连播偏好与 Provider 手动切集、损坏设置文件防覆盖、M11-A/B/C1 和 M7–M10-C2 回归。
+4. **当前 HEAD 的 CI 已全绿**：[M1 #44992071107](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44992071107) 和 [M2 #44992071153](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44992071153) 都已 completed/success。M2 Artifact `HongGuoRust-M2-debug-x64` ID `14742560655`，下载为 `HongGuoRust-M11C2-debug-x64.zip`（4,480,139 bytes，SHA-256 `9ba6713b300119034cf137c8cfb951dcc9c4b99e008d860ccded3f282408106e`），ZIP 含 `hongguorust.exe`（14,230,016 bytes，SHA-256 `991b351d429c06103eb3d87c4b1c9a7cc5a0fa49aced4a8028f1d44face9e0f3`）。本轮已生成 `HongGuoRust-M11C2-deploy.ps1`，从已验收 M11-C1 目录复用 DLL，部署至 `%LOCALAPPDATA%\\HongGuoRust-M11C2-Test`；跨对话不能重用未经当前 runtime 验证的 sandbox 链接。
+5. **下一步 Windows owner 验收**：详见 [M11-C2 12 项验收](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m11c2-persistent-player-preferences/docs/acceptance/m11-c2.md)，重点验证首次安装、重启恢复音量/倍速、M 静音还原、M8 仅本地列表自动连播、Provider 仍手动选集、已备份后测试损坏 player-settings.json 不被覆盖，以及 M11-A/B/C1、M7–M10-C2 功能回归。只有用户明确反馈才能标记真机通过；若失败直接诊断、修复 PR #25 并重新 CI。
 6. 前置 PR **#20 -> #21 -> #22 -> #23 -> #24 -> #25** 需按顺序补齐各自验收并取得明确合并授权。尤其 #20 的若干手动项和 #21 第 9–11 项仍未逐项确认，不能因后面阶段通过就假定完成。每次开发交接同步维护 main 交接文件。
 
 ## 6. 构建/交付标准与协作手册
