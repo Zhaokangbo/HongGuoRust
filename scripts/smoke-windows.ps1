@@ -22,6 +22,7 @@ $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
 if (!$version) { throw 'Missing Cargo package version' }
 $connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
 $home = -join ([char[]](0x9996, 0x9875))
+$playerLabel = -join ([char[]](0x64AD, 0x653E, 0x5668))
 $names = @('HongGuoRust', $connected, $home, $playerLabel)
 $diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
 $env:HONGGUORUST_LOG_DIR = $diag
