@@ -47,6 +47,7 @@ fn valid_cover_url(value: &str) -> Option<&str> {
     if value.len() > 2048
         || !value.starts_with("https://")
         || value.contains('#')
+        || value.contains('\\')
         || value.bytes().any(|byte| byte <= 0x20 || byte == 0x7f)
     {
         return None;
