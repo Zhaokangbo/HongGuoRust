@@ -1,4 +1,3 @@
-import { watchedPercent } from "./recentActivity";
 import type { Episode, ProviderEpisodeProgress } from "./types";
 
 export type EpisodeStatusFilter = "all" | "incomplete" | "completed" | "unavailable";
@@ -16,6 +15,13 @@ export interface EpisodeProgressSummary {
   inProgress: number;
   unavailable: number;
   percent: number;
+}
+
+function episodeProgressPercent(positionSec: number, durationSec: number | null, completed: boolean): number | null {
+  if (completed) return 100;
+  if (!Number.isFinite(positionSec) || positionSec < 0
+      || durationSec === null || !Number.isFinite(durationSec) || durationSec <= 0) return null;
+  return Math.round(Math.min(100, Math.max(0, positionSec / durationSec * 100)));
 }
 
 function normalizeQuery(value: string): string {
@@ -51,7 +57,7 @@ export function filterEpisodes(
       episode,
       progress: saved,
       percent: saved
-        ? watchedPercent(saved.positionSec, saved.durationSec, saved.completed)
+        ? episodeProgressPercent(saved.positionSec, saved.durationSec, saved.completed)
         : null,
     };
   }).filter(row => {
