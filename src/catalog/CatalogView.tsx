@@ -326,7 +326,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     {!detail && <nav className="catalog-tabs" aria-label="内容来源">
       <button type="button" className={mode === "home" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("home"); setError(""); }}>首页</button>
-      <button type="button" className={mode === "demo" && sourceId !== "hongguo" ? "catalog-tab active" : "catalog-tab"}
+      <button type="button" className={mode === "demo" && sourceId !== "hongguo" && sourceId !== "hgcommunity" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("demo"); setSourceId("demo"); setError(""); }}>演示内容</button>
       <button type="button"
         className={mode === "demo" && sourceId === "hongguo" ? "catalog-tab active" : "catalog-tab"}
@@ -334,6 +334,12 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           setMode("demo"); setSourceId("hongguo"); setInput("");
           setSearch(""); setError("");
         }}>红果接入</button>
+      {sources.some(source => source.id === "hgcommunity") && <button type="button"
+        className={mode === "demo" && sourceId === "hgcommunity" ? "catalog-tab active" : "catalog-tab"}
+        onClick={() => {
+          setMode("demo"); setSourceId("hgcommunity"); setInput("");
+          setSearch(""); setError("");
+        }}>社区接口实验</button>}
       <button type="button" className={mode === "local" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("local"); setError(""); }}>我的视频</button>
       <button type="button" className={mode === "history" ? "catalog-tab active" : "catalog-tab"}
@@ -378,6 +384,12 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       {!loading && <span role="status">共 {total} 条内容</span>}
     </div>}
 
+    {!detail && mode === "demo" && sourceId === "hgcommunity" && <div className="catalog-manifest-info" role="status">
+      <strong>HG-2A · 非官方社区接口实验（需本机主动启用）</strong>
+      <p>真实数据通过本机 openhongguo 社区 SDK 获取，非红果官方服务。
+        接口可能失效或限流；受保护媒体不在实验模式中解密。
+        若接口失败将保留错误提示，不自动伪造剧集或回退演示资源。</p>
+    </div>}
     {!detail && mode === "demo" && sourceId === "hongguo" && <div className="catalog-manifest-info" role="status">
       <strong>HG-1 · 红果接入准备中（尚未授权）</strong>
       <p>已在 Rust 中注册独立的 HongGuo Provider，但目前没有可确认授权的红果剧集接口或播放权限。
@@ -410,7 +422,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       : detail ? <div className="catalog-detail">
       <div className={"catalog-detail-art artwork-" + detail.series.artwork} aria-hidden="true">
         <span>{detail.series.providerId === "manifest" ? "自有清单"
-          : detail.series.providerId === "local" ? "本地媒体" : "DEMO"}</span>
+          : detail.series.providerId === "local" ? "本地媒体"
+           : detail.series.providerId === "hgcommunity" ? "社区 SDK · 实验" : "DEMO"}</span>
       </div>
       <div className="catalog-detail-body">
         <div className="catalog-meta">{detail.series.genre} · {detail.series.badge}</div>
@@ -474,7 +487,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
           <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
             <span>{item.providerId === "manifest" ? "HGR / 自有清单"
-              : item.providerId === "local" ? "HGR / LOCAL" : "HGR / DEMO"}</span>
+              : item.providerId === "local" ? "HGR / LOCAL"
+               : item.providerId === "hgcommunity" ? "社区 SDK / 实验" : "HGR / DEMO"}</span>
           </span>
           <strong>{item.title}</strong>
           <span className="catalog-meta">{item.genre} · {item.episodeCount} 集</span>
