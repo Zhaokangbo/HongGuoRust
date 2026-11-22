@@ -72,6 +72,20 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 .artwork-forest { background: linear-gradient(140deg, #193c2d 10%, #2f7950 48%, #b2b16f 100%); }
 .artwork-city { background: linear-gradient(140deg, #2b314d 10%, #655a87 52%, #ce8068 100%); }
 .artwork-studio { background: linear-gradient(140deg, #162e42 10%, #277a8f 58%, #8ad4ca 100%); }
+
+/* HG-2B: actual public HTTPS cover, preserved gradient when image fails. */
+.catalog-artwork, .catalog-detail-art, .discovery-hero-art { position: relative; overflow: hidden; isolation: isolate; }
+.catalog-cover-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; z-index: 0; pointer-events: none; }
+.catalog-artwork::after, .catalog-detail-art::after, .discovery-hero-art::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(180deg, transparent 53%, rgba(0,0,0,.72));
+}
+.catalog-artwork > span, .catalog-detail-art > span, .discovery-hero-art > span {
+  position: relative; z-index: 2; text-shadow: 0 1px 3px rgba(0,0,0,.9);
+}
+.catalog-availability-info { border-left: 3px solid #8fd7c0; padding: 8px 12px; background: #1d302a; }
+.catalog-episodes button:disabled { opacity: .6; cursor: not-allowed; }
+
 .catalog-meta { color: #a9b8af; font-size: 12px; }
 .catalog-card-badge { color: #b0e8ce; font-size: 11px; margin: 1px 0 3px; }
 .catalog-detail { display: grid; grid-template-columns: minmax(160px, 240px) 1fr; gap: 24px; margin-top: 24px; }
