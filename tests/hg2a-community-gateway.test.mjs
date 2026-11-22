@@ -99,7 +99,7 @@ test("HG-2B real SDK search parser missing cover_url is enriched through one met
     },
   };
   await withServer(sdk, async port => {
-    const reply = await get(port, "/v1/search?q=重生");
+    const reply = await get(port, "/v1/search?q=" + encodeURIComponent("重生"));
     assert.equal(reply.code, 200);
     assert.equal(reply.body.items[0].title, "真实样式作品一");
     assert.equal(reply.body.items[0].coverUrl, "https://covers.example.org/765401.webp?x-expires=1892345678");
@@ -122,7 +122,7 @@ test("HG-2B optional cover batch failure never hides or fabricates search record
     },
   };
   await withServer(sdk, async port => {
-    const reply = await get(port, "/v1/search?q=重生");
+    const reply = await get(port, "/v1/search?q=" + encodeURIComponent("重生"));
     assert.equal(reply.code, 200);
     assert.equal(reply.body.items.length, 1);
     assert.equal(reply.body.items[0].title, "真实目录元数据原样保留");
