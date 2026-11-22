@@ -139,7 +139,7 @@
 - `docs/acceptance/ui-1.md`：10 项 Windows 实机验收清单，用户已全部确认通过。
 - UI-1 没有修改 Rust、libmpv worker、native HWND、Tauri IPC、Provider 契约或播放权限。
 
-### UI-2 已提交，等待最新 CI
+### UI-2 已提交，CI 全绿，等待 Windows 实机验收
 
 用户明确反馈 UI-1 视觉变化不明显，因此 UI-2 从“主题换肤”升级为实质性信息架构和内容编排改造。
 
@@ -151,9 +151,13 @@
   - `src/catalog/ContinueWatchingShelf.tsx`：Provider 历史卡片使用真实 coverUrl；本地 MP4 使用中性文件标识；续看进度与播放行为不变。
   - `src/style.css`：新增 sidebar、hero、横向海报轨道、探索海报墙、详情背景/海报、episode cards 和 480px 最小窗口适配样式。
   - `docs/acceptance/ui-2.md`：新增 16 项 Windows 实机验收清单。
-- **CI 首次尝试**：M1 run `45029867629` 与 M2 run `45029867628` 均因 `src/catalog/CatalogView.tsx(470,5): TS1005 '}' expected` 失败。已在 commit `06e6463bf070cb2a6501a88e9beff8076683c6b5` 补齐条件 JSX 的闭合括号；随后 commit `78eee73d5a3d84e4f26d76ca23905439b860c600` 避免首页焦点作品在类型轨道中重复出现。
-- **最新 HEAD 的 CI**：修复和后续提交已推送，GitHub Actions 会针对最新 HEAD 重新构建。根据约定不持续轮询；等待用户通知“编译完成”后再读取精确 HEAD `78eee73d5a3d84e4f26d76ca23905439b860c600` 的 Windows M1/M2 结果。此前失败的 run 不能作为最新代码结论，也不能用 UI-1 旧 artifact 验收 UI-2。
-- **Windows 实机验收**：尚未开始。只有精确 HEAD M1/M2 全绿后，才提供匹配 SHA 的 Debug artifact；验收按 `docs/acceptance/ui-2.md` 执行。
+- **首次 CI 失败与修复**：首次 M1/M2 因 `CatalogView.tsx(470,5): TS1005 '}' expected` 失败；已在 commit `06e6463bf070cb2a6501a88e9beff8076683c6b5` 补齐条件 JSX 的闭合括号。随后 commit `78eee73d5a3d84e4f26d76ca23905439b860c600` 避免首页焦点作品在类型轨道中重复出现。
+- **最新精确 HEAD CI：全部通过**：
+  - Windows M1 run `45030036582`：success。包含 `npm run build`、Rust fmt/test、`cargo tauri build --no-bundle`、live IPC 和正常进程退出验证。
+  - Windows M2 playback run `45030036487`：success。包含 npm audit、`npm run build`、播放器 build/test、embedded-pixel 和 playing-window-close 验证。
+  - M1 artifact：`HongGuoRust-M4-windows-x64`，ID `14757667246`，SHA-256 `8c760d7a04b2092bc8d1beb6cbba1680db93b1532e683200cbd8ca1faeb72bd8`。
+  - M2 Debug artifact：`HongGuoRust-M2-debug-x64`，ID `14757477264`，SHA-256 `a52aa043b64789a2d382300a9cb81e490c5768e7fcd519460ca4abbb058f8474`。
+- **Windows 实机验收**：现在开始。只使用上述精确 HEAD 对应的 M2 Debug artifact，不得使用 UI-1 旧 artifact。按 `docs/acceptance/ui-2.md` 的 16 项检查；特别确认 sidebar、首页真实焦点和横向轨道、探索海报墙、详情页真实封面/剧集状态、播放续接、480×320 响应式、键盘操作及播放器 HWND/96px footer 没有回归。
 - 用户尚未确认 UI-2 验收；PR #34 必须保持 Draft，不得合并。
 
 ### UI-2 设计目标与数据边界
@@ -177,7 +181,7 @@
 
 ### 后续路线
 
-- UI-2：当前 Draft PR #34；精确 HEAD CI 通过后由用户 Windows 实机验收。
+- UI-2：当前 Draft PR #34；CI 全绿，等待用户 Windows 实机验收。
 - UI-3：播放器控制栏与交互优化，先审查 native HWND / 96px footer 约束再动代码。
 - UI-4：本地媒体、历史、收藏的海报化和统一视觉。
 - UI-5：全局视觉统一、性能与 Windows 全量回归。
