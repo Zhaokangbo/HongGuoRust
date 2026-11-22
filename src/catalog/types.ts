@@ -55,3 +55,9 @@ export interface ProviderEpisodeProgress {
   lastPlayedMs: number;
   completed: boolean;
 }
+
+export interface RecentCatalogEpisode {
+  series: Series;
+  episode: Episode;
+  progress: ProviderEpisodeProgress;
+}
