@@ -315,3 +315,19 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 
 /* The Win32 native HWND owns the video row. Keep the popover within the 96px
    HTML footer so it is never hidden behind the native playback surface. */
+
+/* M11-C1: keep track controls usable inside the existing scrollable 96px footer. */
+.player-transport select[aria-label="音轨"],
+.player-transport select[aria-label="字幕轨道"] {
+  max-width: 156px;
+  min-width: 90px;
+  text-overflow: ellipsis;
+}
+.player-transport .player-track-error {
+  flex: 0 1 auto;
+  color: #ffb7a8;
+  font-size: 11px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
