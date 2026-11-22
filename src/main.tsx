@@ -350,11 +350,12 @@ function App() {
   const connected = snapshot !== null && !connectionError;
   // Start in the browse surface and hide the native video HWND after IPC is ready.
   useEffect(() => {
-    if (!connected || catalogVisibilityAppliedRef.current) return;
+    const core = window.__TAURI__?.core;
+    if (!core || catalogVisibilityAppliedRef.current) return;
     catalogVisibilityAppliedRef.current = true;
-    void window.__TAURI__?.core.invoke("set_catalog_visible", { visible: true })
+    void core.invoke("set_catalog_visible", { visible: true })
       .catch(reason => setCommandError("首页初始化失败：" + String(reason)));
-  }, [connected]);
+  }, []);
   const active = snapshot?.state === "Playing" || snapshot?.state === "Paused" || snapshot?.state === "Buffering";
   const controllable = connected && active && !busy;
   const error = connectionError || commandError || snapshot?.error?.message;
