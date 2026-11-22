@@ -83,7 +83,14 @@ impl PlayerService {
         let worker = thread::Builder::new()
             .name("libmpv-player".into())
             .spawn(move || {
-                run(host, rx, shared, worker_library, worker_progress, worker_preferences)
+                run(
+                    host,
+                    rx,
+                    shared,
+                    worker_library,
+                    worker_progress,
+                    worker_preferences,
+                )
             })?;
         Ok(Self {
             state,
@@ -475,8 +482,8 @@ fn run(
                         if let Some(old) = rollback {
                             if let Err(failure) = engine.as_mut().unwrap().control(old) {
                                 tracing::warn!(
-                                    session_id=id,
-                                    stage=failure.stage,
+                                    session_id = id,
+                                    stage = failure.stage,
                                     "failed to restore native settings after persistence error"
                                 );
                             }
