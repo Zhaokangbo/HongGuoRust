@@ -196,7 +196,7 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - 继续保持 libmpv -13 为泛化加载失败，不能擅自解释为 HTTP 403。补充 Rust 单测，覆盖诊断字符串脱敏以及损坏媒体错误终态/新会话恢复。
 - Windows PowerShell `scripts/create-m12c-fault-fixtures.ps1` 从用户指定 FFmpeg 生成正常/空/随机/HTML 伪装/截断 MP4/错误扩展名等 **7 种全新隔离测试素材**，拒绝覆盖既有目录，不修改真正的用户媒体/本地库。
 - `scripts/m12c-fixture-policy.mjs`、`scripts/verify-m12c-fixtures.mjs` 和 `tests/m12c-fault-fixtures.test.mjs`：固定白名单素材、数据大小与校验、拒绝路径穿越/符号链接、纯本地只读校验；Node 单元测试加入 CI。
-- Windows 真机按 [M12-C 10 项验收](acceptance/m12-c.md) 验证原生失败/重试/Stop/会话切换、普通诊断脱敏、文件从本地库被移动后的恢复及 M7–M12-B 回归。**目前尚未通过 CI 或真机验收，不能提前视为完成。**
+- **M12-C 已验收**：最终 HEAD `8067f881a12f624413eedd8895b851d1bb05a551` 的 Windows M1/M2 全绿，用户明确反馈 [M12-C Windows 10 项](acceptance/m12-c.md) 全部实机通过；PR #28 仍 Draft，保持前置合并门槛。
 
 
 
@@ -212,9 +212,9 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 **HG-1（开发中）：官方权限调研与安全 Provider 合约**
 
 - 已核对抖音开放平台的微短剧行业方案、抖音云媒资 OpenAPI 与外部 App 播放 FAQ；明确其服务特定获准商家/自有云视频，**不自动赋予第三方桌面程序检索与播放红果全部版权剧集的权限**。
-- 新增尚未生产注册的 `catalog/hongguo.rs` 测试适配器：模拟搜索/详情/选集/HTTPS MP4 解析，ID/集数/文本有界校验、媒资域名精准匹配、不从用户提供的选集 ID 拼 URL、不存储任何红果 Token。
-- 现有 `CatalogService::new` 仍只注册 demo/local/manifest；不伪装已接入红果，不调用未授权接口。未来 HTTP 传输实现需补充 DNS/重定向/凭证后端/取消/超时审核，不以基本 URL 检查代替完整 SSRF 防护。
-- 完整事实依据与待核验授权问题：[HG-1 接入研究与架构](architecture/hg1-hongguo-integration.md)。[HG-1 Windows 合约验收](acceptance/hg1.md) 8 项，需最终 SHA M1/M2 以及 Windows 实际回归。
+- 保留未注册生产的 `HongGuoAuthorizedProvider` + `ApprovedCatalogTransport` Mock：模拟搜索/详情/选集/HTTPS MP4 解析，ID/集数/文本有界校验、媒资域名精准匹配、不从用户提供的选集 ID 拼 URL、不存储任何红果 Token。**另外注册一个完全不可用的 `HongGuoUnavailableProvider`，UI 显示「红果接入（待授权）」，三项能力均 false，Rust 媒体解析强制禁播。**
+- `CatalogService::new` 在 demo/local/manifest 外仅注册**空数据红果占位 Provider**，不注册获授权内容 Transport，不伪装已接入红果真实剧集、不调用未授权接口。未来 HTTP 传输实现需补充 DNS/重定向/凭证后端/取消/超时审核，不以基本 URL 检查代替完整 SSRF 防护。
+- 完整事实依据与待核验授权问题：[HG-1 接入研究与架构](architecture/hg1-hongguo-integration.md)。[HG-1 Windows 合约与 UI 验收](acceptance/hg1.md) 10 项，需最终 SHA M1/M2 以及 Windows 实际回归。
 
 **HG-2（后续）：授权 API 传输与可观察的内容源入口**
 
