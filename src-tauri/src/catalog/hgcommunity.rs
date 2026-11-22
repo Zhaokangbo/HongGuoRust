@@ -228,7 +228,10 @@ impl HgCommunityProvider {
             genre: genre.into(),
             badge: "非官方社区数据（实验）".into(),
             artwork: "studio".into(),
-            cover_url: valid_cover_url(item["coverUrl"].as_str()).map(str::to_owned),
+            cover_url: item["coverUrl"]
+                .as_str()
+                .and_then(valid_cover_url)
+                .map(str::to_owned),
             episode_count: count as usize,
             provider_id: "hgcommunity".into(),
         })
