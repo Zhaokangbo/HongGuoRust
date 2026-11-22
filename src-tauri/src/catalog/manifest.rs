@@ -277,6 +277,7 @@ impl OwnedManifestProvider {
             },
             badge: "用户导入 · 请确保媒体授权".into(),
             artwork: "studio".into(),
+            cover_url: None,
             episode_count: value.episodes.len(),
             provider_id: "manifest".into(),
         }
@@ -327,6 +328,7 @@ impl ContentProvider for OwnedManifestProvider {
                         number: index + 1,
                         title: episode.title.clone(),
                         runtime_label: "MP4".into(),
+                        playable: true,
                     })
                     .collect(),
             }))
