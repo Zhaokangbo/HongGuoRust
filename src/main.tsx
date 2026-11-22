@@ -526,8 +526,11 @@ function App() {
       snapshot?.positionSec, snapshot?.durationSec, snapshot?.state, volume, busy]);
 
   return <main className={fullscreen ? "fullscreen" : catalogOpen ? "catalog-mode" : ""}>
-    <header>
-      <h1><i aria-hidden="true" />HongGuoRust</h1>
+    <header className="app-header">
+      <div className="app-brand">
+        <h1><i aria-hidden="true" />HongGuoRust</h1>
+        <span className="app-brand-label">PERSONAL MEDIA CENTER</span>
+      </div>
       <div className="catalog-header-actions">
         <button className="catalog-toggle" disabled={!connected || busy}
           onClick={() => { if (catalogOpen) void backToPlayer(); else void openCatalog(); }}>
