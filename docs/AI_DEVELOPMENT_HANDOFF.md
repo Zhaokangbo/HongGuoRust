@@ -149,14 +149,15 @@
 ### UI-1 当前实现与 GitHub 状态（2026-11-22 UTC）
 
 - **开发分支**：`feat/ui-1-cinematic-discovery`，从 HG-2B PR #32 精确 HEAD `ac6614c94ef35095666054971a7c42c302982e2e` 创建。
-- **Draft PR #33**：[feat(ui-1): cinematic desktop shell and discovery home](https://github.com/Zhaokangbo/HongGuoRust/pull/33)，Open / Draft / 未合并，base `main`，当前 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66`。该 PR 是累积 stacked diff（77 个文件），其中 UI-1 新增/修改的实际文件为 `src/main.tsx`、`src/catalog/DiscoveryHome.tsx`、`src/style.css`、`docs/acceptance/ui-1.md`；前置 HG2A/HG2B 代码随堆叠基线一并出现在相对 main 的 PR diff 中。
+- **Draft PR #33**：[feat(ui-1): cinematic desktop shell and discovery home](https://github.com/Zhaokangbo/HongGuoRust/pull/33)，Open / Draft / 未合并，base `main`，当前 HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80`。该 PR 是累积 stacked diff（77 个文件），其中 UI-1 新增/修改的实际文件为 `src/main.tsx`、`src/catalog/CatalogView.tsx`、`src/catalog/DiscoveryHome.tsx`、`src/style.css`、`docs/acceptance/ui-1.md`；前置 HG2A/HG2B 代码随堆叠基线一并出现在相对 main 的 PR diff 中。
 - **UI-1 实际代码**：
   - `src/main.tsx`：应用品牌区加入简洁的 PERSONAL MEDIA CENTER 标识；保留现有 header 行高与播放器结构。
   - `src/catalog/DiscoveryHome.tsx`：首页文案调整为准确描述实际接入内容，不暗示虚构榜单或未授权内容。
+  - `src/catalog/CatalogView.tsx`：详情页保留“返回列表”操作；非详情页隐藏重复的“返回播放器”按钮，统一使用应用 header 的返回播放入口。
   - `src/style.css`：新增 UI-1 设计 token 与现代影院风格覆盖；优化 catalog header、标题、tabs、来源工具、搜索框、焦点/悬停状态；真实海报卡片改为 2:3 竖版展示；强化首页 banner、真实内容焦点卡片、筛选和继续观看卡片；增加窄窗口布局与 focus-visible 状态。
   - `docs/acceptance/ui-1.md`：新增 10 项 Windows 实机验收清单。
-- **最近提交**：`62b384861118d7450a0f829a1347683836a8600a`（品牌 header）、`2f2df6f9280648d8e1af35f0791c5302972b2293`（首页文案）、`1150de644993bf056726ecc246d9b45e1b007261`（视觉 token 与样式）、`916474d5ea25cbc8a009631f36d6818b53e20f66`（UI-1 验收文档，当前 HEAD）。
-- **当前 CI**：精确 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66` 的 Windows M2 run `45025871696` 与 Windows M1 run `45025871727` 在首次查询时均为 `in_progress`。按用户协作约定，不持续轮询；等待用户通知“编译完成”后再检查最终结果。当前不得宣称 CI 通过，也没有可供用户验收的 UI-1 Windows artifact。
+- **最近提交**：`62b384861118d7450a0f829a1347683836a8600a`（品牌 header）、`2f2df6f9280648d8e1af35f0791c5302972b2293`（首页文案）、`1150de644993bf056726ecc246d9b45e1b007261`（视觉 token 与样式）、`916474d5ea25cbc8a009631f36d6818b53e20f66`（UI-1 验收文档）、`0d2d4104942bdc1240e9b68b2e4024a3d20caf4a`（去除重复返回入口）、`e3e26294feb92d5d130a9dddfa5f07aff1c20d80`（更新验收步骤，当前 HEAD）。
+- **当前 CI**：精确 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66` 的 Windows M1 run `45026280804` 与 Windows M2 run `45026280683` 在首次查询时均为 `in_progress`。按用户协作约定，不持续轮询；等待用户通知“编译完成”后再检查最终结果。当前不得宣称 CI 通过，也没有可供用户验收的 UI-1 Windows artifact。
 - **Windows 实机验收**：尚未开始；按 `docs/acceptance/ui-1.md` 逐项执行。UI-1 代码提交不代表 UI-1 视觉、键盘或播放器回归已通过。
 - **合并纪律**：#31、#32、#33 均保持 Draft/未合并；#32 的 HG-2B 实机验收仍有未完成项。必须先完成各自验收、按 #31 → #32 → #33 顺序处理，并取得用户明确合并授权。
 
@@ -164,7 +165,7 @@
 
 - HG-2B 已确认的用户实机结果仍是：列表真实封面通过；详情真实封面、简介、107 集列表与全局仅浏览提示/禁播状态已由用户截图确认。单集上游 `playable=false` 独立状态显示、失败回退、搜索刷新竞态及 M7–HG2A 完整回归仍未全部验收。
 - UI-1 当前只提交了前端展示层改动，没有修改 Rust/libmpv/IPC/Provider 或播放授权逻辑。
-- 等待用户报告 Windows M1/M2 构建完成；收到后核对精确 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66` 的两条 workflow。若通过，再提供匹配 SHA 的 debug artifact / 部署步骤；若失败，读取对应 job 日志修复。
+- 等待用户报告 Windows M1/M2 构建完成；收到后核对精确 HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80` 的两条 workflow。若通过，再提供匹配 SHA 的 debug artifact / 部署步骤；若失败，读取对应 job 日志修复。
 - UI-1 实机验收重点：品牌 header/连接状态、全部导航 tab、首页搜索与来源/分类筛选、真实海报 2:3 展示、详情跳转、继续观看、窗口缩放/无横向溢出、键盘焦点，以及返回播放器后 HWND/96px footer/播放控制回归。
 - UI-1 验收通过后，再开始 UI-2（探索列表、海报墙与详情页）；随后 UI-3 播放器控件、UI-4 本地媒体/历史/收藏、UI-5 全量 Windows 回归。
 - 不因 UI 开发而误标 HG-2B 全量验收通过，也不得自动合并任何 Draft PR。
