@@ -10,10 +10,30 @@ import { resolve } from "node:path";
 const PORT = 19091;
 const idPattern = /^[a-zA-Z0-9_-]{1,96}$/;
 const safeText = (v, n) => typeof v === "string" ? v.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, n) : "";
+/** Validate URL syntax before a WebView loads an image. This does not
+ * establish licensing or guarantee safe DNS/redirect behavior. */
+export function publicCoverUrl(raw) {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 2048 ||
+      /[\x00-\x20\x7f]/.test(raw) || raw.includes("#")) return null;
+  let u;
+  try { u = new URL(raw); }
+  catch { return null; }
+  const host = u.hostname.toLowerCase();
+  const suffix = host.split(".").at(-1) ?? "";
+  if (u.protocol !== "https:" || u.username || u.password || u.port ||
+      !/^[a-z0-9.-]+$/.test(host) || host.includes("..") ||
+      host.startsWith(".") || host.endsWith(".") ||
+      !/^[a-z]{2,}$/.test(suffix) ||
+      ["local", "localhost", "internal", "test", "invalid"].includes(suffix) ||
+      /^\d+(?:\.\d+){3}$/.test(host)) return null;
+  // Keep the unmodified URL: CDN signatures sometimes bind the original query.
+  return raw;
+}
 const series = raw => ({
   id: String(raw.id || ""),
   title: safeText(raw.title, 100),
   description: safeText(raw.description || "来自社区非官方 SDK 的实验目录", 300),
+  coverUrl: publicCoverUrl(raw.cover_url),
   genre: safeText(raw.category || "短剧", 40),
   episodes: Math.min(200, Math.max(1, Number(raw.episode_count) || 1)),
 });
@@ -58,9 +78,10 @@ async function route(sdk, url) {
     ]);
     const ids = new Set();
     const episodes = (page.items || []).slice(0, 200)
-      .filter(e => idPattern.test(e.id || "") && e.playable !== false && !ids.has(e.id) && ids.add(e.id))
+      .filter(e => idPattern.test(e.id || "") && !ids.has(e.id) && ids.add(e.id))
       .map((e, i) => ({
         id: e.id, number: Number.isSafeInteger(e.number) && e.number > 0 ? e.number : i + 1,
+        playable: e.playable === true,
         title: safeText(e.title || "第 " + (i + 1) + " 集", 100),
       })).filter(e => e.number <= 200).sort((a, b) => a.number - b.number);
     if (!episodes.length) return [404, { error: "no_available_episodes" }];
@@ -70,7 +91,7 @@ async function route(sdk, url) {
   if (parts.length === 7 && parts[4] === "episodes" && idPattern.test(parts[5] || "") && parts[6] === "play") {
     // Do not use upstream contentKey or CENC/DRM material.
     const page = await sdk.listEpisodes(seriesId, { pageSize: 200 });
-    if (!(page.items || []).some(e => e.id === parts[5] && e.playable !== false)) {
+    if (!(page.items || []).some(e => e.id === parts[5] && e.playable === true)) {
       return [404, { error: "episode_not_found" }];
     }
     const result = await sdk.resolvePlayback(parts[5]);
