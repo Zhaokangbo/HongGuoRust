@@ -208,7 +208,8 @@ fn render_image(
         init.set_option("frames", 1_i64)?;
         init.set_option("start", seek_start.as_str())?;
         Ok(())
-    }).ok()?;
+    })
+    .ok()?;
     if latest.load(Ordering::Acquire) != generation {
         return None;
     }
@@ -311,6 +312,7 @@ mod tests {
         }
         assert_eq!(cache.entries.len(), MAX_CACHE_ITEMS);
         assert!(cache.get(1, 0).is_none());
+        assert!(cache.get(2, (MAX_CACHE_ITEMS + 4) as u64).is_none());
         assert!(cache.get(1, (MAX_CACHE_ITEMS + 4) as u64).is_some());
         assert!(cache.size <= MAX_CACHE_BYTES);
     }
