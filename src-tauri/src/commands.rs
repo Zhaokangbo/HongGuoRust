@@ -47,6 +47,38 @@ pub fn open_https(player: State<'_, PlayerService>, url: String) -> Result<u64, 
     player.open_https(url)
 }
 
+/// M11-C1: metadata-only track list, bound to the current native session.
+#[tauri::command]
+pub async fn player_tracks(
+    window: WebviewWindow,
+    session_id: u64,
+) -> Result<crate::player::tracks::TrackList, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        window.state::<PlayerService>().tracks(session_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Select an existing audio/subtitle track; None disables subtitles only.
+#[tauri::command]
+pub async fn player_select_track(
+    window: WebviewWindow,
+    session_id: u64,
+    kind: String,
+    track_id: Option<i64>,
+) -> Result<crate::player::tracks::TrackList, String> {
+    let kind = crate::player::tracks::TrackKind::from_ipc(&kind)
+        .map_err(str::to_owned)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        window
+            .state::<PlayerService>()
+            .select_track(session_id, kind, track_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 /// M11-B thumbnail IPC accepts only the current session and timestamp.
 /// The Rust-owned media URL/local path remains private.
 #[tauri::command]
