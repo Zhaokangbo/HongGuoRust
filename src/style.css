@@ -232,3 +232,34 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 .catalog-resume span { color: #a9c3b4; font-size: 12px; }
 .catalog-resume button { border: 1px solid #81c7a6; border-radius: 7px; padding: 9px 16px; }
 .catalog-progress-error { color: #ffb7a8; font-size: 12px; }
+
+/* M10-C2: recent playback from validated Provider metadata and existing M7 local history. */
+.recent-activity { margin: 20px 0 26px; }
+.recent-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.recent-heading h3 { font-size: 18px; margin: 0; }
+.recent-heading span { font-size: 12px; color: #9fbba9; }
+.recent-empty { padding: 16px 20px; border: 1px dashed #44604e; border-radius: 9px;
+  color: #aebfb2; font-size: 13px; background: #17271f; }
+.recent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.recent-card { display: flex; flex-direction: column; justify-content: space-between;
+  gap: 12px; padding: 17px; border: 1px solid #456754; border-radius: 10px;
+  background: linear-gradient(145deg, #1b3729, #182922); min-width: 0; }
+.recent-card-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.recent-card-copy small { color: #a0e9cd; font-size: 11px; }
+.recent-card-copy strong { color: #eef8f1; font-size: 16px; overflow-wrap: anywhere; }
+.recent-card-copy span, .recent-card-copy time { color: #b5cbbd; font-size: 12px; overflow-wrap: anywhere; }
+.recent-card-copy time { font-size: 11px; opacity: .8; }
+.recent-card > button { align-self: flex-start; padding: 8px 15px; border-radius: 7px; }
+.recent-card > button:disabled { opacity: .5; cursor: not-allowed; }
+.recent-progress, .catalog-episode-progress { display: block; height: 5px;
+  border-radius: 5px; background: #3a5144; overflow: hidden; }
+.recent-progress > div, .catalog-episode-progress > i { display: block; height: 100%; 
+  background: #9be3bd; border-radius: inherit; }
+.recent-unavailable { color: #ffb7a8 !important; }
+.catalog-next-episode { margin: 0 0 14px; padding: 10px 14px;
+  background: #254c37; border: 1px solid #87c9a2; border-radius: 7px; }
+.catalog-episode-progress { grid-column: 1 / -1; width: 100%; }
+@media (max-width: 700px) {
+  .recent-grid { grid-template-columns: 1fr; }
+  .recent-card { padding: 14px; }
+}
