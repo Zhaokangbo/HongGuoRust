@@ -21,9 +21,9 @@ $manifest = Get-Content (Join-Path $PSScriptRoot '..\src-tauri\Cargo.toml') -Raw
 $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
 if (!$version) { throw 'Missing Cargo package version' }
 $connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
-$home = -join ([char[]](0x9996, 0x9875))
+$homeLabel = -join ([char[]](0x9996, 0x9875))
 $playerLabel = -join ([char[]](0x64AD, 0x653E, 0x5668))
-$names = @('HongGuoRust', $connected, $home, $playerLabel)
+$names = @('HongGuoRust', $connected, $homeLabel, $playerLabel)
 $diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
 $env:HONGGUORUST_LOG_DIR = $diag
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS --force-renderer-accessibility".Trim()
