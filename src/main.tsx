@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import { fetchPreviewFrame, previewBucket, previewTimeAtPointer, validPreviewFrame, type PreviewFrame } from "./player/thumbnailPreview";
 import { resolvePlayerShortcut, type PlayerShortcut } from "./player/keyboardShortcuts";
 import { nextAtNaturalEof, type LocalPlaylist } from "./player/autoNext";
 import { CatalogView } from "./catalog/CatalogView";
@@ -30,6 +31,10 @@ function App() {
   const [httpsUrl, setHttpsUrl] = useState(SAMPLE);
   const [seekText, setSeekText] = useState("0");
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
+  const [previewHover, setPreviewHover] = useState<{ seconds: number; fraction: number } | null>(null);
+  const [previewImage, setPreviewImage] = useState<PreviewFrame | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const previewVersionRef = useRef(0);
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(100);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
@@ -264,6 +269,58 @@ function App() {
   const position = snapshot?.positionSec ?? 0;
   const preview = seekPreview ?? position;
   const seekable = controllable && Number.isFinite(duration) && duration > 0;
+  const previewEnabled = seekable && !catalogOpen && !fullscreen;
+  const hoveredBucket = previewHover === null ? null : previewBucket(previewHover.seconds);
+
+  // Debounce by five-second bucket. Old, slow frames are never attached to
+  // another hover position or a new native libmpv playback session.
+  useEffect(() => {
+    const version = ++previewVersionRef.current;
+    setPreviewImage(null);
+    if (!previewEnabled || hoveredBucket === null || snapshot?.sessionId === null
+        || snapshot?.sessionId === undefined) return;
+    const sessionId = snapshot.sessionId;
+    setPreviewStatus("loading");
+    const timer = window.setTimeout(() => {
+      void fetchPreviewFrame(sessionId, hoveredBucket).then(frame => {
+        if (previewVersionRef.current !== version) return;
+        if (validPreviewFrame(frame, sessionId)) {
+          setPreviewImage(frame);
+          setPreviewStatus("ready");
+        } else {
+          setPreviewStatus("unavailable");
+        }
+      }).catch(() => {
+        if (previewVersionRef.current === version) setPreviewStatus("unavailable");
+      });
+    }, 280);
+    return () => {
+      window.clearTimeout(timer);
+      previewVersionRef.current++;
+    };
+  }, [previewEnabled, hoveredBucket, snapshot?.sessionId]);
+
+  useEffect(() => {
+    setPreviewHover(null);
+    setPreviewImage(null);
+  }, [snapshot?.sessionId, catalogOpen, fullscreen]);
+
+  function updateHover(event: React.PointerEvent<HTMLInputElement>) {
+    if (!previewEnabled) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const seconds = previewTimeAtPointer(event.clientX, bounds.left, bounds.width, duration);
+    if (seconds === null) return;
+    setPreviewHover({
+      seconds,
+      fraction: Math.min(1, Math.max(0, seconds / duration)),
+    });
+  }
+
+  function clearHover() {
+    previewVersionRef.current++;
+    setPreviewHover(null);
+    setPreviewImage(null);
+  }
 
   async function applySeek(seconds: number) {
     if (!Number.isFinite(seconds) || seconds < 0) return;
@@ -365,11 +422,25 @@ function App() {
       </div>
       <div className="player-timeline">
         <span>{clock(seekPreview ?? snapshot?.positionSec)}</span>
-        <input type="range" aria-label="视频进度" min={0} max={Math.max(1, duration)}
-          step={0.25} disabled={!seekable} value={Math.min(preview, Math.max(1, duration))}
-          onChange={e => setSeekPreview(Number(e.target.value))}
-          onPointerUp={() => { if (seekPreview !== null) void applySeek(seekPreview); }}
-          onKeyUp={e => { if (["ArrowLeft","ArrowRight","Home","End"].includes(e.key) && seekPreview !== null) void applySeek(seekPreview); }} />
+        <div className="player-range">
+          <input type="range" aria-label="视频进度" min={0} max={Math.max(1, duration)}
+            step={0.25} disabled={!seekable} value={Math.min(preview, Math.max(1, duration))}
+            onPointerEnter={updateHover} onPointerMove={updateHover}
+            onPointerLeave={clearHover} onBlur={clearHover}
+            onChange={e => setSeekPreview(Number(e.target.value))}
+            onPointerUp={() => { if (seekPreview !== null) void applySeek(seekPreview); }}
+            onKeyUp={e => { if (["ArrowLeft","ArrowRight","Home","End"].includes(e.key) && seekPreview !== null) void applySeek(seekPreview); }} />
+          {previewEnabled && previewHover !== null && <div className="player-preview-popover"
+            role="status" aria-live="off"
+            style={{ left: Math.min(92, Math.max(8, previewHover.fraction * 100)) + "%" }}>
+            {previewImage && previewStatus === "ready"
+              ? <img src={previewImage.dataUrl} alt="" decoding="async" />
+              : <span className="player-preview-placeholder">
+                  {previewStatus === "loading" ? "正在生成预览…" : "该位置暂无缩略图"}
+                </span>}
+            <strong>{clock(previewHover.seconds)}</strong>
+          </div>}
+        </div>
         <span>{clock(snapshot?.durationSec)}</span>
       </div>
       <div className="player-transport">
