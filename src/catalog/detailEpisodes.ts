@@ -61,7 +61,7 @@ export function filterEpisodes(
     if (filter === "unavailable" && episode.playable !== false) return false;
     if (!term) return true;
     const number = String(episode.number);
-    const numberQuery = term.match(/^(?:第)?(\\d+)(?:集)?$/);
+    const numberQuery = term.match(/^(?:第)?(\d+)(?:集)?$/);
     if (numberQuery && Number.isSafeInteger(Number(numberQuery[1]))) {
       return episode.number === Number(numberQuery[1]);
     }
