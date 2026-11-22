@@ -214,7 +214,9 @@ impl HgCommunityProvider {
             return Err("hgcommunity_invalid_query".into());
         }
         let value = self.get_json(&format!("/v1/search?q={}", url_encode(query)), context)?;
-        let items = value["items"].as_array().ok_or("hgcommunity_invalid_catalog")?;
+        let items = value["items"]
+            .as_array()
+            .ok_or("hgcommunity_invalid_catalog")?;
         if items.len() > 50 {
             return Err("hgcommunity_invalid_catalog".into());
         }
@@ -249,7 +251,9 @@ impl HgCommunityProvider {
         if series.id != series_id {
             return Err("hgcommunity_invalid_catalog".into());
         }
-        let entries = raw["episodes"].as_array().ok_or("hgcommunity_invalid_catalog")?;
+        let entries = raw["episodes"]
+            .as_array()
+            .ok_or("hgcommunity_invalid_catalog")?;
         if entries.is_empty() || entries.len() != series.episode_count {
             return Err("hgcommunity_invalid_catalog".into());
         }
@@ -328,7 +332,9 @@ impl ContentProvider for HgCommunityProvider {
         if !valid_id(episode_id) {
             return Err("hgcommunity_invalid_episode".into());
         }
-        let detail = self.detail_inner(series_id, None)?.ok_or("hgcommunity_unknown_series")?;
+        let detail = self
+            .detail_inner(series_id, None)?
+            .ok_or("hgcommunity_unknown_series")?;
         if !detail.episodes.iter().any(|ep| ep.id == episode_id) {
             return Err("hgcommunity_unknown_episode".into());
         }
@@ -336,7 +342,9 @@ impl ContentProvider for HgCommunityProvider {
             &format!("/v1/series/{series_id}/episodes/{episode_id}/play"),
             None,
         )?;
-        let url = value["mediaUrl"].as_str().ok_or("hgcommunity_invalid_media")?;
+        let url = value["mediaUrl"]
+            .as_str()
+            .ok_or("hgcommunity_invalid_media")?;
         let verified = crate::player::source::public_https_url(url)
             .map_err(|_| "hgcommunity_invalid_media")?;
         let hostname = verified[8..]
@@ -360,7 +368,10 @@ mod tests {
 
     #[test]
     fn query_is_percent_encoded_and_id_guards_reject_paths() {
-        assert_eq!(url_encode("短剧 测试"), "%E7%9F%AD%E5%89%A7%20%E6%B5%8B%E8%AF%95");
+        assert_eq!(
+            url_encode("短剧 测试"),
+            "%E7%9F%AD%E5%89%A7%20%E6%B5%8B%E8%AF%95"
+        );
         assert!(valid_id("7697622096326708286"));
         assert!(!valid_id("../video.mp4"));
         assert!(!valid_id("http://example.com"));
@@ -377,9 +388,11 @@ mod tests {
     fn rejects_invalid_source_fields_and_untrusted_ids() {
         assert!(HgCommunityProvider::map_series(&serde_json::json!({
             "id": "../wrong", "title": "bad", "description": "", "genre": "a", "episodes": 1
-        })).is_err());
+        }))
+        .is_err());
         assert!(HgCommunityProvider::map_series(&serde_json::json!({
             "id": "valid", "title": "ok", "description": "", "genre": "a", "episodes": 900
-        })).is_err());
+        }))
+        .is_err());
     }
 }
