@@ -306,7 +306,7 @@ function App() {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       const target = event.target instanceof Element ? event.target : null;
-      const editable = target?.closest("input,textarea,select,[contenteditable='true'],[role='textbox'],[role='searchbox']");
+      const editable = target?.closest("input,textarea,select,button,a,summary,[contenteditable='true'],[role='textbox'],[role='searchbox'],[role='button'],[role='link'],[role='slider']");
       const action = resolvePlayerShortcut({
         key: event.key,
         ctrlKey: event.ctrlKey,
