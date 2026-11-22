@@ -4,20 +4,20 @@
 >
 > 更新基准：2026-11-22 UTC。维护方式：该文件直接保存在 GitHub `main` 的 `docs/` 下，独立于尚未合并的功能 PR，因此新对话可以始终从稳定 URL 访问。开发阶段变化后应及时更新此文件。
 
-## 0. HG-2B Windows 新版封面请求失败：已进入 WebView2 网络层诊断（2026-11-22 UTC）
+## 0. HG-2B：HEIC 封面解码兼容修复（2026-11-22 UTC）
 
-- **PR #32 版本/CI 不变**：Draft/open/未合并；分支 `feat/hg2b-real-covers-and-episode-status` HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac`。同 SHA 的 Windows M1 #45011433042 与 M2 #45011433033 均 completed/success。M2 artifact #14749403837 已校验并打包为 `HongGuoRust-HG2B-7b8735d-Windows-test-kit.zip`。未合并，不允许将 CI success 当作实机验收。
-- **用户已经确认本机 checkout 与 EXE**：`git rev-parse HEAD` 输出与上述 SHA 完全一致；启动新版 `%LOCALAPPDATA%\\HongGuoRust-HG2B-7b8735d-Test\\hongguorust.exe` 与同 SHA sidecar 成功，Node 正常输出多轮 `HG2B_COVER_DIAG`，例 `results=8 direct=8 batch=0 missing=0 lookup=not-needed` 以及 `results=6 direct=0 batch=6 missing=0 lookup=ok`。
-- **最新 Windows 实机失败证据（截图 2026-11-22）**：8 张社区作品卡片均显示前端标签“封面图片加载失败”。该文案来自 `CoverImage.tsx` 的 `img onError`，不是 8 秒 slow timer。SDK 元数据 `missing=0` 只表示网关有符合 URL 语法校验的字符串，不代表 CDN HTTP 或图片解码成功。
-- **当前代码核对**：`src-tauri/tauri.conf.json` CSP 为 `img-src 'self' data: https:`，语法上已允许 HTTPS 远程图片；`CoverImage.tsx` 使用原始安全 HTTPS URL、`referrerPolicy="no-referrer"`、`onError`。尚未获得 DevTools 的实际 Network 错误码，因此不能武断认定是 CSP、代理、Referer、CDN 403/429/503、DNS、TLS 或 MIME/ORB。用户之前代理为 HTTP(S)/ALL_PROXY + HKCU `127.0.0.1:7897`，WinHTTP direct；仍不构成根因证明。
-- **本轮远程调试尝试尚未成功附加到 WebView2**：用户执行 `Invoke-RestMethod http://127.0.0.1:9222/json | Select-Object title,type,devtoolsFrontendUrl | Format-List` 仅得到空字段；Edge 打开 `http://127.0.0.1:9222` 是白页，Edge 自己的 DevTools Console 只显示该空白页面的 `/favicon.ico 404`。这不是应用封面请求；之前“打开 9222 根地址并按 F12”的指导不正确，已向用户纠正。用户应用内刷新时 Node 侧仍新增多行 `HG2B_COVER_DIAG`，表明刷新触发了 SDK 搜索，但当前 Edge Network 面板没有附加到 Tauri WebView2。
-- **WebView2 CDP target 已成功确认（用户 2026-11-22 最新回报）**：`/json/version` HTTP 200，Browser `Edg/157.0.4341.60`；`/json/list` 与 `/json` 均 HTTP 200，返回唯一 target `title=HongGuoRust`、`type=page`、`url=http://tauri.localhost/`、page id `0975CDE5A2CA575D412A3CC4CA398B46` 和 `devtoolsFrontendUrl` 指向 Edge inspector。9222 listener PID 34360 为 `msedgewebview2`，监听 `127.0.0.1:9222`。**远程调试已打开且真实 Tauri page target 已枚举；还未确认 DevTools frontend 已 attach**。此前 Edge 打开 9222 根地址看到白页属预期，不是应用页面；`favicon.ico 404` 无关。
-- **CDP target 已成功附加，取得关键网络证据（用户截图 2026-11-22）**：用户通过 `edge://inspect/#devices` 的 Remote Target → HongGuoRust → inspect 成功打开 DevTools，Network 过滤为 Img。至少一个真实封面请求 **HTTP 200 OK**，Remote Address `127.0.0.1:7897`（用户代理），Response `Content-Type: image/heic`，`Content-Length: 33636`，Referrer Policy `no-referrer`。因此该请求已通过代理成功下载，当前证据**不支持**把它归因于 403/429/503、DNS/TLS/代理连接失败；更可疑的是 WebView2/Chromium 无法解码 HEIC，导致 HTML image `onError`。尚需用户点该请求的 Preview 标签确认是否能预览，并抽查另外几条失败图片的 MIME。截图底部 DevTools 自己请求 `http://tauri.localhost/.well-known/appspecific/com.chrome.devtools.json` 被 Tauri CSP `connect-src ipc: http://ipc.localhost` 阻止；这是 DevTools 辅助请求，不是图片请求，不要为此扩大应用 CSP。
-- **下一步验证 HEIC 解码假设**：在已经附加的 DevTools Network → Img 列表中，点选截图中 HTTP 200 的那条请求，切换到详情面板的 **Preview（预览）** 标签，确认能否渲染图像；然后再抽查 2–3 条其他封面请求的 Response Headers → `Content-Type`。同时可看 Console 是否出现 `Failed to decode downloaded image` / unsupported image format 等消息。只提供状态码、MIME 和不含 URL/凭证的错误文本，勿复制签名 URL、Cookie 或 token。若 Preview 无法显示且多张均为 `image/heic`，则将根因定为 HEIC 格式与 WebView2 解码能力不兼容；优先考虑在受限的本机 sidecar 中把已允许域名的 HEIC 图片解码为 JPEG/WebP，或由安全图片缓存做格式转换，必须做 host allowlist、限制响应大小/超时/重定向、防 SSRF，不记录完整签名 URL，不能通过开放任意 URL 代理解决。若 Preview 能显示，再调查 React `img` 与实际请求之间的差异。
-- **诊断后修复决策**：CSP 报错→最小化调整 img-src 的 HTTPS/loopback 限制；`ERR_TUNNEL_CONNECTION_FAILED`/代理错误→确认 WebView2 代理与系统代理，不改全局注册表；HTTP 403/404/429/5xx→按 CDN referer/签名/限流/上游状态定位，禁止自动重试；TLS/DNS/MIME/ORB→对应修正。只有取得证据后才决定是否实现受限的 loopback image relay，避免先引入 SSRF、代理绕过或无意记录签名 URL。
-- **Node 未跟踪文件**：用户工作区有 `?? scripts/hg2a-sdk/package-lock.json`，远程 PR HEAD 不含该文件。不要删、reset 或 stash；它是用户本地未跟踪依赖锁文件。当前用户已正确 checkout HEAD。
-- **下一步**：先获取 WebView2 失败码，后续若修改代码再触发 CI；遵循用户规则，不持续轮询。PR #32 保持 Draft；不合并、不绕过 DRM/会员/版权访问控制。
-
+- **PR #32 当前状态**：[Draft PR #32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)，open / draft / 未合并，base `main`，分支 `feat/hg2b-real-covers-and-episode-status`。最新 HEAD：`19bf91399a8302a63dca9838e16d7791f5347ab0`。不得擅自合并。
+- **最新 HEAD CI**：Windows M1 run `45017280362` 与 Windows M2 playback run `45017280352` 已触发，最近一次查询均为 `in_progress`。遵守用户要求，不持续轮询；等待用户说“编译完成”后再查询最终结果一次。旧 HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac` 的 M1 `45011433042`、M2 `45011433033` 曾全绿，但不能替代新 HEAD CI。
+- **用户 Windows 本地当前状态**：用户已 checkout 旧 HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac`，并有未跟踪文件 `?? scripts/hg2a-sdk/package-lock.json`。不要删除、reset 或 stash 该文件。新 HEAD CI 通过后，用户再 fetch/switch 到 `19bf91399a8302a63dca9838e16d7791f5347ab0`；执行 `npm install --prefix .\\scripts\\hg2a-sdk --ignore-scripts` 会更新本地可选 sidecar 依赖与该未跟踪 lockfile，保留它即可。
+- **根因证据**：用户在真正附加到 HongGuoRust WebView2 的 DevTools Network → Img 中看到至少一张封面 HTTP `200 OK`，Remote Address `127.0.0.1:7897`，Response `Content-Type: image/heic`、`Content-Length: 33636`。Preview 面板显示破损图标，应用的 `CoverImage.tsx` 已触发 `img onError`。这强烈指向 HEIC 图片解码不兼容，而不是请求未到达 CDN。DevTools Console 底部的 `.well-known/appspecific/com.chrome.devtools.json` CSP 报错是 DevTools 自身辅助请求，不是封面请求；不扩大 `connect-src`。
+- **本次代码修复（commit `19bf91399a8302a63dca9838e16d7791f5347ab0`）**：
+  - `scripts/hg2a-sdk/server.mjs`：新增受限 Loopback Image Relay。仅允许当前实测海报域 `fqnovelpic.com` 根域及子域；原始签名 URL 仅保存在 sidecar 本次进程内存。返回随机 128-bit opaque ID 对应的 `http://127.0.0.1:19091/v1/covers/<id>`，不把 signed URL 暴露给 React/Rust/UI/诊断日志。
+  - sidecar 下载器使用用户现有 `HTTPS_PROXY` / `ALL_PROXY` / `HTTP_PROXY` 环境代理；代理明确失败时不回退直连。最多两次 allowlist 内重定向，限制源/输出 5 MiB、HEIC 解码 12 MP、最多 4 个并发、内存缓存 16 MiB/100 张，opaque ID 15 分钟过期；不落盘、不自动重试。
+  - `image/heic` / `image/heif` 使用 `libheif-js/wasm-bundle` 解码，再用 `jpeg-js` 编码 JPEG；JPEG/PNG/WebP/AVIF/GIF 经 MIME allowlist 后原样返回。依赖固定为 `libheif-js@1.23.5`（LGPL-3.0）、`jpeg-js@0.4.4`（BSD-3-Clause）、`https-proxy-agent@9.1.0`（MIT），以及原有 `openhongguo@0.4.0`。
+  - `src/catalog/coverUrl.ts`、`src-tauri/src/catalog/hgcommunity.rs` 接受严格固定的本机 opaque cover URL；`src-tauri/tauri.conf.json` 仅在 `img-src` 加入 `http://127.0.0.1:19091`，保持 `connect-src` 不变。普通演示/本地内容不改变。
+  - 更新 `tests/hg2a-community-gateway.test.mjs`、`tests/hg2b-cover.test.mjs`，覆盖 opaque URL、HEIC→JPEG 中继、host allowlist、无令牌图片请求、Origin 拒绝、未知 ID 和解码失败关闭。M1/M2 workflow 新增安装可选 sidecar codecs 的步骤。
+- **安全边界/剩余验证**：目前仅从用户截图确认 `fqnovelpic.com`；若其他作品 CDN host 不同，先核实真实 Network host，再按精确域名后缀扩展，禁止改成任意 URL proxy。DNS 重绑定/代理侧解析差异仍是进一步公开发布审查项。LGPL-3.0 第三方许可证/源码信息需在发布时保留。此功能只处理公开封面，不触碰媒体流、DRM、会员权限或播放授权。
+- **下一步**：等待新 HEAD 的 M1/M2 CI 完成，不轮询。两者成功后再下载并校验同 SHA M2 artifact，准备新的 Windows Debug test kit；用户在 Windows 实机验收真实封面、搜索刷新、详情封面和 M7–M12 回归。CI 成功不代表 Windows 实机验收通过。
 ## 1. 项目入口与用户工作方式
 
 - GitHub：`https://github.com/Zhaokangbo/HongGuoRust`。
