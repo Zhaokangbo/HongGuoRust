@@ -3,6 +3,7 @@ import { getRecentCatalogEpisodes, listLocalMedia } from "./api";
 import { formatEpisodePosition } from "./progress";
 import { combineRecentActivity, watchedPercent, type RecentActivityItem } from "./recentActivity";
 import type { LocalMedia, RecentCatalogEpisode } from "./types";
+import { CoverImage } from "./CoverImage";
 
 interface Props {
   includeLocal: boolean;
@@ -88,8 +89,17 @@ export function ContinueWatchingShelf({
           const unavailable = !provider && !item.value.available;
           const percent = watchedPercent(position, duration, completed);
           return <article key={item.key} className="recent-card">
+            <div className="recent-card-art" aria-hidden="true">
+              {provider
+                ? <CoverImage url={item.value.series.coverUrl} eager />
+                : <span className="recent-card-local-art">MP4</span>}
+              <span className="recent-card-kind">{provider
+                ? item.value.series.providerId === "hgcommunity" ? "社区内容"
+                  : item.value.series.providerId === "manifest" ? "自有清单" : "在线目录"
+                : "本地视频"}</span>
+            </div>
             <div className="recent-card-copy">
-              <small>{provider ? item.value.series.providerId === "demo" ? "演示作品" : "自有清单" : "我的视频"}</small>
+              <small>{provider ? "继续观看" : "本地媒体"}</small>
               <strong title={title}>{title}</strong>
               <span>{subtitle}</span>
               <span>{completed ? "已看完" : "上次看到 " + formatEpisodePosition(position)}
