@@ -1,6 +1,8 @@
 // HG-2A experimental REAL upstream adapter using openhongguo 0.4.0.
 // This is a nonofficial, user-opt-in local prototype, NOT a licensed API.
-// Never returns device profiles, content keys, DRM data or signed media URLs.
+// Never returns device profiles or content keys. Opt-in unprotected MP4 URLs
+// may be signed; they are only returned over authenticated local loopback
+// and must not be printed in ordinary diagnostics.
 import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
