@@ -6,9 +6,11 @@
 import http from "node:http";
 import https from "node:https";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 
+const require = createRequire(import.meta.url);
 const PORT = 19091;
 const idPattern = /^[a-zA-Z0-9_-]{1,96}$/;
 const safeText = (v, n) => typeof v === "string" ? v.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, n) : "";
@@ -220,11 +222,11 @@ export async function fetchPublicCover(raw) {
  * is required. Raw upstream decoder errors are intentionally not propagated.
  */
 async function loadHeicDependencies() {
-  const [heifModule, jpegModule] = await Promise.all([
-    import("libheif-js/wasm-bundle"), import("jpeg-js"),
-  ]);
-  const heif = heifModule.default || heifModule;
-  const jpeg = jpegModule.default || jpegModule;
+  // libheif-js documents its Node WASM entry as a CommonJS require().
+  // Using createRequire also resolves the package's explicit .js subpath
+  // under Node ESM, where extensionless subpath imports are not portable.
+  const heif = require("libheif-js/wasm-bundle");
+  const jpeg = require("jpeg-js");
   if (typeof heif.HeifDecoder !== "function" || typeof jpeg.encode !== "function") {
     throw new Error("decoder_unavailable");
   }
