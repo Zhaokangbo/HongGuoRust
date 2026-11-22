@@ -5,7 +5,7 @@ import {
 } from "./api";
 import type { CatalogProvider, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
 import { latestEpisodeProgress, formatEpisodePosition } from "./progress";
-import { watchedEpisodeCount, watchedPercent } from "./recentActivity";
+import { watchedEpisodeCount } from "./recentActivity";
 import { ContinueWatchingShelf } from "./ContinueWatchingShelf";
 import { LocalLibraryView } from "./LocalLibraryView";
 import { DiscoveryHome } from "./DiscoveryHome";
