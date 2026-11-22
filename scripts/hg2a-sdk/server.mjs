@@ -3,6 +3,7 @@
 // Never returns device profiles, content keys, DRM data or signed media URLs.
 import http from "node:http";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 const PORT = 19091;
 const idPattern = /^[a-zA-Z0-9_-]{1,96}$/;
@@ -115,7 +116,9 @@ async function main() {
     process.stdout.write("Nonofficial HG2A SDK bridge listening at 127.0.0.1:" + PORT + "\n");
   });
 }
-if (process.argv[1] && fileURLToPath(import.meta.url).toLowerCase() === process.argv[1].replaceAll("\\", "/").toLowerCase()) {
+// Resolve both paths with the host OS path implementation: Windows Node uses \\,
+// while argv may contain /; the original mixed-separator comparison silently skipped main().
+if (process.argv[1] && resolve(fileURLToPath(import.meta.url)).toLowerCase() === resolve(process.argv[1]).toLowerCase()) {
   main().catch(() => {
     process.stderr.write("HG2A startup failed; check opt-in, SDK install and local token\n");
     process.exitCode = 1;
