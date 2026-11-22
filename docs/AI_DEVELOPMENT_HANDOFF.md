@@ -34,9 +34,10 @@
 | M11-A 键盘快捷键/帮助 | [PR #22](https://github.com/Zhaokangbo/HongGuoRust/pull/22), `feat/m11a-player-shortcuts`, HEAD `ba4160dfd422d1f1124b42ec7cfb173c189029a9` | M1/M2 通过；**Windows 10/10 已由用户明确报告全通过** | 先完成并合并 #20、#21，再确认 stacked diff/CI，才合并 #22 |
 | M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | **同一最终 HEAD Windows M1/M2 全部成功**：M1 #44987943244、M2 #44987943231；调试 ZIP/EXE 哈希已验证；**用户已明确报告 Windows 12/12 实机全部通过** | 测试真实 JPEG 缩略图、主播放器无 Seek/音画不中断、跨 session 隔离、弱网降级；#20–#22 先满足合并门槛 |
 | M11-C1 音轨/内嵌字幕选择 | [PR #24](https://github.com/Zhaokangbo/HongGuoRust/pull/24), `feat/m11c1-track-selection`, HEAD `f1e281c8f53b25d185efb6a0b28896159689b1ad` | 前一代码 SHA `8f62012fe938188358fb6704f9aff65695bc3de1` 的 M1/M2 均成功，后续仅调整 FFmpeg 测试脚本路径；**用户明确报告 M11-C1 Windows 12/12 全部通过** | 仍 Draft/未合并：前置 #20–#23 尚需各自验收/用户合并授权 |
-| M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `816721a89848f275159b6c1a70306c3b3e8af63e` | **最新 HEAD Windows M1 #44992071107、M2 #44992071153 均 completed/success**；M2 调试包与 EXE 的 SHA-256 已实际核对；**Windows 12/12 手动验收待反馈** | 按 M11-C2 验收文档执行跨重启/损坏设置文件/回归测试，未经授权仍不合并 |
+| M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `816721a89848f275159b6c1a70306c3b3e8af63e` | **同一 HEAD Windows M1 #44992071107、M2 #44992071153 completed/success，用户明确反馈 Windows 12/12 实机验收全部通过** | 仍 Draft/未合并；需等 #20–#24 的独立验收与合并授权 |
+| M12-A 生命周期诊断/资源基线 | [PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26), `feat/m12a-runtime-diagnostics`, HEAD `dd0bbed5a9e77b7c8d79f729420d4f650684f014` | **已提交源码/测试/脚本与验收文档**，Windows M1 #44996388828、M2 #44996388612 已启动（最近 in_progress，尚未完成验证）；Windows 10 项实机未验收 | 用户通知 CI 完成后检查最新 HEAD、修复或打包；然后进行诊断/资源趋势基线验收 |
 
-**验收口径**：用户已分别明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12 通过；之前 #20/#21 尚待逐项反馈的条目不可推定通过。
+**验收口径**：用户已分别明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12、M11-C2 12/12 全部通过；之前 #20/#21 尚未逐项确认的条目不可推定通过。
 
 ## 4. M11-B 当前开发实现与风险
 
@@ -51,12 +52,12 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **当前工作分支 M11-C2 PR #25**：`feat/m11c2-persistent-player-preferences`，准确 HEAD `816721a89848f275159b6c1a70306c3b3e8af63e`，从 Windows M11-C1 12/12 验收通过的 PR #24 派生。PR #20–#25 全部 Draft/未合并，main 是 CI 触发 base，不是合并授权。
-2. 已增加 `src-tauri/src/player/preferences.rs`：本地 `%LOCALAPPDATA%\\HongGuoRust\\player-settings.json`，schema=1，保存 volume、lastAudibleVolume、playbackRate、autoNext，16KiB 上限，原子磁盘替换，坏 JSON/未来版本不静默覆盖；不存储媒体路径、URL 或跨媒体音轨/字幕 ID。
-3. `Engine::load` 创建新 libmpv 实例时自动应用保存的音量与倍速；worker 只在 native 控制成功时落盘，失败时尝试回滚；React 初次加载保存的数值，不再每次换 session 重置默认值；M8 本地自动连播偏好也已保存，但 **Provider 集数仍手动下一集**。
-4. **当前 HEAD 的 CI 已全绿**：[M1 #44992071107](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44992071107) 和 [M2 #44992071153](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44992071153) 都已 completed/success。M2 Artifact `HongGuoRust-M2-debug-x64` ID `14742560655`，下载为 `HongGuoRust-M11C2-debug-x64.zip`（4,480,139 bytes，SHA-256 `9ba6713b300119034cf137c8cfb951dcc9c4b99e008d860ccded3f282408106e`），ZIP 含 `hongguorust.exe`（14,230,016 bytes，SHA-256 `991b351d429c06103eb3d87c4b1c9a7cc5a0fa49aced4a8028f1d44face9e0f3`）。本轮已生成 `HongGuoRust-M11C2-deploy.ps1`，从已验收 M11-C1 目录复用 DLL，部署至 `%LOCALAPPDATA%\\HongGuoRust-M11C2-Test`；跨对话不能重用未经当前 runtime 验证的 sandbox 链接。
-5. **下一步 Windows owner 验收**：详见 [M11-C2 12 项验收](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m11c2-persistent-player-preferences/docs/acceptance/m11-c2.md)，重点验证首次安装、重启恢复音量/倍速、M 静音还原、M8 仅本地列表自动连播、Provider 仍手动选集、已备份后测试损坏 player-settings.json 不被覆盖，以及 M11-A/B/C1、M7–M10-C2 功能回归。只有用户明确反馈才能标记真机通过；若失败直接诊断、修复 PR #25 并重新 CI。
-6. 前置 PR **#20 -> #21 -> #22 -> #23 -> #24 -> #25** 需按顺序补齐各自验收并取得明确合并授权。尤其 #20 的若干手动项和 #21 第 9–11 项仍未逐项确认，不能因后面阶段通过就假定完成。每次开发交接同步维护 main 交接文件。
+1. **当前开发为 M12-A**：[Draft PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)，`feat/m12a-runtime-diagnostics`，确切提交 `dd0bbed5a9e77b7c8d79f729420d4f650684f014`，从 M11-C2 PR #25 通过 CI + 用户已明确通过 Windows 12/12 的基线 `816721a89848f275159b6c1a70306c3b3e8af63e` 派生。之前 #20–#25 均 Draft/未合并。
+2. M12-A Rust 新增 `src-tauri/src/player/health.rs` 的内存态运行统计（会话打开、加载、playback-restart、自然结束/失败/Stop、缓冲次数/累计/当前时长、libmpv 释放次数及耗时）；`PlayerService` worker 生命周期事件更新。只读 `get_runtime_health` IPC 不读取/返回媒体 URL、路径、文件名、凭证或错误文字。
+3. 新增前端 `src/player/runtimeHealth.ts` 和控制栏的「运行诊断 / 刷新 / 复制诊断」按钮；仅手动刷新，无自动高频采样。Play-restart 是 libmpv 启动信号，**并非视频首帧真实呈现延迟**。Rust/Node 自动化涵盖指标去重、跨 session 隔离、序列化隐私及 IPC 边界。
+4. 新增只读 Windows 资源采样 `scripts/measure-m12a-process.ps1`：默认 30 次每 2 秒，采样 PID/CPU 时间/工作集/私有内存/句柄/线程；默认仅输出控制台，`-CsvPath` 才主动写 CSV。**单次采样不证明零泄漏**；M12-B 后续进行长运行及阈值测试。
+5. **M12-A 最新已确认 Windows CI 为 in_progress**：[M1 #44996388828](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44996388828)、[M2 #44996388612](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44996388612)，与 SHA `dd0bbed5a9e77b7c8d79f729420d4f650684f014` 对应。**不要持续轮询；等用户下次说“编译完成”再检查**。失败取 job 日志直接修复；成功后下载同一 SHA 的 M2 Debug Artifact，验证 ZIP/EXE SHA-256，创建 Windows 独立部署脚本。
+6. `docs/acceptance/m12-a.md` 是本阶段 **10 项 Windows 实机验收**，重点检查弱网缓冲统计、Stop/EOF/错误、libmpv 释放时长、复制输出隐私以及资源采样；用户尚未进行实机验收。PR 顺序仍为 **#20 -> #21 -> #22 -> #23 -> #24 -> #25 -> #26**，前置 #20/#21 的独立门槛和用户明确合并授权仍缺，所有 PR 保持 Draft、未经授权不合并。开发回合结束同步维护 main 的本交接文件。
 
 ## 6. 构建/交付标准与协作手册
 
@@ -79,4 +80,4 @@
 
 - 仓库主文档：`README.md`、`docs/roadmap.md`。
 - 既有验收：`docs/acceptance/m10-c1.md`、`m10-c2.md`、`m11-a.md`、`m11-b.md`（**部分只在对应功能分支**）。
-- 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)。
+- 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)、[#26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)。
