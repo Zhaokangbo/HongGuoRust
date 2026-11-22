@@ -1,5 +1,6 @@
 pub mod controls;
 pub mod engine;
+pub mod health;
 pub mod history;
 pub mod preferences;
 pub mod preview;
