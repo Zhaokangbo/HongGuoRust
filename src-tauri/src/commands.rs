@@ -233,7 +233,7 @@ pub fn catalog_recently_watched(
         {
             continue;
         }
-        seen.insert(record.series_id);
+        seen.insert(record.series_id.clone());
         results.push(RecentCatalogEpisode {
             series: detail.series,
             episode,
