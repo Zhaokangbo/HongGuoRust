@@ -2298,7 +2298,7 @@ main.catalog-mode .personal-library-stat > strong {
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-main.catalog-mode .personal-library-stat > small { color: #777; font-size: 9px; }
+main.catalog-mode .personal-library-stat > small { color: #888; font-size: 9px; }
 main.catalog-mode .personal-library-toolbar {
   display: flex;
   align-items: center;
@@ -2388,7 +2388,7 @@ main.catalog-mode .personal-library-result-count strong {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
-main.catalog-mode .personal-library-result-count small { color: #666; font-size: 9px; }
+main.catalog-mode .personal-library-result-count small { color: #888; font-size: 9px; }
 main.catalog-mode .personal-library-controls .personal-library-reset,
 main.catalog-mode .personal-library-state .personal-library-reset {
   min-height: 35px;
@@ -2584,7 +2584,7 @@ main.catalog-mode .personal-media-filename {
   min-width: 0;
   margin: -3px 0 0;
   overflow: hidden;
-  color: #777;
+  color: #888;
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2672,7 +2672,7 @@ main.catalog-mode .personal-media-confirm button:not(.is-secondary) {
 main.catalog-mode .personal-media-confirm .is-secondary { background: #1d1d1d; }
 main.catalog-mode .personal-library-disclaimer {
   margin: 0;
-  color: #777;
+  color: #888;
   font-size: 9px;
   line-height: 1.6;
 }
