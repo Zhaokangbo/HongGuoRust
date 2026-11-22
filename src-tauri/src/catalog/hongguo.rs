@@ -53,9 +53,7 @@ fn valid_id(id: &str) -> bool {
 }
 
 fn valid_text(text: &str, max_chars: usize) -> bool {
-    !text.is_empty()
-        && text.chars().count() <= max_chars
-        && !text.chars().any(char::is_control)
+    !text.is_empty() && text.chars().count() <= max_chars && !text.chars().any(char::is_control)
 }
 
 fn check_series(item: &ApprovedSeries) -> Result<(), String> {
@@ -96,7 +94,11 @@ pub fn allowed_media_url(value: &str, approved_host: &str) -> Result<String, Str
         return Err("hg_unapproved_host: Invalid approved hostname".into());
     }
     let authority = verified[8..].split(['/', '?']).next().unwrap_or("");
-    let origin = authority.split(':').next().unwrap_or("").to_ascii_lowercase();
+    let origin = authority
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if origin != approved_host.to_ascii_lowercase() {
         return Err("hg_unapproved_host: Media domain does not match agreement".into());
     }
@@ -118,9 +120,9 @@ fn valid_public_host(host: &str) -> bool {
                     .bytes()
                     .all(|c| c.is_ascii_alphanumeric() || c == b'-')
         })
-        && labels
-            .last()
-            .is_some_and(|suffix| suffix.len() >= 2 && suffix.bytes().all(|c| c.is_ascii_alphabetic()))
+        && labels.last().is_some_and(|suffix| {
+            suffix.len() >= 2 && suffix.bytes().all(|c| c.is_ascii_alphabetic())
+        })
         && !["local", "internal", "localhost", "test", "invalid"]
             .contains(&labels.last().unwrap().to_ascii_lowercase().as_str())
 }
@@ -201,7 +203,10 @@ impl ContentProvider for HongGuoAuthorizedProvider {
         if query.len() > 128 || query.chars().any(char::is_control) {
             return Err("hg_invalid_query: Invalid query".into());
         }
-        let items = self.transport.search(query).map_err(|_| "hg_search_unavailable")?;
+        let items = self
+            .transport
+            .search(query)
+            .map_err(|_| "hg_search_unavailable")?;
         if items.len() > MAX_ITEM_COUNT {
             return Err("hg_invalid_catalog: Too many results".into());
         }
@@ -225,7 +230,9 @@ impl ContentProvider for HongGuoAuthorizedProvider {
             .transport
             .detail(series_id)
             .map_err(|_| "hg_detail_unavailable")?;
-        let Some(details) = details else { return Ok(None) };
+        let Some(details) = details else {
+            return Ok(None);
+        };
         if details.series.id != series_id || details.episodes.len() != details.series.episodes {
             return Err("hg_invalid_catalog: Episode count mismatch".into());
         }
@@ -305,12 +312,22 @@ mod tests {
         }
 
         fn detail(&self, id: &str) -> Result<Option<ApprovedSeriesDetail>, String> {
-            if id != "synthetic-1" { return Ok(None); }
+            if id != "synthetic-1" {
+                return Ok(None);
+            }
             Ok(Some(ApprovedSeriesDetail {
                 series: self.search("")?.remove(0),
                 episodes: vec![
-                    ApprovedEpisode { id: "ep-2".into(), number: 2, title: "第二集".into() },
-                    ApprovedEpisode { id: "ep-1".into(), number: 1, title: "第一集".into() },
+                    ApprovedEpisode {
+                        id: "ep-2".into(),
+                        number: 2,
+                        title: "第二集".into(),
+                    },
+                    ApprovedEpisode {
+                        id: "ep-1".into(),
+                        number: 1,
+                        title: "第一集".into(),
+                    },
                 ],
             }))
         }
@@ -328,18 +345,24 @@ mod tests {
         let provider = HongGuoAuthorizedProvider::for_approved_transport(
             Arc::new(MockAuthorizedTransport),
             "media.example.org".into(),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(provider.id(), "hongguo");
         let items = provider.search("").unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, "synthetic-1");
-        assert_eq!(provider.detail("synthetic-1").unwrap().unwrap().episodes[0].id, "ep-1");
+        assert_eq!(
+            provider.detail("synthetic-1").unwrap().unwrap().episodes[0].id,
+            "ep-1"
+        );
         assert_eq!(
             provider.resolve_episode("synthetic-1", "ep-1").unwrap(),
             MediaTarget::Https("https://media.example.org/authorized-demo.mp4".into())
         );
         assert!(provider.resolve_episode("synthetic-1", "ep-99").is_err());
-        assert!(provider.resolve_episode("https://example.org/", "ep-1").is_err());
+        assert!(provider
+            .resolve_episode("https://example.org/", "ep-1")
+            .is_err());
     }
 
     #[test]
@@ -382,7 +405,8 @@ mod tests {
         let provider = HongGuoAuthorizedProvider::for_approved_transport(
             Arc::new(Malformed),
             "media.example.org".into(),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(provider.search("").is_err());
         assert!(provider.detail("../secret").is_err());
         assert!(provider.resolve_episode("test", "ep-1").is_err());
