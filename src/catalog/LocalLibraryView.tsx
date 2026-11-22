@@ -134,14 +134,23 @@ export function LocalLibraryView({
       { value: "available", label: "文件可用" },
       { value: "missing", label: "文件不可用" },
     ]
-    : [
-      { value: "all", label: "全部视频" },
-      { value: "available", label: "文件可用" },
-      { value: "missing", label: "文件不可用" },
-      { value: "in-progress", label: "观看中" },
-      { value: "completed", label: "已看完" },
-      { value: "unplayed", label: "尚未播放" },
-    ];
+    : favoritesOnly
+      ? [
+        { value: "all", label: "全部收藏" },
+        { value: "available", label: "文件可用" },
+        { value: "missing", label: "文件不可用" },
+        { value: "in-progress", label: "观看中" },
+        { value: "completed", label: "已看完" },
+        { value: "unplayed", label: "尚未播放" },
+      ]
+      : [
+        { value: "all", label: "全部视频" },
+        { value: "available", label: "文件可用" },
+        { value: "missing", label: "文件不可用" },
+        { value: "in-progress", label: "观看中" },
+        { value: "completed", label: "已看完" },
+        { value: "unplayed", label: "尚未播放" },
+      ];
   const stats = historyOnly
     ? [
       { label: "观看记录", value: summary.total, note: "本机保存" },
@@ -203,7 +212,9 @@ export function LocalLibraryView({
     <div className="personal-library-controls">
       <label className="personal-library-search">
         <span>搜索媒体</span>
-        <input type="search" aria-label="搜索本地视频" placeholder="输入标题或文件名"
+        <input type="search"
+          aria-label={historyOnly ? "搜索观看历史" : favoritesOnly ? "搜索收藏视频" : "搜索本地视频"}
+          placeholder="输入标题或文件名"
           maxLength={128} value={query} onChange={event => setQuery(event.target.value)} />
       </label>
       <label>
@@ -217,7 +228,7 @@ export function LocalLibraryView({
         <span>排序方式</span>
         <select aria-label="媒体排序方式" value={sort}
           onChange={event => setSort(event.target.value as LibrarySort)}>
-          <option value="added">最近添加</option>
+          <option value="added">入库顺序</option>
           <option value="recent">最近播放</option>
           <option value="title">标题（自然排序）</option>
           <option value="progress">观看进度</option>
