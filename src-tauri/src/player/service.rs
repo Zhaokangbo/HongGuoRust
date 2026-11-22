@@ -474,13 +474,12 @@ fn run(
             }
             Some(Command::Tracks { id, reply }) => {
                 let current_id = state.lock().unwrap().player.snapshot().session_id;
-                let result = if current_id == Some(id)
-                    && engine.as_ref().map(|e| e.session) == Some(id)
-                {
-                    Ok(engine.as_ref().unwrap().tracks())
-                } else {
-                    Err("播放会话已变化或未加载完成".into())
-                };
+                let result =
+                    if current_id == Some(id) && engine.as_ref().map(|e| e.session) == Some(id) {
+                        Ok(engine.as_ref().unwrap().tracks())
+                    } else {
+                        Err("播放会话已变化或未加载完成".into())
+                    };
                 let _ = reply.send(result);
             }
             Some(Command::SelectTrack {
@@ -490,13 +489,12 @@ fn run(
                 reply,
             }) => {
                 let current_id = state.lock().unwrap().player.snapshot().session_id;
-                let result = if current_id == Some(id)
-                    && engine.as_ref().map(|e| e.session) == Some(id)
-                {
-                    engine.as_mut().unwrap().select_track(kind, track_id)
-                } else {
-                    Err("播放会话已变化或未加载完成".into())
-                };
+                let result =
+                    if current_id == Some(id) && engine.as_ref().map(|e| e.session) == Some(id) {
+                        engine.as_mut().unwrap().select_track(kind, track_id)
+                    } else {
+                        Err("播放会话已变化或未加载完成".into())
+                    };
                 let _ = reply.send(result);
             }
             Some(Command::Close) => break,
