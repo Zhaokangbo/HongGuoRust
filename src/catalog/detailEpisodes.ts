@@ -19,7 +19,7 @@ export interface EpisodeProgressSummary {
 }
 
 function normalizeQuery(value: string): string {
-  return value.normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/\\s+/g, "");
+  return value.normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/\s+/g, "");
 }
 
 function validProgress(item: ProviderEpisodeProgress, seriesId: string): boolean {
@@ -61,9 +61,11 @@ export function filterEpisodes(
     if (filter === "unavailable" && episode.playable !== false) return false;
     if (!term) return true;
     const number = String(episode.number);
-    const numberTerms = [number, number.padStart(2, "0"), "第" + number + "集"];
-    return normalizeQuery(episode.title).includes(term)
-      || numberTerms.some(value => normalizeQuery(value).includes(term));
+    const numberQuery = term.match(/^(?:第)?(\\d+)(?:集)?$/);
+    if (numberQuery && Number.isSafeInteger(Number(numberQuery[1]))) {
+      return episode.number === Number(numberQuery[1]);
+    }
+    return normalizeQuery(episode.title).includes(term);
   });
   rows.sort((a, b) => {
     const delta = a.episode.number - b.episode.number;
