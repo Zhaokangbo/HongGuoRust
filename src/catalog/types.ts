@@ -5,6 +5,8 @@ export interface Series {
   genre: string;
   badge: string;
   artwork: "forest" | "city" | "studio";
+  /** Optional validated CDN cover from the opt-in community SDK. */
+  coverUrl?: string | null;
   episodeCount: number;
   providerId: string;
 }
@@ -28,6 +30,8 @@ export interface Episode {
   number: number;
   title: string;
   runtimeLabel: string;
+  /** Provider says this episode can be selected, not a guarantee of DRM-free playback. */
+  playable?: boolean;
 }
 
 export interface SeriesDetail {
