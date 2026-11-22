@@ -86,8 +86,11 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
   const visible = useMemo(() => discoveryItems(items, currentGenre), [items, currentGenre]);
   const hero = useMemo(() => discoveryHero(visible), [visible]);
   const genreRows = useMemo(() => genres
-    .map(name => ({ name, items: visible.filter(item => item.genre.trim() === name) }))
-    .filter(row => row.items.length > 0), [genres, visible]);
+    .map(name => ({
+      name,
+      items: visible.filter(item => item.id !== hero?.id && item.genre.trim() === name),
+    }))
+    .filter(row => row.items.length > 0), [genres, visible, hero]);
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
