@@ -602,7 +602,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
                   <option value="all">全部剧集</option>
                   <option value="incomplete">未完播</option>
                   <option value="completed">已看完</option>
-                  <option value="unavailable">不可播放</option>
+                  <option value="unavailable">上游不可播放</option>
                 </select>
               </label>
               <button type="button" className="catalog-episode-order"
