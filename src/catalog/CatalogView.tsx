@@ -10,6 +10,7 @@ import { ContinueWatchingShelf } from "./ContinueWatchingShelf";
 import { LocalLibraryView } from "./LocalLibraryView";
 import { DiscoveryHome } from "./DiscoveryHome";
 import { CoverImage } from "./CoverImage";
+import { filterEpisodes, summarizeEpisodes, type EpisodeOrder, type EpisodeStatusFilter } from "./detailEpisodes";
 
 interface Props {
   onBack: () => Promise<void>;
@@ -38,6 +39,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
   const [episodeProgress, setEpisodeProgress] = useState<ProviderEpisodeProgress[]>([]);
   const [progressLoading, setProgressLoading] = useState(false);
+  const [episodeQuery, setEpisodeQuery] = useState("");
+  const [episodeFilter, setEpisodeFilter] = useState<EpisodeStatusFilter>("all");
+  const [episodeOrder, setEpisodeOrder] = useState<EpisodeOrder>("ascending");
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const recentPlayRef = useRef(false);
   const [progressError, setProgressError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -170,7 +175,13 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     setDetailLoading(true);
     try {
       const result = await getCatalogSeries(id, { signal: controller.signal });
-      if (!controller.signal.aborted) setDetail(result);
+      if (!controller.signal.aborted) {
+        setEpisodeQuery("");
+        setEpisodeFilter("all");
+        setEpisodeOrder("ascending");
+        setDescriptionExpanded(false);
+        setDetail(result);
+      }
     } catch (reason) {
       if (!isCatalogCancellation(reason)) setError(catalogErrorMessage(reason));
     } finally {
@@ -318,6 +329,12 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     ? sortedEpisodes[sortedEpisodes.findIndex(item => item.id === lastEpisode.id) + 1] : undefined;
   const playedEpisodes = detail
     ? watchedEpisodeCount(detail.episodes.map(item => item.id), episodeProgress) : 0;
+  const episodeRows = detail
+    ? filterEpisodes(detail.episodes, episodeProgress, detail.series.id, episodeQuery, episodeFilter, episodeOrder)
+    : [];
+  const episodeSummary = detail
+    ? summarizeEpisodes(detail.episodes, episodeProgress, detail.series.id) : null;
+  const descriptionCanExpand = Boolean(detail && detail.series.description.trim().length > 180);
   const communityPlayEnabled = detail?.series.providerId !== "hgcommunity" ||
     sources.some(provider => provider.id === "hgcommunity" && provider.supportsPlay);
   const firstEpisode = sortedEpisodes[0];
@@ -484,7 +501,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           <h3 className="discovery-section-title">本地媒体观看历史</h3>
           <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} />
         </>
-      : detail ? <div className="catalog-detail">
+      : detail ? <div className="catalog-detail ui5-catalog-detail">
       <div className={"catalog-detail-backdrop artwork-" + detail.series.artwork} aria-hidden="true">
         <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} eager priority />
       </div>
@@ -502,72 +519,140 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
             <span>{detail.series.badge}</span>
           </div>
           <h1>{detail.series.title}</h1>
-          <p className="catalog-detail-description">{detail.series.description}</p>
+          <p className={"catalog-detail-description" + (descriptionCanExpand && !descriptionExpanded ? " is-clamped" : "")}>
+            {detail.series.description || "暂无作品简介"}
+          </p>
+          {descriptionCanExpand && <button type="button" className="catalog-description-toggle"
+            aria-expanded={descriptionExpanded}
+            onClick={() => setDescriptionExpanded(value => !value)}>
+            {descriptionExpanded ? "收起简介" : "展开完整简介"}
+          </button>}
           <div className="catalog-detail-facts">
             <span>{detail.episodes.length} 集</span>
             {detail.series.providerId !== "local" && <span>已观看 {playedEpisodes} 集</span>}
             <span>{communityPlayEnabled ? "可查看剧集状态" : "仅浏览模式"}</span>
           </div>
+          {detail.series.providerId !== "local" && episodeSummary && <div className="catalog-detail-watch-progress">
+            <div className="catalog-detail-watch-progress-heading">
+              <strong>剧集观看进度</strong>
+              <span>{progressLoading ? "正在读取…" : progressError ? "暂不可用" : "已完播 " + episodeSummary.completed + " / " + episodeSummary.total + " 集"}</span>
+            </div>
+            <div className="catalog-detail-watch-progress-track" role="progressbar"
+              aria-label="作品已完播剧集比例" aria-valuemin={0} aria-valuemax={100}
+              aria-valuenow={progressError ? 0 : episodeSummary.percent}>
+              <span style={{ width: (progressError ? 0 : episodeSummary.percent) + "%" }} />
+            </div>
+            <small>{episodeSummary.inProgress} 集观看中 · {episodeSummary.unavailable} 集上游不可播放</small>
+          </div>}
           {!lastEpisode && firstEpisode && <button type="button" className="catalog-primary-action"
             disabled={working || !communityPlayEnabled || firstEpisode.playable === false}
             onClick={() => void play(detail.series.id, firstEpisode.id)}>
-            {firstEpisode.playable === false ? "首集暂不可播放" : "从第 " + firstEpisode.number + " 集开始"}
+            {firstEpisode.playable === false ? "首集暂不可播放"
+              : !communityPlayEnabled ? "仅可浏览 · 暂不支持播放"
+                : "从第 " + firstEpisode.number + " 集开始"}
           </button>}
-        {detail.series.providerId === "hgcommunity" && !communityPlayEnabled &&
-          <p className="catalog-availability-info" role="status">
-            当前为真实剧集目录浏览模式。尚未配置允许的媒体域名，不会尝试解析或播放视频。
+          {detail.series.providerId === "hgcommunity" && !communityPlayEnabled &&
+            <p className="catalog-availability-info" role="status">
+              当前为真实剧集目录浏览模式。尚未配置允许的媒体域名，不会尝试解析或播放视频。
+            </p>}
+          {progressError && <p className="catalog-progress-error" role="alert">
+            观看历史读取失败，原有记录不会被自动覆盖：{progressError}
           </p>}
-        {progressError && <p className="catalog-progress-error" role="alert">
-          观看历史读取失败，原有记录不会被自动覆盖：{progressError}
-        </p>}
-        {lastEpisode && lastProgress && <div className="catalog-resume" role="status">
-          <div>
-            <strong>上次观看：第 {lastEpisode.number} 集 · {lastEpisode.title}</strong>
-            <span>{lastProgress.completed
-              ? "本集已观看完毕"
-              : "播放进度 " + formatEpisodePosition(lastProgress.positionSec) +
-                (lastProgress.durationSec ? " / " + formatEpisodePosition(lastProgress.durationSec) : "")}
-            </span>
-          </div>
-          <button type="button" disabled={working || !communityPlayEnabled || lastEpisode.playable === false}
-            onClick={() => void play(detail.series.id, lastEpisode.id)}>
-            {lastProgress.completed ? "重看本集" : "继续观看"}
-          </button>
-        </div>}
-        {nextEpisode && <button type="button" className="catalog-next-episode"
-          disabled={working || !communityPlayEnabled || nextEpisode.playable === false}
-          onClick={() => void play(detail.series.id, nextEpisode.id)}>
-          上次观看的剧集已完播 · 播放下一集（第 {nextEpisode.number} 集）
-        </button>}
-        <h3 className="catalog-episodes-heading">剧集列表 <span>共 {detail.episodes.length} 集
-          {detail.series.providerId !== "local" && (progressLoading
-            ? " · 正在读取观看记录" : progressError ? " · 历史不可用"
-              : " · 已观看 " + playedEpisodes + " 集")}
-          {" · "}{communityPlayEnabled ? "可用剧集点击播放后可切换上一集/下一集" : "当前仅浏览，不开放播放"}</span></h3>
-        <div className="catalog-episodes">
-          {sortedEpisodes.map(episode => {
-            const saved = episodeProgress.find(item => item.episodeId === episode.id);
-            const percent = saved ? watchedPercent(saved.positionSec, saved.durationSec, saved.completed) : null;
-            return <button key={episode.id} type="button"
-              className={"catalog-episode-card" + (episode.playable === false ? " is-unavailable" : "") +
-                (saved?.completed ? " is-complete" : "")}
-              disabled={working || !communityPlayEnabled || episode.playable === false}
-              title={episode.playable === false ? "上游标记该集不可播放" : !communityPlayEnabled ? "当前仅可浏览" : undefined}
-              onClick={() => void play(detail.series.id, episode.id)}>
-              <strong>{episode.number.toString().padStart(2, "0")}</strong>
-              <span>{episode.title}</span>
-              <small>{episode.playable === false ? "上游标记不可播放" : !communityPlayEnabled
-                ? "仅可浏览" : saved
-                ? saved.completed ? "✓ 已看完" : "上次看到 " + formatEpisodePosition(saved.positionSec)
-                : episode.runtimeLabel}</small>
-              {percent !== null && <span className="catalog-episode-progress" role="progressbar"
-                aria-label={"第 " + episode.number + " 集观看进度"} aria-valuemin={0} aria-valuemax={100}
-                aria-valuenow={percent}><i style={{ width: percent + "%" }} /></span>}
-            </button>;
-          })}
+          {lastEpisode && lastProgress && <div className="catalog-resume" role="status">
+            <div>
+              <strong>上次观看：第 {lastEpisode.number} 集 · {lastEpisode.title}</strong>
+              <span>{lastProgress.completed
+                ? "本集已观看完毕"
+                : "播放进度 " + formatEpisodePosition(lastProgress.positionSec) +
+                  (lastProgress.durationSec ? " / " + formatEpisodePosition(lastProgress.durationSec) : "")}
+              </span>
+            </div>
+            <button type="button" disabled={working || !communityPlayEnabled || lastEpisode.playable === false}
+              onClick={() => void play(detail.series.id, lastEpisode.id)}>
+              {lastProgress.completed ? "重看本集" : "继续观看"}
+            </button>
+          </div>}
+          {nextEpisode && <button type="button" className="catalog-next-episode"
+            disabled={working || !communityPlayEnabled || nextEpisode.playable === false}
+            onClick={() => void play(detail.series.id, nextEpisode.id)}>
+            上次观看的剧集已完播 · 播放下一集（第 {nextEpisode.number} 集）
+          </button>}
+          <section className="catalog-episode-section" aria-labelledby="catalog-episodes-title">
+            <div className="catalog-episodes-heading">
+              <div>
+                <h3 id="catalog-episodes-title">剧集列表</h3>
+                <p>{detail.series.providerId !== "local" && (progressLoading
+                  ? "正在读取观看记录" : progressError ? "观看历史暂不可用"
+                    : "已观看 " + playedEpisodes + " 集")}
+                  {detail.series.providerId !== "local" ? " · " : ""}
+                  {communityPlayEnabled ? "可用剧集点击播放后可切换上一集/下一集" : "当前仅浏览，不开放播放"}</p>
+              </div>
+              <strong className="catalog-episode-count">{episodeRows.length} / {detail.episodes.length} 集</strong>
+            </div>
+            <div className="catalog-episode-tools" role="search" aria-label="剧集搜索与筛选">
+              <label className="catalog-episode-search">
+                <span>搜索剧集</span>
+                <input type="search" aria-label="搜索剧集集数或标题" placeholder="输入集数或标题"
+                  value={episodeQuery} onChange={event => setEpisodeQuery(event.target.value)} />
+              </label>
+              <label className="catalog-episode-filter">
+                <span>观看状态</span>
+                <select aria-label="按观看状态筛选剧集" value={episodeFilter}
+                  onChange={event => setEpisodeFilter(event.target.value as EpisodeStatusFilter)}>
+                  <option value="all">全部剧集</option>
+                  <option value="incomplete">未完播</option>
+                  <option value="completed">已看完</option>
+                  <option value="unavailable">不可播放</option>
+                </select>
+              </label>
+              <button type="button" className="catalog-episode-order"
+                aria-label={episodeOrder === "ascending" ? "当前按集数正序，切换为倒序" : "当前按集数倒序，切换为正序"}
+                aria-pressed={episodeOrder === "descending"}
+                onClick={() => setEpisodeOrder(value => value === "ascending" ? "descending" : "ascending")}>
+                {episodeOrder === "ascending" ? "集数正序 ↑" : "集数倒序 ↓"}
+              </button>
+            </div>
+            <p className="catalog-episode-results" role="status" aria-live="polite">
+              {episodeQuery.trim() || episodeFilter !== "all"
+                ? "筛选结果 " + episodeRows.length + " / " + detail.episodes.length + " 集"
+                : "共 " + detail.episodes.length + " 集"}
+              {episodeOrder === "descending" ? " · 从新到旧" : " · 从旧到新"}
+            </p>
+            {episodeRows.length > 0 ? <div className="catalog-episodes">
+              {episodeRows.map(row => {
+                const { episode, progress: saved, percent } = row;
+                const current = lastEpisode?.id === episode.id;
+                const status = episode.playable === false ? "上游标记不可播放"
+                  : !communityPlayEnabled ? "仅可浏览"
+                    : saved?.completed ? "已看完"
+                      : saved ? "观看中 · " + formatEpisodePosition(saved.positionSec)
+                        : episode.runtimeLabel;
+                return <button key={episode.id} type="button"
+                  className={"catalog-episode-card" + (episode.playable === false ? " is-unavailable" : "") +
+                    (saved?.completed ? " is-complete" : "") + (current ? " is-current" : "")}
+                  aria-label={"第 " + episode.number + " 集，" + episode.title + "，" + status}
+                  aria-current={current ? "step" : undefined}
+                  disabled={working || !communityPlayEnabled || episode.playable === false}
+                  title={episode.playable === false ? "上游标记该集不可播放" : !communityPlayEnabled ? "当前仅可浏览" : undefined}
+                  onClick={() => void play(detail.series.id, episode.id)}>
+                  <strong>{episode.number.toString().padStart(2, "0")}</strong>
+                  <span>{episode.title}</span>
+                  <small>{status}</small>
+                  {percent !== null && <span className="catalog-episode-progress" role="progressbar"
+                    aria-label={"第 " + episode.number + " 集观看进度"} aria-valuemin={0} aria-valuemax={100}
+                    aria-valuenow={percent}><i style={{ width: percent + "%" }} /></span>}
+                </button>;
+              })}
+            </div> : <div className="catalog-episodes-empty" role="status">
+              {detail.episodes.length === 0 ? "该作品暂未提供剧集。" : "没有符合条件的剧集，请调整搜索或筛选条件。"}
+              {(episodeQuery || episodeFilter !== "all") && <button type="button"
+                onClick={() => { setEpisodeQuery(""); setEpisodeFilter("all"); }}>
+                清除筛选
+              </button>}
+            </div>}
+          </section>
         </div>
       </div>
-        </div>
       </div> : mode === "home"
       ? <DiscoveryHome sources={sources} busy={working}
           onSelect={id => void showDetail(id)} onExplore={openExplorer}
