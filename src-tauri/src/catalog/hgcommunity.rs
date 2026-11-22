@@ -430,12 +430,24 @@ mod tests {
     #[test]
     fn gateway_error_only_exposes_allowlisted_sdk_codes() {
         assert_eq!(
-            gateway_error(503, br#"{"error":"TRANSPORT","url":"https://private.example?token=secret"}"#),
+            gateway_error(
+                503,
+                br#"{"error":"TRANSPORT","url":"https://private.example?token=secret"}"#
+            ),
             "hgcommunity_sdk_TRANSPORT"
         );
-        assert_eq!(gateway_error(429, br#"{"error":"RATE_LIMITED"}"#), "hgcommunity_sdk_RATE_LIMITED");
-        assert_eq!(gateway_error(404, br#"{"error":"CONTENT_UNAVAILABLE"}"#), "hgcommunity_sdk_CONTENT_UNAVAILABLE");
-        assert_eq!(gateway_error(404, br#"{"error":"not_found"}"#), "hgcommunity_http_404");
+        assert_eq!(
+            gateway_error(429, br#"{"error":"RATE_LIMITED"}"#),
+            "hgcommunity_sdk_RATE_LIMITED"
+        );
+        assert_eq!(
+            gateway_error(404, br#"{"error":"CONTENT_UNAVAILABLE"}"#),
+            "hgcommunity_sdk_CONTENT_UNAVAILABLE"
+        );
+        assert_eq!(
+            gateway_error(404, br#"{"error":"not_found"}"#),
+            "hgcommunity_http_404"
+        );
         assert_eq!(
             gateway_error(503, br#"{"error":"secret-value","token":"private"}"#),
             "hgcommunity_http_503"
