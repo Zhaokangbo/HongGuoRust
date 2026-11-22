@@ -16,6 +16,22 @@ HG-2B 专注于**真实数据展示**，不尝试绕过 DRM、签名、会员权
 - `hgcommunity` 默认未配置允许媒体域名时页面提示“仅浏览、不开放播放”，防止出现“能点任意集数却不断报错”的误导。即使 `playable=true`，也只是 SDK 可选状态，不代表用户/客户端具备播放授权、更不代表流没有保护。
 - `tests/hg2a-community-gateway.test.mjs` 更新为 Mock SDK 返回真实封面字段及可播放状态，验证不可播放分集详情仍列出但 /play 路由拒绝；`tests/hg2b-cover.test.mjs` 双向验证 Node 和前端 URL 拒绝异常协议、私网 IP、用户信息、未允许端口、fragment、超长/控制字符，允许合法 HTTPS signed cover 并原样保留查询字符串。测试只使用虚构域名，不连接外部红果服务。
 
+## HG-2B 实机封面缺失复测（追加）
+
+用户首次部署 HG-2B 后的两张 Windows 实机截图显示：在「社区接口实验」搜索“重生”返回 6 部作品、清空关键词返回 8 部作品，**全部仍为蓝绿色 CSS 渐变，占位封面验收未通过**。这不是播放状态异常，真实作品标题/集数检索仍可用。
+
+已针对上游 `openhongguo` SDK 源码核查：其 `internal/protocol/parse.go` 中 `ParseSearchTab` 在直接 `video_detail` 搜索结果分支构造 `SeriesSummary` 时仅赋值 ID、Title、Description、EpisodeCount，遗漏 `CoverURL`；SDK `GetSeriesBatch` 则会返回 `{series:{id,cover_url,...},episodes:[...]}`，可取得详情里的封面。
+
+本分支增加 `enrichCatalogCovers`：仅针对原搜索结果中缺失/无效的封面，从最多 10 个已有作品 ID 发起**一次** SDK 原生 `getSeriesBatch` 只读元数据查询；若 SDK 限流/拒绝/返回无封面，保留搜索原结果，不用合成封面、不能隐蔽重复尝试。Node 只打印不含作品名称/URL/签名/Cookie 的数字统计，例如：
+
+```text
+HG2B_COVER_DIAG results=6 direct=0 batch=5 missing=1 lookup=ok
+```
+
+UI 对实验来源分别显示「SDK 未获取到封面」（数据无 URL 或被过滤）与「封面图片加载失败」（已拿到有效 HTTPS URL、WebView/CDN 加载失败）；普通 Demo/本地不显示这些诊断字样。此方式能区分 SDK 数据缺失与 Tauri CSP / CDN 网络问题。
+
+**复测需要精确 SHA 的 Windows M1/M2 再次完成 success，重新部署对应新 EXE 并更新仓库中的 Node SDK bridge 脚本**。仅更换 EXE 不更新 `scripts/hg2a-sdk/server.mjs` 会使旧桥接继续返回无封面。复测搜索“重生”后查看带前缀 `HG2B_COVER_DIAG` 的终端统计，同时查看列表封面。诊断只需要分享该统计行和截图，禁止复制完整带签名的 CDN URL、会话 token 或请求 Header。
+
 ## Windows 验收流程
 
 首先确认最新 HG-2B HEAD 的 Windows M1/M2 同 SHA 均全绿（其中新增 Node + TypeScript、Rust 类型/原生测试）。在 **HG-2B Debug EXE** 部署到独立目录后，仍沿用 HG-2A 的显式本机 SDK 启动方式。用户先关闭普通模式播放器，再从仓库 HG-2B 分支启动开发脚本：
