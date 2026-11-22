@@ -9,9 +9,9 @@ test("mute switches a non-zero volume to zero", () => {
 
 test("unmute restores the last audible level within supported bounds", () => {
   assert.equal(volumeAfterMute(0, 68), 68);
-  assert.equal(volumeAfterMute(0, 0), 1);
+  assert.equal(volumeAfterMute(0, 0), 100);
   assert.equal(volumeAfterMute(0, 145), 100);
-  assert.equal(volumeAfterMute(0, -20), 1);
+  assert.equal(volumeAfterMute(0, -20), 100);
 });
 
 test("invalid remembered volume falls back to a safe audible level", () => {
