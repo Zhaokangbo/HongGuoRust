@@ -1,5 +1,6 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
+use super::hongguo::HongGuoUnavailableProvider;
 use super::local::LocalLibraryProvider;
 use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
@@ -88,6 +89,7 @@ impl CatalogService {
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
             Box::new(OwnedManifestProvider::new(manifest)),
+            Box::new(HongGuoUnavailableProvider),
         ])
         .expect("built-in provider IDs must be unique and valid")
     }
@@ -111,9 +113,9 @@ impl CatalogService {
             .map(|provider| ProviderInfo {
                 id: provider.id().into(),
                 name: provider.name().into(),
-                supports_search: true,
-                supports_detail: true,
-                supports_play: true,
+                supports_search: provider.supports_search(),
+                supports_detail: provider.supports_detail(),
+                supports_play: provider.supports_play(),
             })
             .collect()
     }
@@ -267,9 +269,13 @@ impl CatalogService {
         {
             return Err("invalid_episode_id: Invalid episode ID".into());
         }
-        let target = self
-            .provider(source)?
-            .resolve_episode(local_id, episode_id)?;
+        let provider = self.provider(source)?;
+        // UI capability flags are informational: native resolution must also
+        // block any source without verified playback rights.
+        if !provider.supports_play() {
+            return Err("provider_not_authorized: 当前内容源没有播放授权".into());
+        }
+        let target = provider.resolve_episode(local_id, episode_id)?;
         match target {
             MediaTarget::Https(url) => {
                 crate::player::source::public_https_url(&url).map(MediaTarget::Https)
@@ -422,6 +428,27 @@ mod tests {
             .is_err());
         let mixed = service.search_page(None, Some("all"), 0, 50).unwrap();
         assert_eq!(mixed.total, 4);
+
+        let hongguo = service
+            .sources()
+            .into_iter()
+            .find(|source| source.id == "hongguo")
+            .expect("gated HongGuo source must be registered");
+        assert!(!hongguo.supports_search);
+        assert!(!hongguo.supports_detail);
+        assert!(!hongguo.supports_play);
+        assert!(hongguo.name.contains("待授权"));
+        assert_eq!(
+            service
+                .search_page(None, Some("hongguo"), 0, 24)
+                .unwrap()
+                .total,
+            0
+        );
+        assert!(service.detail("hongguo:synthetic-1").is_err());
+        assert!(service
+            .resolve_episode("hongguo:synthetic-1", "ep-1")
+            .is_err());
         drop(service);
         drop(library);
         fs::remove_dir_all(dir).unwrap();
