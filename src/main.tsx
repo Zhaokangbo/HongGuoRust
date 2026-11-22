@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
 import { fetchPreviewFrame, previewBucket, previewTimeAtPointer, validPreviewFrame, type PreviewFrame } from "./player/thumbnailPreview";
@@ -305,7 +305,7 @@ function App() {
     setPreviewImage(null);
   }, [snapshot?.sessionId, catalogOpen, fullscreen]);
 
-  function updateHover(event: React.PointerEvent<HTMLInputElement>) {
+  function updateHover(event: PointerEvent<HTMLInputElement>) {
     if (!previewEnabled) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const seconds = previewTimeAtPointer(event.clientX, bounds.left, bounds.width, duration);
