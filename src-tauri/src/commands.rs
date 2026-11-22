@@ -47,6 +47,23 @@ pub fn open_https(player: State<'_, PlayerService>, url: String) -> Result<u64, 
     player.open_https(url)
 }
 
+/// M11-B thumbnail IPC accepts only the current session and timestamp.
+/// The Rust-owned media URL/local path remains private.
+#[tauri::command]
+pub async fn player_preview_frame(
+    window: WebviewWindow,
+    session_id: u64,
+    seconds: f64,
+) -> Result<Option<crate::player::preview::PreviewFrame>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        window
+            .state::<PlayerService>()
+            .preview_frame(session_id, seconds)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn get_fullscreen(window: WebviewWindow) -> Result<bool, String> {
     window.is_fullscreen().map_err(|error| error.to_string())
