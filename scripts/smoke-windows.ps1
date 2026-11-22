@@ -22,7 +22,7 @@ $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
 if (!$version) { throw 'Missing Cargo package version' }
 $connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
 $home = -join ([char[]](0x9996, 0x9875))
-$names = @('HongGuoRust', $connected, $home, '播放器')
+$names = @('HongGuoRust', $connected, $home, $playerLabel)
 $diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
 $env:HONGGUORUST_LOG_DIR = $diag
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS --force-renderer-accessibility".Trim()
@@ -54,7 +54,7 @@ try {
     } while ($missing.Count -and [DateTime]::UtcNow -lt $deadline)
     if ($missing.Count) { throw "Window is missing expected accessible text: $($missing -join ', ')" }
     $playerCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, '播放器')
+        [System.Windows.Automation.AutomationElement]::NameProperty, $playerLabel)
     $playerButton = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $playerCondition)
     if (!$playerButton) { throw 'Missing player surface entry button' }
     if (!$playerButton.Current.IsEnabled) { throw 'Player surface entry button is disabled' }
