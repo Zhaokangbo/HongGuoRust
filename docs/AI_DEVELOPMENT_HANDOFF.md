@@ -220,7 +220,7 @@
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `f21a18f30d7e557e22ebab00ab262becb4a7cc25`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；该最新 HEAD 的 Windows M1/M2 CI 尚未在本次查询中返回运行记录，等待用户下一次通知后再核对，不持续轮询。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；本次修复后的 M1/M2 CI 等待用户下一次“编译完成”通知后核对，不持续轮询。
 
 ### 2026-11-22 接手复核：UI-3 最新 HEAD 与当前验收门槛
 
@@ -252,3 +252,12 @@
 - Debug EXE 来自 M2 run `45038401115` / artifact `14760343547`（app commit `84537517`，M2 成功）；M1 run `45038401090` 在 smoke parser 失败前已完成应用构建、Rust 测试与 artifact staging。随后 `35a8ab4`、`f21a18f` 仅修改 smoke PowerShell，不改应用代码，因此该 EXE 仍适合**先行 UI 手动验收**，但 kit 必须标注 provisional，不能称作最新 HEAD CI-green build 或 release。
 - 当前 kit 文件路径仅存在于生成它的对话附件：`/mnt/data/HongGuoRust-UI3-Windows-Debug-84537517.zip`；新对话不可猜测复用该 sandbox 路径，需通过本对话附件或重新下载 GitHub artifact 获取。
 - 用户可在独立目录解压并开始 UI-3 实机验收；首次运行需 PowerShell 执行策略仅对当前进程放行，然后运行 `get-mpv.ps1` 下载并校验 `libmpv-2.dll`，再启动 EXE。需要 WebView2 Runtime；不要覆盖 `%LOCALAPPDATA%\\HongGuoRust`。
+### 2026-11-22 UI-3 第二轮 Windows CI 失败诊断与修复提交
+
+- 用户再次通知“编译好了”后，按 AGENTS.md 仅对当时精确 HEAD `f21a18f30d7e557e22ebab00ab262becb4a7cc25` 核对一次。PR #36 open / Draft / unmerged；M1 run `45040279927` failure，M2 run `45040279911` failure，M5 NSIS skipped。
+- M1 的前端构建、Rust fmt、Rust 55 项测试、Windows no-bundle build、artifact staging/upload 均成功；失败仍在 `scripts/smoke-windows.ps1`，但已不是编码问题。Windows PowerShell 自动变量 `$HOME` 大小写不敏感且只读；脚本用 `$home` 赋值导致 `Cannot overwrite variable HOME because it is read-only or constant`。
+- M2 的前端构建、npm audit（含 production）、Rust fmt 均通过；Rust 57 项测试中 55 passed / 2 failed。失败测试 `add_deduplicate_restart_remove_preserves_original` 与 `favorites_survive_restart_and_do_not_clear_playback_history` 的 `test_dir()` 生成了相同目录 `hgr-library-512-1795362619669997300`。并发测试共享 `library.json` 与 `library.json.pending`，导致 `MoveFileExW` 偶发 error 2，且一个测试读取到另一个测试的 `favorite.mp4` 路径而非中文文件名。这是测试夹具目录碰撞，不是生产本地媒体目录业务逻辑问题。
+- 已直接提交两项修复到 `feat/ui-3-netflix-home`：`ede5ea321455876999e7bb337a5ce5d2861fdc8b`（PowerShell `$home` 改为 `$homeLabel`）和 `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`（Rust `test_dir()` 加入 `AtomicU64` + `Ordering::Relaxed` 进程内序号，避免并行测试目录名碰撞）。通过重新读取分支文件确认两个修改均在最新 HEAD，且 PowerShell 脚本仍无非 ASCII 源字符。
+- 当前 PR #36 HEAD 为 `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`，base main，仍 Draft / open / unmerged。两次修复提交已推送；遵守不轮询约定，不查询该 HEAD 的新 M1/M2 CI，直到用户再次通知“编译好了”。
+- 不要把之前 `84537517` / `f21a18f` 的旧 M2 artifact 当作最新绿色包：新 Rust 测试夹具修复需要由精确 HEAD 的 CI 重新验证；在新 HEAD 的 M1/M2 双绿前不发布新的 Windows Debug kit。
+- 下一步：等待用户下一次“编译好了”通知；只核对 `d85f131` 对应 M1/M2 各一次。若双绿，下载最新 HEAD M2 Debug artifact，检查 ZIP/EXE 哈希并制备独立目录 Windows UI-3 test kit；若仍失败，依据对应 job log 继续修复。PR #36 保持 Draft，禁止合并。
