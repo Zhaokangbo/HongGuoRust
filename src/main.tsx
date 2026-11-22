@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import {
+  changeMediaTrack, getMediaTracks, selectedTrackId, trackLabel, usableTrackList,
+  type TrackKind, type TrackList,
+} from "./player/mediaTracks";
 import { fetchPreviewFrame, previewBucket, previewTimeAtPointer, validPreviewFrame, type PreviewFrame } from "./player/thumbnailPreview";
 import { resolvePlayerShortcut, type PlayerShortcut } from "./player/keyboardShortcuts";
 import { nextAtNaturalEof, type LocalPlaylist } from "./player/autoNext";
@@ -37,6 +41,12 @@ function App() {
   const previewVersionRef = useRef(0);
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(100);
+  const [mediaTracks, setMediaTracks] = useState<TrackList | null>(null);
+  const [trackBusy, setTrackBusy] = useState(false);
+  const [trackError, setTrackError] = useState("");
+  const trackGenerationRef = useRef(0);
+  const nativeSessionRef = useRef<number | null>(null);
+  const trackFlightRef = useRef(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const lastAudibleVolumeRef = useRef(100);
   const shortcutFlightRef = useRef(false);
@@ -269,6 +279,55 @@ function App() {
   const position = snapshot?.positionSec ?? 0;
   const preview = seekPreview ?? position;
   const seekable = controllable && Number.isFinite(duration) && duration > 0;
+  nativeSessionRef.current = snapshot?.sessionId ?? null;
+
+  useEffect(() => {
+    const generation = ++trackGenerationRef.current;
+    setMediaTracks(null);
+    setTrackError("");
+    const id = snapshot?.sessionId;
+    if (!connected || catalogOpen || id === null || id === undefined
+        || !["Playing", "Paused", "Buffering"].includes(snapshot?.state ?? "")) return;
+    void getMediaTracks(id).then(result => {
+      if (trackGenerationRef.current !== generation || nativeSessionRef.current !== id) return;
+      if (usableTrackList(result, id)) setMediaTracks(result);
+    }).catch(() => {
+      // Missing track-list must never stop playback or obscure its real error.
+      if (trackGenerationRef.current === generation && nativeSessionRef.current === id) {
+        setMediaTracks(null);
+      }
+    });
+    return () => { trackGenerationRef.current++; };
+  }, [connected, catalogOpen, snapshot?.sessionId, snapshot?.state]);
+
+  async function selectMediaTrack(kind: TrackKind, value: string) {
+    const id = snapshot?.sessionId;
+    if (id === null || id === undefined || busy || trackBusy || trackFlightRef.current
+        || !usableTrackList(mediaTracks, id)) return;
+    const trackId = value === "off" && kind === "subtitle" ? null : Number(value);
+    if (trackId !== null
+        && (!Number.isSafeInteger(trackId) || trackId <= 0
+          || !(kind === "audio" ? mediaTracks.audio : mediaTracks.subtitles)
+            .some(item => item.id === trackId))) return;
+    trackFlightRef.current = true;
+    setTrackBusy(true);
+    setTrackError("");
+    const generation = ++trackGenerationRef.current;
+    try {
+      const updated = await changeMediaTrack(id, kind, trackId);
+      if (nativeSessionRef.current === id && trackGenerationRef.current === generation
+          && usableTrackList(updated, id)) {
+        setMediaTracks(updated);
+      }
+    } catch (error) {
+      if (nativeSessionRef.current === id && trackGenerationRef.current === generation) {
+        setTrackError(String(error));
+      }
+    } finally {
+      trackFlightRef.current = false;
+      setTrackBusy(false);
+    }
+  }
   const previewEnabled = seekable && !catalogOpen && !fullscreen;
   const hoveredBucket = previewHover === null ? null : previewBucket(previewHover.seconds);
 
@@ -495,6 +554,25 @@ function App() {
         </label>
         <button disabled={!controllable || seekText.trim() === "" || !Number.isFinite(Number(seekText)) || Number(seekText) < 0}
           onClick={() => void applySeek(Number(seekText))}>跳转</button>
+        <label>音轨
+          <select aria-label="音轨" disabled={!controllable || busy || trackBusy || !mediaTracks || mediaTracks.audio.length === 0}
+            value={mediaTracks ? selectedTrackId(mediaTracks.audio, false) : ""}
+            onChange={event => { void selectMediaTrack("audio", event.target.value); }}>
+            <option value="" disabled>无可用音轨</option>
+            {mediaTracks?.audio.map((track, index) =>
+              <option value={String(track.id)} key={track.id}>{trackLabel(track, index)}</option>)}
+          </select>
+        </label>
+        <label>字幕
+          <select aria-label="字幕轨道" disabled={!controllable || busy || trackBusy || !mediaTracks || mediaTracks.subtitles.length === 0}
+            value={mediaTracks ? selectedTrackId(mediaTracks.subtitles, true) : "off"}
+            onChange={event => { void selectMediaTrack("subtitle", event.target.value); }}>
+            <option value="off">关闭字幕</option>
+            {mediaTracks?.subtitles.map((track, index) =>
+              <option value={String(track.id)} key={track.id}>{trackLabel(track, index)}</option>)}
+          </select>
+        </label>
+        {trackError && <span className="player-track-error" role="alert">{trackError}</span>}
         <label>倍速
           <select aria-label="播放倍速" value={rate} disabled={!controllable}
             onChange={e => { const next = Number(e.target.value); setRate(next); void command("set_rate", { rate: next }); }}>
