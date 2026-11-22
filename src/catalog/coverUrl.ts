@@ -1,8 +1,11 @@
-/** Shared front-end defence for the optional community SDK's remote covers.
- * A cover is visual metadata, never a media playback target.
- * Safe syntax is not proof of DNS/redirect safety or content rights.
+/** Shared front-end defence for optional community cover URLs.
+ * New sidecar responses use one fixed opaque loopback route; legacy HTTPS
+ * cover URLs retain the existing public-host syntax checks.
  */
 export function safeCoverUrl(raw: unknown): string | null {
+  if (typeof raw === "string" && /^http:\/\/127\.0\.0\.1:19091\/v1\/covers\/[a-f0-9]{32}$/.test(raw)) {
+    return raw;
+  }
   if (typeof raw !== "string" || !raw || raw.length > 2048 ||
       /[\x00-\x20\x7f]/.test(raw) || raw.includes("#") || raw.includes("\\")) return null;
   let url: URL;

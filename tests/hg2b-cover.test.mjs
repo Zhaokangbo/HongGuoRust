@@ -9,6 +9,9 @@ const accepted = [
   "https://p26-a.example.com/cover.jpeg?image_type=webp",
 ];
 const rejected = [
+  "http://127.0.0.1:19092/v1/covers/0123456789abcdef0123456789abcdef",
+  "http://127.0.0.1:19091/v1/covers/not-a-token",
+  "http://127.0.0.1:19091/v1/covers/0123456789abcdef0123456789abcdef?url=https://evil.example",
   "http://cdn.example.com/a.jpg",
   "//cdn.example.com/a.jpg",
   "file:///C:/Users/test/private.png",
@@ -26,6 +29,12 @@ const rejected = [
   "https://cdn.example.com/cover.webp\\nHeader: escaped",
   "https://example.com/" + "x".repeat(2100),
 ];
+
+test("HG-2B UI accepts only the fixed opaque loopback cover URL", () => {
+  const local = "http://127.0.0.1:19091/v1/covers/0123456789abcdef0123456789abcdef";
+  assert.equal(safeCoverUrl(local), local);
+  assert.equal(publicCoverUrl(local), null, "the upstream URL validator remains HTTPS-only");
+});
 
 test("HG-2B legitimate external HTTPS cover URLs survive without changing signed query bytes", () => {
   for (const value of accepted) {

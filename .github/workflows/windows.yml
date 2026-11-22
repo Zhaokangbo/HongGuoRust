@@ -43,6 +43,8 @@ jobs:
           $binary[0].DirectoryName >> $env:GITHUB_PATH
       - run: ./scripts/check-windows.ps1
       - run: npm ci
+      - name: Install optional community cover codecs
+        run: npm install --prefix scripts/hg2a-sdk --ignore-scripts --no-audit --no-fund
       - run: npm run build
       - name: Verify committed dependencies
         run: |

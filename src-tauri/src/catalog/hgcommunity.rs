@@ -40,10 +40,15 @@ fn is_host(value: &str) -> bool {
         && !value.contains("..")
 }
 
-/// Only display public HTTPS cover images provided by the opt-in SDK.
-/// Never accept credentials, private IP literals, fragments or unsafe schemes.
-/// This is syntactic validation, not a network DNS/redirect pinning guarantee.
+/// Accept the exact opaque loopback relay URL, plus legacy public HTTPS covers.
+/// The new sidecar only emits the fixed loopback route; it never sends signed CDN
+/// URLs to the WebView. Legacy HTTPS validation remains syntax-only.
 fn valid_cover_url(value: &str) -> Option<&str> {
+    const LOCAL_PREFIX: &str = "http://127.0.0.1:19091/v1/covers/";
+    if let Some(id) = value.strip_prefix(LOCAL_PREFIX) {
+        return (id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .then_some(value);
+    }
     if value.len() > 2048
         || !value.starts_with("https://")
         || value.contains('#')
@@ -470,8 +475,13 @@ mod tests {
     fn public_cover_validation_preserves_signed_https_queries_and_rejects_private_urls() {
         let valid = "https://covers.example.org/signed.webp?token=a%2Fb&expires=1892345678";
         assert_eq!(valid_cover_url(valid), Some(valid));
+        let local = "http://127.0.0.1:19091/v1/covers/0123456789abcdef0123456789abcdef";
+        assert_eq!(valid_cover_url(local), Some(local));
         for url in [
             "http://covers.example.org/poster.webp",
+            "http://127.0.0.1:19092/v1/covers/0123456789abcdef0123456789abcdef",
+            "http://127.0.0.1:19091/v1/covers/not-a-token",
+            "http://127.0.0.1:19091/v1/covers/0123456789abcdef0123456789abcdef?url=https://evil.example",
             "file:///C:/secrets/poster.jpg",
             "https://127.0.0.1/a.jpg",
             "https://192.168.1.2/a.jpg",

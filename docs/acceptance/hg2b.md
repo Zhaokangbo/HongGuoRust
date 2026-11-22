@@ -8,10 +8,10 @@ HG-2B 专注于**真实数据展示**，不尝试绕过 DRM、签名、会员权
 
 ## 已实现的数据链
 
-- `openhongguo` Node SDK 原生作品元数据含 `cover_url`。`scripts/hg2a-sdk/server.mjs` 使用 `publicCoverUrl` 校验并转发到本机 HTTPS 字段 `coverUrl`，按原样保留 CDN 签名查询参数，不存储媒体密钥，不将作品改写成模拟数据。
-- Rust `Series` 新增可选 `cover_url: Option<String>`（序列化为 camelCase `coverUrl`，没有时省略）；所有演示、本地、导入媒体默认 None；`HgCommunityProvider` 限定非内部 HTTPS 封面域名并保留不存在/非法地址时的渐变回退。
-- React `CoverImage` 懒加载实际封面，`onError` 回退原来的风格渐变；应用在搜索结果卡片、作品详情、首页焦点和首页普通卡片。CSS `object-fit: cover`、对比渐变及文字叠加；组件用空 alt 表示装饰性图片、`referrerPolicy=no-referrer` 不发送应用页面地址。
-- Tauri CSP 仅在 `img-src` 增加 `https:`，**没有**开放任意 `connect-src`、HTTP 图像、WebView JS API 或任意原生媒体地址。远端 CDN 会在实验源用户加载封面时获得其客户端网络地址；不应误解为私密/匿名访问。URL 的语法验证并不能充分防范 DNS 重绑定、重定向及远端跟踪；公开发行或生产授权源需补精确允许域名及下载代理/缓存策略。
+- `openhongguo` Node SDK 原生作品元数据含 `cover_url`。Node sidecar 仅在内存保存经语法校验、且主机属于已确认社区海报 CDN（*.fqnovelpic.com）的原始签名 URL；对 Tauri 返回每次启动随机生成的 128-bit opaque ID 对应的固定 Loopback 图片 URL，不把 CDN 签名 query 返回给 React、Rust 日志或普通诊断。
+- Rust `Series` 新增可选 `cover_url: Option<String>`（序列化为 camelCase `coverUrl`，没有时省略）；所有演示、本地、导入媒体默认 None；`HgCommunityProvider` 只接受固定 `http://127.0.0.1:19091/v1/covers/<32位十六进制ID>` 图片端点（同时保留旧 HTTPS URL 兼容校验），无效地址仍走渐变回退。
+- React `CoverImage` 仍使用普通 img 懒加载本机 JPEG/其他受支持图片端点，`onError` 回退原来的风格渐变；应用在搜索结果卡片、作品详情、首页焦点和首页普通卡片。CSS `object-fit: cover`、对比渐变及文字叠加；组件用空 alt 表示装饰性图片、`referrerPolicy=no-referrer` 不发送应用页面地址。
+- Tauri CSP 的 `img-src` 仅额外允许精确 Loopback 图片地址 `http://127.0.0.1:19091`，`connect-src` 不开放远程 HTTPS；图片由 sidecar 通过用户现有 `HTTPS_PROXY`/`ALL_PROXY` 等环境代理请求 CDN。下载器仅允许 `fqnovelpic.com` 根域及其子域、HTTPS、最多两次仍在 allowlist 内的重定向；源响应限制 5 MiB、HEIC 解码限制 12 MP，最多 4 个并发下载，内存缓存最多 16 MiB/100 张、opaque URL 15 分钟过期，不落盘、不记录原始签名 URL。该限制针对当前实测 host；发现其他官方 CDN host 前不能放宽成任意 URL 代理。
 - Node 现在保留 SDK 返回的全部已知分集，包括 `playable=false`，在页面标为“上游标记不可播放”。Rust `Episode` 增加 `playable: bool`（其他内置来源默认 true），并在 `HgCommunityProvider::resolve_episode` 中再次校验真值；即使绕过前端禁用按钮也不能解析已知不可播放分集。
 - `hgcommunity` 默认未配置允许媒体域名时页面提示“仅浏览、不开放播放”，防止出现“能点任意集数却不断报错”的误导。即使 `playable=true`，也只是 SDK 可选状态，不代表用户/客户端具备播放授权、更不代表流没有保护。
 - `tests/hg2a-community-gateway.test.mjs` 更新为 Mock SDK 返回真实封面字段及可播放状态，验证不可播放分集详情仍列出但 /play 路由拒绝；`tests/hg2b-cover.test.mjs` 双向验证 Node 和前端 URL 拒绝异常协议、私网 IP、用户信息、未允许端口、fragment、超长/控制字符，允许合法 HTTPS signed cover 并原样保留查询字符串。测试只使用虚构域名，不连接外部红果服务。
@@ -56,6 +56,21 @@ HG2B_COVER_DIAG results=6 direct=0 batch=6 missing=0 lookup=ok
 本次修订：优先通过 SDK 已确认存在的 `getSeriesBatch([id])` 单次获取作品公开详情和分集，严格校验返回 ID，保留不存在该方法时的旧调用路径；不增加自动重试、不会调用播放或解密。Node 仅返回预定义错误码（如 `TRANSPORT`、`RATE_LIMITED`、`CONTENT_UNAVAILABLE`），Rust 严格白名单解析，再由前端显示用户可读提示。Node 控制台新增 `HG2B_DETAIL_DIAG code=... status=...`，不会打印作品 ID、URL、签名参数、token 或异常原文。
 
 **验收**：新的 CI 同一 HEAD 通过后使用新调试 EXE + 新 sidecar；打开封面正常的作品，观察是否能显示剧集与不可播放状态。如失败，提供 `HG2B_DETAIL_DIAG` 计数/错误码和截图。若 `TRANSPORT` 检查 WebView2/Node 的网络路径；若 `RATE_LIMITED` 暂停频繁刷新；若 `CONTENT_UNAVAILABLE` 则不伪造授权或触发播放。不能仅以新修订代码存在就判定已修复。
+
+
+## HEIC 封面兼容修复（2026-11-22，待 CI 与 Windows 验收）
+
+Windows WebView2 DevTools 已取得一条真实封面请求：HTTP 200、Content-Type image/heic、Content-Length 33636；Network Preview 显示破损图片图标，应用 CoverImage.tsx 同时触发 img onError。当前最可能的故障是 WebView2 无法解码上游 HEIC，而不是 HTTP 传输失败。
+
+修复方案在 scripts/hg2a-sdk/server.mjs 实现受限 Loopback Image Relay：
+- 仅注册 fqnovelpic.com 及子域的 HTTPS 封面，原始带签名 URL 只留在 sidecar 本次进程内存。
+- 前端收到随机 128-bit opaque ID 的 http://127.0.0.1:19091/v1/covers/<id>，浏览器图片请求无需暴露 SDK 会话令牌；本机服务只接受 loopback、固定 Host、GET 和空 Origin/http://tauri.localhost。
+- Node 通过用户已有 HTTPS proxy 环境变量请求 CDN；代理设置显式失败时不回退直连。最多两次 allowlist 内重定向；限制源响应 5 MiB、输出 5 MiB、12 MP、4 个并发；内存缓存 16 MiB/100 项，opaque ID 15 分钟过期。
+- image/heic / image/heif 通过 libheif-js WebAssembly decoder 解码，再用 jpeg-js 编码为 JPEG；JPEG/PNG/WebP/AVIF/GIF 只通过已校验的图片 MIME。
+- sidecar 可选依赖固定版本：libheif-js@1.23.5（LGPL-3.0）、jpeg-js@0.4.4（BSD-3-Clause）、https-proxy-agent@9.1.0（MIT）。主项目 GPL-3.0-only；发布前仍需保留第三方许可证与源码对应信息。
+- tauri.conf.json 只把精确 loopback 地址加入 img-src；不扩展 connect-src，不引入任意 URL proxy，不处理媒体流、不接触 DRM/会员权限。
+
+CI 会在 Windows M1/M2 安装 sidecar 依赖并执行 Node gateway/URL/HEIC 失败关闭测试。CI 通过不等于实机完成；Windows 仍需确认封面真实显示、刷新/搜索/详情回归以及代理网络行为。
 
 ## Windows 验收流程
 

@@ -36,6 +36,16 @@
 3. 该桥接目前是**实验开发链路**。正式发布需要补齐许可、用户确认、供应链安全审核、SDK 来源锁定和不同来源的隐私与访问边界；HG-1 官方待授权来源不能被社区实现覆盖。
 4. 尽管桥接固定使用 127.0.0.1、令牌和媒体主机白名单，**域名字符串检查不等于完整 DNS 重绑定/SSRF 防护**；在公开发布和任意 CDN 取址前还需对解析 IP、重定向和原生播放器网络权限进行进一步限制。
 
+
+### HG-2B HEIC 封面格式兼容
+
+实机 WebView2 Network 已观察到社区封面返回 HTTP 200、image/heic；应用 img onError 与 DevTools Preview 破损图标表明问题位于图片解码层。HG-2B 因此在本机 Node sidecar 增加受限的图片中继与格式归一化：
+- 原始 CDN signed URL 只存于进程内存；只接受 fqnovelpic.com 根域及子域，不提供任意 URL 参数入口。
+- 向前端返回 128-bit 随机 opaque ID 的固定 Loopback 图片 URL，Tauri CSP 仅对 img-src 增加 http://127.0.0.1:19091。
+- Node 使用 HTTPS_PROXY / ALL_PROXY 等环境代理下载，拒绝 allowlist 外重定向，不回退直连；设置大小、像素、并发、缓存和 ID TTL 限制。
+- HEIC/HEIF 使用 libheif-js WASM 解码并由 jpeg-js 输出 JPEG；其他常见静态图片 MIME 经过 allowlist 后原样返回。图片只驻留内存，不落盘，不记录签名 URL。
+- 新依赖固定为 libheif-js@1.23.5（LGPL-3.0）、jpeg-js@0.4.4（BSD-3-Clause）、https-proxy-agent@9.1.0（MIT）；安装命令仍是 npm install --prefix scripts/hg2a-sdk --ignore-scripts。Windows M1/M2 workflow 会单独安装此可选 sidecar 依赖。
+
 ## Windows 手动运行（开发试验）
 
 在已克隆本仓库、安装 Node.js 22+/24 的 Windows 机器中，先在用户主动允许第三方非官方 SDK 的前提下安装独立依赖：

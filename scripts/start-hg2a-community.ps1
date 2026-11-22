@@ -14,7 +14,10 @@ if ([string]::IsNullOrWhiteSpace($ExePath)) {
 }
 $server = Join-Path $RepoRoot 'scripts\hg2a-sdk\server.mjs'
 $dependency = Join-Path $RepoRoot 'scripts\hg2a-sdk\node_modules\openhongguo\package.json'
-foreach ($path in @($ExePath, $server, $dependency)) {
+$heifDependency = Join-Path $RepoRoot 'scripts\hg2a-sdk\node_modules\libheif-js\package.json'
+$jpegDependency = Join-Path $RepoRoot 'scripts\hg2a-sdk\node_modules\jpeg-js\package.json'
+$proxyDependency = Join-Path $RepoRoot 'scripts\hg2a-sdk\node_modules\https-proxy-agent\package.json'
+foreach ($path in @($ExePath, $server, $dependency, $heifDependency, $jpegDependency, $proxyDependency)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
     throw "Required path not found: $path (build HG-2A and install optional SDK first)"
   }

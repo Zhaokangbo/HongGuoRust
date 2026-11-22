@@ -23,6 +23,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Install optional community cover codecs
+        run: npm install --prefix scripts/hg2a-sdk --ignore-scripts --no-audit --no-fund
       - run: npm audit --audit-level=high
       - run: npm audit --omit=dev
       - run: npm run build

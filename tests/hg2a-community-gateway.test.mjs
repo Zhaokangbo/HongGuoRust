@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createCommunityGateway, enrichCatalogCovers, loadSeriesDetail, classifySdkError } from "../scripts/hg2a-sdk/server.mjs";
+import { createCommunityGateway, enrichCatalogCovers, loadSeriesDetail, classifySdkError, convertHeicToJpeg } from "../scripts/hg2a-sdk/server.mjs";
 
 const token = "0123456789abcdef".repeat(4);
 const fakeSdk = {
   async discover() {
-    return { items: [{ id: "12345", title: "合成目录作品", episode_count: 2, category: "测试", cover_url: "https://covers.example.org/poster.webp?sig=test123" }] };
+    return { items: [{ id: "12345", title: "合成目录作品", episode_count: 2, category: "测试", cover_url: "https://p3-reading-sign.fqnovelpic.com/poster.webp?sig=test123" }] };
   },
   async search(query) {
-    return { items: query.includes("测试") ? [{ id: "12345", title: "合成搜索作品", episode_count: 2, cover_url: "https://covers.example.org/poster.webp?sig=test123" }] : [] };
+    return { items: query.includes("测试") ? [{ id: "12345", title: "合成搜索作品", episode_count: 2, cover_url: "https://p3-reading-sign.fqnovelpic.com/poster.webp?sig=test123" }] : [] };
   },
   async getSeries(id) {
     return { id, title: "合成测试作品", episode_count: 2, category: "测试" };
@@ -29,8 +29,8 @@ const fakeSdk = {
   },
 };
 
-async function withServer(sdk, run) {
-  const server = createCommunityGateway({ sdk, token });
+async function withServer(sdk, run, options = {}) {
+  const server = createCommunityGateway({ sdk, token, ...options });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     await run(server.address().port);
@@ -55,6 +55,23 @@ function get(port, path, auth = token, origin = null) {
   });
 }
 
+function getRaw(port, path, { origin = null, auth = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const headers = {};
+    if (auth) headers["X-HG2A-Token"] = auth;
+    if (origin) headers.Origin = origin;
+    http.get({ hostname: "127.0.0.1", port, path, headers, timeout: 2000 }, res => {
+      const chunks = [];
+      res.on("data", b => chunks.push(b));
+      res.on("end", () => resolve({
+        code: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks),
+      }));
+    }).on("error", reject);
+  });
+}
+
 test("real-SDK-shaped adapter maps catalog/search/detail into fixed bounded JSON", async () => {
   await withServer(fakeSdk, async port => {
     const health = await get(port, "/health");
@@ -63,7 +80,8 @@ test("real-SDK-shaped adapter maps catalog/search/detail into fixed bounded JSON
     const discover = await get(port, "/v1/search?q=");
     assert.equal(discover.code, 200);
     assert.equal(discover.body.items[0].id, "12345");
-    assert.equal(discover.body.items[0].coverUrl, "https://covers.example.org/poster.webp?sig=test123");
+    assert.match(discover.body.items[0].coverUrl, new RegExp("^http://127\\.0\\.0\\.1:" + port + "/v1/covers/[a-f0-9]{32}$"));
+    assert.doesNotMatch(JSON.stringify(discover.body), /fqnovelpic|sig=test123/);
     const search = await get(port, "/v1/search?q=" + encodeURIComponent("测试"));
     assert.equal(search.body.items[0].title, "合成搜索作品");
     const detail = await get(port, "/v1/series/12345");
@@ -93,7 +111,7 @@ test("HG-2B real SDK search parser missing cover_url is enriched through one met
       // Actual upstream getSeriesBatch shape is Array<{series, episodes}>.
       return ids.map(id => ({
         series: { id, title: "from detail, not a new search entry",
-          cover_url: "https://covers.example.org/" + id + ".webp?x-expires=1892345678" },
+          cover_url: "https://p3-reading-sign.fqnovelpic.com/" + id + ".webp?x-expires=1892345678" },
         episodes: [],
       }));
     },
@@ -102,8 +120,9 @@ test("HG-2B real SDK search parser missing cover_url is enriched through one met
     const reply = await get(port, "/v1/search?q=" + encodeURIComponent("重生"));
     assert.equal(reply.code, 200);
     assert.equal(reply.body.items[0].title, "真实样式作品一");
-    assert.equal(reply.body.items[0].coverUrl, "https://covers.example.org/765401.webp?x-expires=1892345678");
-    assert.equal(reply.body.items[1].coverUrl, "https://covers.example.org/765402.webp?x-expires=1892345678");
+    assert.match(reply.body.items[0].coverUrl, /^http:\/\/127\.0\.0\.1:\d+\/v1\/covers\/[a-f0-9]{32}$/);
+    assert.match(reply.body.items[1].coverUrl, /^http:\/\/127\.0\.0\.1:\d+\/v1\/covers\/[a-f0-9]{32}$/);
+    assert.doesNotMatch(JSON.stringify(reply.body), /fqnovelpic|x-expires/);
   });
   assert.equal(calls, 1);
   assert.deepEqual(idsSeen, ["765401", "765402"]);
@@ -226,7 +245,7 @@ test("HG-2B detail prefers a single SDK batch for public metadata and episodes",
       batches++;
       assert.deepEqual(ids, ["12345"]);
       return [{ series: { id: "12345", title: "批量详情", episode_count: 2,
-        cover_url: "https://covers.example.org/12345.webp" }, episodes: [
+        cover_url: "https://p3-reading-sign.fqnovelpic.com/12345.heic?sig=detail" }, episodes: [
         { id: "54320", number: 1, title: "第1集", playable: true },
         { id: "54321", number: 2, title: "第2集", playable: false },
       ] }];
@@ -237,7 +256,7 @@ test("HG-2B detail prefers a single SDK batch for public metadata and episodes",
   await withServer(sdk, async port => {
     const response = await get(port, "/v1/series/12345");
     assert.equal(response.code, 200);
-    assert.equal(response.body.detail.series.coverUrl, "https://covers.example.org/12345.webp");
+    assert.match(response.body.detail.series.coverUrl, /^http:\/\/127\.0\.0\.1:\d+\/v1\/covers\/[a-f0-9]{32}$/);
     assert.deepEqual(response.body.detail.episodes.map(x => x.playable), [true, false]);
   });
   assert.equal(batches, 1);
@@ -275,4 +294,57 @@ test("HG-2B SDK error categorization is bounded and never leaks raw exception te
     assert.deepEqual(response.body, { error: "TRANSPORT" });
     assert.doesNotMatch(JSON.stringify(response.body), /private|token|do-not-log/);
   });
+});
+
+
+test("HG-2B HEIC covers are served as local JPEG without exposing signed CDN URLs", async () => {
+  let fetchedUrl = null;
+  await withServer(fakeSdk, async port => {
+    const catalog = await get(port, "/v1/search?q=");
+    const coverUrl = catalog.body.items[0].coverUrl;
+    const local = new URL(coverUrl);
+    assert.equal(local.origin, "http://127.0.0.1:" + port);
+    assert.match(local.pathname, /^\/v1\/covers\/[a-f0-9]{32}$/);
+    assert.doesNotMatch(JSON.stringify(catalog.body), /fqnovelpic|sig=test123/);
+
+    // A browser image request needs no SDK header; the random per-launch ID
+    // grants read-only access to this single poster.
+    const image = await getRaw(port, local.pathname, { origin: "http://tauri.localhost" });
+    assert.equal(image.code, 200);
+    assert.equal(image.headers["content-type"], "image/jpeg");
+    assert.equal(image.body.toString("utf8"), "jpeg-poster");
+    const denied = await getRaw(port, local.pathname, { origin: "https://evil.example" });
+    assert.equal(denied.code, 403);
+  }, {
+    fetchCover: async url => {
+      fetchedUrl = url;
+      return { contentType: "image/heic", body: Buffer.from("synthetic-heic") };
+    },
+    convertHeic: async input => {
+      assert.equal(input.toString("utf8"), "synthetic-heic");
+      return Buffer.from("jpeg-poster");
+    },
+  });
+  assert.equal(fetchedUrl, "https://p3-reading-sign.fqnovelpic.com/poster.webp?sig=test123");
+});
+
+test("HG-2B cover relay refuses unapproved hosts and unknown opaque IDs", async () => {
+  const sdk = {
+    async search() {
+      return { items: [{ id: "12345", title: "host filter", episode_count: 1,
+        cover_url: "https://untrusted.example.org/poster.heic?sig=must-not-leak" }] };
+    },
+  };
+  await withServer(sdk, async port => {
+    const result = await get(port, "/v1/search?q=host");
+    assert.equal(result.code, 200);
+    assert.equal(result.body.items[0].coverUrl, null);
+    assert.doesNotMatch(JSON.stringify(result.body), /untrusted|must-not-leak/);
+    const unknown = await getRaw(port, "/v1/covers/0123456789abcdef0123456789abcdef");
+    assert.equal(unknown.code, 404);
+  });
+});
+
+test("HG-2B HEIC decoder dependencies load and malformed input fails closed", async () => {
+  await assert.rejects(convertHeicToJpeg(Buffer.from("not-a-heic-file")), /cover_decode_failed/);
 });
