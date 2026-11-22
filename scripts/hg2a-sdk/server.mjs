@@ -14,7 +14,7 @@ const safeText = (v, n) => typeof v === "string" ? v.replace(/[\x00-\x1f\x7f]/g,
  * establish licensing or guarantee safe DNS/redirect behavior. */
 export function publicCoverUrl(raw) {
   if (typeof raw !== "string" || raw.length === 0 || raw.length > 2048 ||
-      /[\x00-\x20\x7f]/.test(raw) || raw.includes("#")) return null;
+      /[\x00-\x20\x7f]/.test(raw) || raw.includes("#") || raw.includes("\\")) return null;
   let u;
   try { u = new URL(raw); }
   catch { return null; }
