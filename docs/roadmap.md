@@ -188,6 +188,15 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - 新增离线 `scripts/m12b-trend.mjs` 和 `scripts/analyze-m12b-resources.mjs`：严格数值 CSV 校验、样本去预热、前后窗口中位数、增量和线性趋势斜率；无自动泄漏判定，必须同负载至少两次测量。
 - `tests/m12b-trend.test.mjs` 验证边界及统计逻辑，纳入 Windows CI；按 [M12-B Windows 真机验收](acceptance/m12-b.md) 进行 30–120 分钟运行、快速切集/Stop/Close、受控合法 HTTPS 弱网恢复及 M7–M12-A 回归。
 - 实际物理机器采样/弱网与资源泄漏确认**仍需用户真实验证**；根据证据再立项具体泄漏修复，不能以 CI 或一次指标上涨推断结论。
+- **M12-B Windows 验收最新反馈**：用户已明确确认 10/10 项全部实际测试通过（含长运行与受控弱网）。PR #27 最终 HEAD `a8357f11c670205362ed44293eb85d3388aa51ab` 的 Windows M1 #44998408125、M2 #44998408101 均成功；仍 Draft/未合并，前置合并要求未取消。
+
+**M12-C（开发中）：异常媒体恢复及原生错误信息脱敏**
+
+- Rust `player/engine.rs` 不再向普通 UI/日志原样透传 libmpv 原生 Debug/Display 文本；只放行安全的有界 `Raw(整数)` 错误码和固定用户提示。重点防止签名 URL query、真实文件路径和未受信任远端错误文本随故障传播。
+- 继续保持 libmpv -13 为泛化加载失败，不能擅自解释为 HTTP 403。补充 Rust 单测，覆盖诊断字符串脱敏以及损坏媒体错误终态/新会话恢复。
+- Windows PowerShell `scripts/create-m12c-fault-fixtures.ps1` 从用户指定 FFmpeg 生成正常/空/随机/HTML 伪装/截断 MP4/错误扩展名等 **7 种全新隔离测试素材**，拒绝覆盖既有目录，不修改真正的用户媒体/本地库。
+- `scripts/m12c-fixture-policy.mjs`、`scripts/verify-m12c-fixtures.mjs` 和 `tests/m12c-fault-fixtures.test.mjs`：固定白名单素材、数据大小与校验、拒绝路径穿越/符号链接、纯本地只读校验；Node 单元测试加入 CI。
+- Windows 真机按 [M12-C 10 项验收](acceptance/m12-c.md) 验证原生失败/重试/Stop/会话切换、普通诊断脱敏、文件从本地库被移动后的恢复及 M7–M12-B 回归。**目前尚未通过 CI 或真机验收，不能提前视为完成。**
 
 
 
