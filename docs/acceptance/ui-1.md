@@ -21,7 +21,7 @@ This phase refreshes the desktop visual system, app header, catalogue navigation
 ## Windows manual acceptance
 
 1. Launch the exact UI-1 Windows debug artifact from the matching green CI commit.
-2. Open the content library. Confirm the header brand, connection indicator and return-to-player action remain visible and correctly aligned.
+2. Open the content library. Confirm the header brand, connection indicator and single return-to-player action remain visible and correctly aligned. Open a detail page and confirm its page-level action returns to the catalogue list.
 3. Confirm all existing catalogue tabs still switch to their original views: Home, Demo, HongGuo placeholder, opt-in Community SDK (when enabled), My Videos, Recent Plays and Favorites.
 4. On Home, confirm the discovery banner, search, source filters and category filters remain usable.
 5. Confirm the featured item and poster grid display the same real metadata and artwork as the underlying Provider response; no generated or substituted poster is introduced.
