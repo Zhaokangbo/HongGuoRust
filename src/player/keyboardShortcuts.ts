@@ -35,13 +35,16 @@ export type PlayerShortcut =
   | { type: "fullscreen"; value: boolean }
   | { type: "help"; value: boolean };
 
-const FORM_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "OPTION"]);
+const FORM_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "OPTION", "BUTTON", "A", "SUMMARY"]);
 
 function isTyping(key: ShortcutKey): boolean {
   const tag = key.targetTag?.toUpperCase() ?? "";
   return FORM_TAGS.has(tag) || key.contentEditable === true ||
     key.targetRole?.toLowerCase() === "textbox" ||
-    key.targetRole?.toLowerCase() === "searchbox";
+    key.targetRole?.toLowerCase() === "searchbox" ||
+    key.targetRole?.toLowerCase() === "button" ||
+    key.targetRole?.toLowerCase() === "link" ||
+    key.targetRole?.toLowerCase() === "slider";
 }
 
 function validDuration(value: number | null): value is number {
