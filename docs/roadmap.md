@@ -169,5 +169,5 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - UI-2：目录信息架构、详情和发现页改造，Draft PR #34；仍按既有堆叠依赖等待前置验收/授权。
 - UI-3：browse-first Netflix 风格首页，Draft PR #36；Windows M1/M2 CI 双绿，用户已确认 Windows 实机验收通过。
 - UI-4：本地媒体、历史和收藏统一体验，Draft PR #37，分支 `feat/ui-4-personal-library`。用户已明确确认隔离 Windows Debug 测试包 **21/21 项实机验收通过**；精确应用代码 HEAD `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03` 的 Windows M1/M2 CI 双绿。PR #37 当前 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1`，仍 Open / Draft / 未合并。
-- UI-5：详情页与播放器控制栏深度体验优化，Draft PR #38，分支 `feat/ui-5-detail-player-experience`，当前 HEAD `995069a53e90464a58540d9429c866cec0792fd3`。已实现简介展开、剧集进度摘要、精确集数/标题搜索、观看状态筛选、正倒序、播放器控制分组及静音/恢复音量；新增 2 组 Node 纯逻辑测试并加入 `npm run build`。两组纯逻辑 Node 测试在隔离 Node 22.16 harness 中 8/8 通过；完整 npm build/typecheck 与 Windows M1/M2 CI 待用户通知“编译完成”后核对；20 项 Windows 实机验收待完成。
+- UI-5：详情页与播放器控制栏深度体验优化，Draft PR #38，分支 `feat/ui-5-detail-player-experience`，当前 HEAD `9d91034308f0662a74ad92c00662559194bdfd48`。已实现简介展开、剧集进度摘要、精确集数/标题搜索、观看状态筛选、正倒序、播放器控制分组及静音/恢复音量；新增 2 组 Node 纯逻辑测试并加入 `npm run build`。两组纯逻辑 Node 测试在隔离 Node 22.16 harness 中 8/8 通过；完整 npm build/typecheck 与 Windows M1/M2 CI 待用户通知“编译完成”后核对；20 项 Windows 实机验收待完成。
 - 堆叠依赖顺序：#31 → #32 → #33 → #34 → #36 → #37 → #38。所有 Draft PR 均保持未合并，验收通过不构成合并授权；任何合并均需用户明确授权。
