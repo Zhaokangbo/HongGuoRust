@@ -220,7 +220,7 @@
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `35a8ab4355718efa7fe87bfbf13d5b7c172db165`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；新 HEAD 的 Windows M1/M2 CI run `45040076708` / `45040076678` 正在运行，等待用户下一次通知后再核对，不持续轮询。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `f21a18f30d7e557e22ebab00ab262becb4a7cc25`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；该最新 HEAD 的 Windows M1/M2 CI 尚未在本次查询中返回运行记录，等待用户下一次通知后再核对，不持续轮询。
 
 ### 2026-11-22 接手复核：UI-3 最新 HEAD 与当前验收门槛
 
@@ -243,3 +243,12 @@
 - 已准备临时 Windows Debug validation kit `HongGuoRust-UI3-Windows-Debug-84537517.zip`：包含 M2 Debug EXE、get-mpv.ps1、check-https-network.ps1、prepare-mpv-msvc.ps1、README 与 18 项 UI-3 验收表；ZIP SHA-256 `e99b545240aa1a5304d46b338792067757b5d2fa38d556273daafb421b81e18a`。README 明确标注为 provisional manual-validation build：应用代码对应 84537517，最新 35a8ab4 仅修复 PowerShell smoke 编码；M1 修复后的重跑尚待完成。不可称为 release sign-off。
 - 当前可先让用户在独立目录解压 Debug kit 并开始 UI-3 视觉/功能手动验收，但必须说明 M1 CI smoke 重跑尚在运行；不要覆盖 `%LOCALAPPDATA%\\HongGuoRust`。首次运行需 `Set-ExecutionPolicy -Scope Process Bypass`，再执行 `.\get-mpv.ps1 -Destination .` 和 `.\hongguorust.exe`；要求 WebView2 Runtime，且 EXE 同目录需有经校验的 `libmpv-2.dll`。
 - 下一步：用户再次通知 CI 编译完成后，只核对最新 HEAD `35a8ab4` 的 Windows M1/M2 一次。若双绿，更新本交接、将当前临时包标为 CI-green validation kit（仍非 release），由用户按 18 项清单实机验收；若 M1 仍失败，读取日志定位下一处 smoke 兼容问题。PR #36 保持 Draft，禁止自动合并。
+### 2026-11-22 UI-3 PowerShell smoke 修复补充与调试包更新
+
+- 复核 PR #36 最新 HEAD：`f21a18f30d7e557e22ebab00ab262becb4a7cc25`，分支 `feat/ui-3-netflix-home`，仍 open / Draft / unmerged。修复后的脚本 blob SHA `9e13e60852d2d5e746c61dd67d34bf7434c74ec9`；脚本已确认不含非 ASCII 源字符，并且 `$playerLabel` 声明与两处引用存在。
+- 需要保留修复过程细节：提交 `35a8ab4` 将 PowerShell 文件中的中文字面量替换为 `$playerLabel`，但没有加入变量声明；后续提交 `f21a18f` 补上 `$playerLabel = -join ([char[]](0x64AD, 0x653E, 0x5668))`。最终 HEAD 的脚本状态已静态核验正确。不要把 `35a8ab4` 单独作为最终修复。
+- 对最终 HEAD `f21a18f` 的 `fetch_commit_workflow_runs` 本次未返回运行记录；因此当前 CI 状态是 **尚未观察到新 run / 未验证**，不能推断通过或失败，也不要持续轮询。用户再次通知编译完成后再查一次精确 HEAD；若仍无 run，先核对 PR checks / workflow 触发条件，而不是重复查询。
+- 已重新打包临时 Windows UI-3 Debug kit：`HongGuoRust-UI3-Windows-Debug-84537517.zip`，ZIP SHA-256 `151ca5f07856fcacaf3621773be29436e2f813e0b8691e59cb466ab52ef4def9`；EXE SHA-256 `630f9f0f1f99687a37c284e353d7f8ad73406479a1e5e53a58a584f80796aabf`。内含 `hongguorust.exe`、固定哈希校验的 `get-mpv.ps1`、可选 HTTPS 网络诊断、MSVC runtime 准备脚本、README、BUILD_INFO、SHA256SUMS 与 18 项 UI-3 实机验收表。
+- Debug EXE 来自 M2 run `45038401115` / artifact `14760343547`（app commit `84537517`，M2 成功）；M1 run `45038401090` 在 smoke parser 失败前已完成应用构建、Rust 测试与 artifact staging。随后 `35a8ab4`、`f21a18f` 仅修改 smoke PowerShell，不改应用代码，因此该 EXE 仍适合**先行 UI 手动验收**，但 kit 必须标注 provisional，不能称作最新 HEAD CI-green build 或 release。
+- 当前 kit 文件路径仅存在于生成它的对话附件：`/mnt/data/HongGuoRust-UI3-Windows-Debug-84537517.zip`；新对话不可猜测复用该 sandbox 路径，需通过本对话附件或重新下载 GitHub artifact 获取。
+- 用户可在独立目录解压并开始 UI-3 实机验收；首次运行需 PowerShell 执行策略仅对当前进程放行，然后运行 `get-mpv.ps1` 下载并校验 `libmpv-2.dll`，再启动 EXE。需要 WebView2 Runtime；不要覆盖 `%LOCALAPPDATA%\\HongGuoRust`。
