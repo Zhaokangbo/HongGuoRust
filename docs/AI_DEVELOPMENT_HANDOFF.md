@@ -100,7 +100,7 @@
 
 **新对话可直接发送下面这段话：**
 
-> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先读取 main 上的 `AGENTS.md` 和 `docs/AI_DEVELOPMENT_HANDOFF.md`，再通过 GitHub 核实实际 PR、branch、HEAD、Windows Actions 和代码，不要把交接文档里的旧 SHA 当成当前事实。当前重点是 **UI-3 Netflix 风格首页重构**：Draft PR #36，分支 `feat/ui-3-netflix-home`，当前记录 HEAD `6cc2c45a9736c015f7f12cf109ea3894c970e937`；PR #36 是基于 UI-2 PR #34 的累积 stacked diff，PR #35 是同一 UI-3 分支的重复 PR，已关闭且未合并。UI-3 已实现启动默认进入内容首页、首次挂载隐藏原生视频 HWND、横向内容导航、真实海报 Hero、继续观看/类型横向轨道，以及黑/灰/红的全局视觉（播放器 66px header / 96px footer 几何不变）。当前 UI-3 的 Windows M1 run `45038072535` 和 Windows M2 playback run `45038072543` 在首次核对时均为 in_progress；不要持续轮询，等我说“编译完成”后再查一次最终结果并准备 Windows Debug/validation kit。UI-3 的 18 项 Windows 实机验收尚未完成；UI-2 PR #34 的实机验收也不要擅自标记通过。依赖顺序为 #31 → #32 → #33 → #34 → #36；所有 PR 保持 Draft/未合并，除非我明确授权。必须保留 Rust/libmpv worker、native session ID、Tauri IPC、Provider 数据契约、封面安全入口、媒体权限和 HWND 几何。由你直接维护 GitHub 代码、Draft PR、CI 修复和 Windows 调试包，我负责 Windows 实机验收。**每个开发阶段都要提交 GitHub 并及时更新 main 上的交接文档**，确保新会话可以无缝接手。
+> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。先读取 main 上的 `AGENTS.md` 和本交接文档，再通过 GitHub 核对 PR、branch、HEAD、Windows Actions 和代码。当前阶段为 **UI-4 个人媒体中心改造**：Draft PR #37，分支 `feat/ui-4-personal-library`，当前 HEAD `f4abe675ce4b08ec06d047629a31e88865c80072`，从 UI-3 已通过实机验收的 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 派生。UI-3 PR #36 的 Windows M1/M2 已双绿，用户已确认 Windows 实机测试通过；但 PR #31/#32/#33/#34/#36 均仍 Draft/未合并，依赖顺序保持 #31 → #32 → #33 → #34 → #36 → #37，未经我明确授权不得合并。UI-4 正在改造本地视频、观看历史、收藏页面：响应式媒体卡片、统计、搜索/状态筛选/排序、统一操作；本地媒体没有封面/缩略图契约，因此只使用明确标识的中性 MP4 文件占位，不伪造海报，不扫描磁盘、不提取缩略图、不复制/上传视频。保留本地文件、观看历史、收藏、播放列表语义；不修改 Rust/libmpv worker、native session ID、Tauri IPC、Provider 契约、播放权限或 HWND 几何。UI-4 新增 7 项纯逻辑测试和 21 项 Windows 实机验收清单。PR #37 创建后不要持续轮询 Actions，等我说“编译完成”后再检查当前精确 HEAD 的 M1/M2；CI 双绿后再准备同 SHA Windows Debug 包，我负责 Windows 实机验收。你负责直接维护 GitHub 代码、Draft PR、CI 修复和 Windows 调试包。**每完成一个阶段都要更新 main 上的交接文档**，不要擅自合并 PR。
 
 **交接文件更新纪律：**每个阶段至少维护：当前阶段、PR/branch/HEAD、构建状态+artifact ID、已经明确通过的验收条目、尚待验证的条目、遇到的问题/修复、下一步动作。**禁止把未运行/未通过状态写成通过。**优先将本文件更新到 main，确保下一段对话不会从旧功能分支获取过期状态；如果 main 提交权限不可用，才更新工作分支并明确告知用户路径。
 
@@ -162,7 +162,7 @@
 - 用户尚未确认 UI-2 验收；PR #34 必须保持 Draft，不得合并。
 
 
-### UI-3 Netflix 风格首页重构已提交，等待 CI 与 Windows 实机验收
+### UI-3 Netflix 风格首页重构已通过精确 HEAD CI 与 Windows 实机验收
 
 用户明确选择了 Netflix 首页参考图，并要求不再以空播放器作为启动入口。UI-3 已从 UI-2 PR #34 的精确 HEAD 派生，按用户要求由 Chat 端直接维护 GitHub 代码，不依赖 Work 原型流程。
 
@@ -222,7 +222,7 @@
 
 新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 M1/M2 已 completed/success，用户已确认 Windows 实机验收通过。当前 UI-4 分支为 `feat/ui-4-personal-library`，Draft PR #37。
 
-### 2026-11-22 接手复核：UI-3 最新 HEAD 与当前验收门槛
+### 2026-11-22 历史快照：UI-3 HEAD 84537517（已被后续记录取代）
 
 - 本次按仓库 AGENTS.md 要求重新读取 main handoff，并通过 GitHub 连接器核对 PR、HEAD、文件差异与 CI 进度；没有合并任何 PR。
 - 当前最新 UI 主线为 Draft PR #36：feat/ui-3-netflix-home，base main，最新 HEAD 84537517b383c43dd5bee5ea18981b6621a5f8b6。PR #36 open / draft / unmerged；前一 UI-3 重复 PR #35 closed / not merged。
@@ -270,7 +270,7 @@
 - 已制作独立目录验收包 `HongGuoRust-UI3-Windows-Debug-d85f131.zip`，包含 M2 Debug EXE、三个 M1 helper scripts、Windows 运行说明、BUILD_INFO、SHA256SUMS 和 18 项 `ui-3-acceptance.md`。验收包 SHA-256：`5b77bf934a99b670d72e94b7d9814c6407a46ad765e46589f2838ea7c59368b7`。包内 `SHA256SUMS.txt` 全部校验通过，ZIP integrity test 通过。当前会话容器路径 `/mnt/data/HongGuoRust-UI3-Windows-Debug-d85f131.zip`；新会话不可假设 sandbox 路径仍存在，应重新从 GitHub artifact 下载或让用户提供本次会话附件。
 - Windows 首次启动：解压到独立目录，在 PowerShell 执行 `Set-ExecutionPolicy -Scope Process Bypass`、` .\\get-mpv.ps1 -Destination .`、` .\\hongguorust.exe`（命令中不需要前导空格）。`get-mpv.ps1` 固定下载源并校验 mpv archive SHA-256 与 `libmpv-2.dll` SHA-256。需要 Windows 10/11 x64 和 WebView2 Runtime。网络诊断可选执行 ` .\\check-https-network.ps1`。不要覆盖/删除 `%LOCALAPPDATA%\\HongGuoRust`。
 - 18 项验收重点覆盖：默认 Home、浏览态 HWND 隐藏、导航/Provider、真实 Hero/封面、搜索和筛选竞态、Continue Watching、横向分类货架、hover/键盘可访问性、Community browse-only、允许播放与返回浏览、本地 MP4/收藏/历史/续播、480×320 响应式、播放器控制回归和重启数据持久性。
-- 当前状态：精确 HEAD Windows CI 双绿；Windows 实机验收仍 pending，不能因 CI 双绿标记 UI-3 完成或允许合并。下一步由用户运行本包并反馈 18 项验收结果；根据失败项继续修复。PR #36 继续 Draft / unmerged，未经用户明确授权不合并。
+- 历史状态已被后续验收记录取代：精确 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 Windows M1/M2 已双绿，用户已明确确认 Windows 实机验收通过。PR #36 仍 Draft / unmerged；验收通过不构成合并授权。
 ### 2026-11-22 UI-3 owner acceptance confirmed; UI-4 development started
 
 - 用户已明确反馈 UI-3 Windows 实机测试通过。记录为 owner manual acceptance passed for UI-3 exact tested HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`; the exact-head M1 `45041004835` and M2 `45041004830` were both completed/success. PR #36 description has been updated with the owner sign-off. This is not merge authorization.
