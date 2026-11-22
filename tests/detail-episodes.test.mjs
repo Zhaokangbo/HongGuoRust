@@ -17,6 +17,8 @@ const progress = [
 test("episode search matches title and number while ignoring whitespace", () => {
   assert.deepEqual(filterEpisodes(episodes, [], "series-a", "  第 2 集 ", "all", "ascending")
     .map(row => row.episode.id), ["e2"]);
+  assert.deepEqual(filterEpisodes(episodes, [], "series-a", "2", "all", "ascending")
+    .map(row => row.episode.id), ["e2"]);
   assert.deepEqual(filterEpisodes(episodes, [], "series-a", "重 逢", "all", "ascending")
     .map(row => row.episode.id), ["e3"]);
 });
