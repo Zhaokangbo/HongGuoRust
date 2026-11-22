@@ -1,5 +1,5 @@
 param(
-  [string]$FfmpegPath = 'ffmpeg.exe',
+  [string]$FfmpegPath = 'D:\26-008\26-008\voip4\run\run_windows\bin\ffmpeg.exe',
   [string]$OutputPath = (Join-Path $env:USERPROFILE 'Videos\HongGuoRust-M11C1-tracks.mp4')
 )
 
