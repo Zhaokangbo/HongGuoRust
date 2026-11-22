@@ -8,17 +8,17 @@ import { createCommunityGateway } from "../scripts/hg2a-sdk/server.mjs";
 const token = "0123456789abcdef".repeat(4);
 const fakeSdk = {
   async discover() {
-    return { items: [{ id: "12345", title: "合成目录作品", episode_count: 2, category: "测试" }] };
+    return { items: [{ id: "12345", title: "合成目录作品", episode_count: 2, category: "测试", cover_url: "https://covers.example.org/poster.webp?sig=test123" }] };
   },
   async search(query) {
-    return { items: query.includes("测试") ? [{ id: "12345", title: "合成搜索作品", episode_count: 2 }] : [] };
+    return { items: query.includes("测试") ? [{ id: "12345", title: "合成搜索作品", episode_count: 2, cover_url: "https://covers.example.org/poster.webp?sig=test123" }] : [] };
   },
   async getSeries(id) {
     return { id, title: "合成测试作品", episode_count: 2, category: "测试" };
   },
   async listEpisodes() {
     return { items: [
-      { id: "54321", number: 2, title: "第二集", playable: true },
+      { id: "54321", number: 2, title: "第二集", playable: false },
       { id: "54320", number: 1, title: "第一集", playable: true },
     ] };
   },
@@ -63,11 +63,13 @@ test("real-SDK-shaped adapter maps catalog/search/detail into fixed bounded JSON
     const discover = await get(port, "/v1/search?q=");
     assert.equal(discover.code, 200);
     assert.equal(discover.body.items[0].id, "12345");
+    assert.equal(discover.body.items[0].coverUrl, "https://covers.example.org/poster.webp?sig=test123");
     const search = await get(port, "/v1/search?q=" + encodeURIComponent("测试"));
     assert.equal(search.body.items[0].title, "合成搜索作品");
     const detail = await get(port, "/v1/series/12345");
     assert.equal(detail.code, 200);
     assert.deepEqual(detail.body.detail.episodes.map(e => e.number), [1, 2]);
+    assert.deepEqual(detail.body.detail.episodes.map(e => e.playable), [true, false]);
     const target = await get(port, "/v1/series/12345/episodes/54320/play");
     assert.equal(target.code, 200);
     assert.match(target.body.mediaUrl, /^https:\/\/samplelib.com\//);
@@ -115,6 +117,7 @@ test("invalid identifiers and disabled episodes cannot resolve targets", async (
   await withServer(fakeSdk, async port => {
     assert.equal((await get(port, "/v1/series/%2E%2E%2Fprivate")).code, 404);
     assert.equal((await get(port, "/v1/series/12345/episodes/99999/play")).code, 404);
+    assert.equal((await get(port, "/v1/series/12345/episodes/54321/play")).code, 404);
     assert.equal((await get(port, "/v1/search?q=" + "z".repeat(200))).code, 400);
   });
 });
