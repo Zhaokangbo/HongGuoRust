@@ -621,7 +621,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
             {episodeRows.length > 0 ? <div className="catalog-episodes">
               {episodeRows.map(row => {
                 const { episode, progress: saved, percent } = row;
-                const current = lastEpisode?.id === episode.id;
+                const resumeTarget = lastEpisode?.id === episode.id;
                 const status = episode.playable === false ? "上游标记不可播放"
                   : !communityPlayEnabled ? "仅可浏览"
                     : saved?.completed ? "已看完"
@@ -629,9 +629,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
                         : episode.runtimeLabel;
                 return <button key={episode.id} type="button"
                   className={"catalog-episode-card" + (episode.playable === false ? " is-unavailable" : "") +
-                    (saved?.completed ? " is-complete" : "") + (current ? " is-current" : "")}
-                  aria-label={"第 " + episode.number + " 集，" + episode.title + "，" + status}
-                  aria-current={current ? "step" : undefined}
+                    (saved?.completed ? " is-complete" : "") + (resumeTarget ? " is-resume-target" : "")}
+                  aria-label={"第 " + episode.number + " 集，" + episode.title + "，" + (resumeTarget ? "上次观看集，" : "") + status}
                   disabled={working || !communityPlayEnabled || episode.playable === false}
                   title={episode.playable === false ? "上游标记该集不可播放" : !communityPlayEnabled ? "当前仅可浏览" : undefined}
                   onClick={() => void play(detail.series.id, episode.id)}>
