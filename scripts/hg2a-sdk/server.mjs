@@ -93,6 +93,36 @@ export async function enrichCatalogCovers(sdk, inputRows) {
   };
 }
 
+/** Prefer one SDK detail call over concurrent getSeries/listEpisodes requests.
+ * The batch endpoint returns both public series metadata and its listed episodes.
+ * Never resolve playback here. No retry on upstream rate limit or rejection.
+ */
+export async function loadSeriesDetail(sdk, seriesId) {
+  if (typeof sdk.getSeriesBatch === "function") {
+    const result = await sdk.getSeriesBatch([seriesId]);
+    if (!Array.isArray(result)) throw Error("invalid_detail_response");
+    const entry = result.find(row => row?.series?.id === seriesId && Array.isArray(row?.episodes));
+    return entry ? { raw: entry.series, page: { items: entry.episodes } } : null;
+  }
+  const [raw, page] = await Promise.all([
+    sdk.getSeries(seriesId), sdk.listEpisodes(seriesId, { pageSize: 200 }),
+  ]);
+  return { raw, page };
+}
+
+const publicSdkErrorCodes = new Set([
+  "RATE_LIMITED", "ANONYMOUS_LIMITED", "AUTHENTICATION_REQUIRED",
+  "CHALLENGE_REQUIRED", "SIGNATURE_REJECTED", "DEVICE_REJECTED",
+  "CONTENT_UNAVAILABLE", "TRANSPORT", "CANCELLED",
+  "SIGNER_UNAVAILABLE", "PARAM_INVALID",
+]);
+export function classifySdkError(error) {
+  const code = publicSdkErrorCodes.has(error?.code) ? error.code : "UPSTREAM_UNAVAILABLE";
+  const status = code === "RATE_LIMITED" ? 429 :
+    code === "CONTENT_UNAVAILABLE" ? 404 : 503;
+  return { code, status };
+}
+
 function reply(res, status, value) {
   let data = Buffer.from(JSON.stringify(value));
   if (data.length > 96 * 1024) {
@@ -136,9 +166,9 @@ async function route(sdk, url) {
   }
   const seriesId = parts[3];
   if (parts.length === 4) {
-    const [raw, page] = await Promise.all([
-      sdk.getSeries(seriesId), sdk.listEpisodes(seriesId, { pageSize: 200 }),
-    ]);
+    const fetched = await loadSeriesDetail(sdk, seriesId);
+    if (!fetched) return [404, { error: "not_found" }];
+    const { raw, page } = fetched;
     const ids = new Set();
     const episodes = (page.items || []).slice(0, 200)
       .filter(e => idPattern.test(e.id || "") && !ids.has(e.id) && ids.add(e.id))
@@ -184,9 +214,14 @@ export function createCommunityGateway({ sdk, token }) {
       const [status, body] = await route(sdk, url);
       reply(res, status, body);
     } catch (error) {
-      const known = ["RATE_LIMITED", "ANONYMOUS_LIMITED", "AUTHENTICATION_REQUIRED", "CHALLENGE_REQUIRED", "SIGNATURE_REJECTED", "DEVICE_REJECTED"];
-      const code = known.includes(error?.code) ? error.code : "UPSTREAM_UNAVAILABLE";
-      reply(res, code === "RATE_LIMITED" ? 429 : 503, { error: code });
+      const { code, status } = classifySdkError(error);
+      // Public SDK error categories only; never print series IDs, CDN URLs,
+      // SDK exception messages, request headers, signed tokens or cookies.
+      if (url.pathname.startsWith("/v1/series/") &&
+          url.pathname.split("/").length === 4) {
+        process.stdout.write("HG2B_DETAIL_DIAG code=" + code + " status=" + status + "\n");
+      }
+      reply(res, status, { error: code });
     }
   });
 }

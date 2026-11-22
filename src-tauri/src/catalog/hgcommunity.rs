@@ -67,6 +67,29 @@ fn valid_cover_url(value: &str) -> Option<&str> {
     Some(value)
 }
 
+/// Convert only fixed, non-sensitive SDK codes to native UI errors.
+fn gateway_error(status: u16, body: &[u8]) -> String {
+    let parsed: Option<Value> = serde_json::from_slice(body).ok();
+    let code = parsed.as_ref().and_then(|value| value["error"].as_str());
+    match code {
+        Some(
+            code @ ("RATE_LIMITED"
+            | "ANONYMOUS_LIMITED"
+            | "AUTHENTICATION_REQUIRED"
+            | "CHALLENGE_REQUIRED"
+            | "SIGNATURE_REJECTED"
+            | "DEVICE_REJECTED"
+            | "CONTENT_UNAVAILABLE"
+            | "TRANSPORT"
+            | "CANCELLED"
+            | "SIGNER_UNAVAILABLE"
+            | "PARAM_INVALID"
+            | "UPSTREAM_UNAVAILABLE"),
+        ) => format!("hgcommunity_sdk_{code}"),
+        _ => format!("hgcommunity_http_{status}"),
+    }
+}
+
 fn url_encode(value: &str) -> String {
     let mut result = String::new();
     for byte in value.bytes() {
@@ -197,7 +220,7 @@ impl HgCommunityProvider {
             return Err("hgcommunity_invalid_http".into());
         }
         if status_code != 200 {
-            return Err(format!("hgcommunity_http_{status_code}"));
+            return Err(gateway_error(status_code, body));
         }
         let parsed: Value = serde_json::from_slice(body).map_err(|_| "hgcommunity_invalid_json")?;
         if parsed.get("schemaVersion").and_then(Value::as_u64) != Some(1) {
@@ -403,6 +426,22 @@ impl ContentProvider for HgCommunityProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gateway_error_only_exposes_allowlisted_sdk_codes() {
+        assert_eq!(
+            gateway_error(503, br#"{"error":"TRANSPORT","url":"https://private.example?token=secret"}"#),
+            "hgcommunity_sdk_TRANSPORT"
+        );
+        assert_eq!(gateway_error(429, br#"{"error":"RATE_LIMITED"}"#), "hgcommunity_sdk_RATE_LIMITED");
+        assert_eq!(gateway_error(404, br#"{"error":"CONTENT_UNAVAILABLE"}"#), "hgcommunity_sdk_CONTENT_UNAVAILABLE");
+        assert_eq!(gateway_error(404, br#"{"error":"not_found"}"#), "hgcommunity_http_404");
+        assert_eq!(
+            gateway_error(503, br#"{"error":"secret-value","token":"private"}"#),
+            "hgcommunity_http_503"
+        );
+        assert_eq!(gateway_error(503, b"not json"), "hgcommunity_http_503");
+    }
 
     #[test]
     fn query_is_percent_encoded_and_id_guards_reject_paths() {

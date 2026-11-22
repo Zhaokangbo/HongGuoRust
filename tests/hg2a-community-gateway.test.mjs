@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createCommunityGateway, enrichCatalogCovers } from "../scripts/hg2a-sdk/server.mjs";
+import { createCommunityGateway, enrichCatalogCovers, loadSeriesDetail, classifySdkError } from "../scripts/hg2a-sdk/server.mjs";
 
 const token = "0123456789abcdef".repeat(4);
 const fakeSdk = {
@@ -217,4 +217,62 @@ test("direct Windows-compatible CLI invocation fails closed without explicit opt
   assert.equal(result.status, 1, "direct invocation must execute the main() opt-in gate");
   assert.match(result.stderr, /HG2A startup failed/);
   assert.doesNotMatch(result.stderr, /token=|anonymous\.json|\.mp4\?/);
+});
+
+test("HG-2B detail prefers a single SDK batch for public metadata and episodes", async () => {
+  let batches = 0;
+  const sdk = {
+    async getSeriesBatch(ids) {
+      batches++;
+      assert.deepEqual(ids, ["12345"]);
+      return [{ series: { id: "12345", title: "批量详情", episode_count: 2,
+        cover_url: "https://covers.example.org/12345.webp" }, episodes: [
+        { id: "54320", number: 1, title: "第1集", playable: true },
+        { id: "54321", number: 2, title: "第2集", playable: false },
+      ] }];
+    },
+    async getSeries() { throw Error("must not request separate series metadata"); },
+    async listEpisodes() { throw Error("must not request separate episode list"); },
+  };
+  await withServer(sdk, async port => {
+    const response = await get(port, "/v1/series/12345");
+    assert.equal(response.code, 200);
+    assert.equal(response.body.detail.series.coverUrl, "https://covers.example.org/12345.webp");
+    assert.deepEqual(response.body.detail.episodes.map(x => x.playable), [true, false]);
+  });
+  assert.equal(batches, 1);
+});
+
+test("HG-2B detail rejects wrong batch IDs without accidental cross-title metadata", async () => {
+  const sdk = { getSeriesBatch: async () => [
+    { series: { id: "another", title: "Other" }, episodes: [{ id: "1" }] },
+  ] };
+  assert.equal(await loadSeriesDetail(sdk, "12345"), null);
+  await withServer(sdk, async port => {
+    const response = await get(port, "/v1/series/12345");
+    assert.equal(response.code, 404);
+    assert.equal(response.body.error, "not_found");
+  });
+});
+
+test("HG-2B SDK error categorization is bounded and never leaks raw exception text", async () => {
+  assert.deepEqual(classifySdkError({ code: "TRANSPORT", message: "token=secret" }),
+    { code: "TRANSPORT", status: 503 });
+  assert.deepEqual(classifySdkError({ code: "RATE_LIMITED", message: "secret" }),
+    { code: "RATE_LIMITED", status: 429 });
+  assert.deepEqual(classifySdkError({ code: "CONTENT_UNAVAILABLE" }),
+    { code: "CONTENT_UNAVAILABLE", status: 404 });
+  assert.deepEqual(classifySdkError({ code: "secret=https://private.invalid/x" }),
+    { code: "UPSTREAM_UNAVAILABLE", status: 503 });
+  const sdk = { getSeriesBatch: async () => {
+    const error = Error("https://private.invalid/cover.jpg?token=do-not-log");
+    error.code = "TRANSPORT";
+    throw error;
+  } };
+  await withServer(sdk, async port => {
+    const response = await get(port, "/v1/series/12345");
+    assert.equal(response.code, 503);
+    assert.deepEqual(response.body, { error: "TRANSPORT" });
+    assert.doesNotMatch(JSON.stringify(response.body), /private|token|do-not-log/);
+  });
 });

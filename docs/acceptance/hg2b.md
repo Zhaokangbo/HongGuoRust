@@ -47,6 +47,16 @@ HG2B_COVER_DIAG results=6 direct=0 batch=6 missing=0 lookup=ok
 
 **该补丁是启动时机优化及可观察性增强，尚不能宣称解决 CDN 或 WebView2 网络问题。** 如果更新后的 EXE 仍长时间超时或失败，需检查 Windows WebView2 DevTools Network 里的状态（可只反馈状态码、耗时、失败原因，勿贴 signed URL、Cookie、Token）并与系统代理配置比较。只在新 HEAD Windows M1/M2 都成功后部署调试包并复测。
 
+## HG-2B Windows 实机：详情 HTTP 503 与代理排障
+
+用户 2026-11-22 现场截图证明：至少一张真实社区封面已加载，但点击该作品后显示 `hgcommunity_http_503`。用户系统代理为 `127.0.0.1:7897`（HTTP/HTTPS 环境变量与 HKCU 用户代理一致），WinHTTP 是直连；**WinHTTP 直连不能单独判定 WebView2 不走代理**。真实原因仍未确认。
+
+源码定位：原 `/v1/series/:id` 同时发起 `getSeries` 和 `listEpisodes`，任一报错时 Node 网关的异常处理仅返回 503，Rust 再丢弃 JSON error code，UI 无法判断限流、网络、鉴权和内容访问限制。
+
+本次修订：优先通过 SDK 已确认存在的 `getSeriesBatch([id])` 单次获取作品公开详情和分集，严格校验返回 ID，保留不存在该方法时的旧调用路径；不增加自动重试、不会调用播放或解密。Node 仅返回预定义错误码（如 `TRANSPORT`、`RATE_LIMITED`、`CONTENT_UNAVAILABLE`），Rust 严格白名单解析，再由前端显示用户可读提示。Node 控制台新增 `HG2B_DETAIL_DIAG code=... status=...`，不会打印作品 ID、URL、签名参数、token 或异常原文。
+
+**验收**：新的 CI 同一 HEAD 通过后使用新调试 EXE + 新 sidecar；打开封面正常的作品，观察是否能显示剧集与不可播放状态。如失败，提供 `HG2B_DETAIL_DIAG` 计数/错误码和截图。若 `TRANSPORT` 检查 WebView2/Node 的网络路径；若 `RATE_LIMITED` 暂停频繁刷新；若 `CONTENT_UNAVAILABLE` 则不伪造授权或触发播放。不能仅以新修订代码存在就判定已修复。
+
 ## Windows 验收流程
 
 首先确认最新 HG-2B HEAD 的 Windows M1/M2 同 SHA 均全绿（其中新增 Node + TypeScript、Rust 类型/原生测试）。在 **HG-2B Debug EXE** 部署到独立目录后，仍沿用 HG-2A 的显式本机 SDK 启动方式。用户先关闭普通模式播放器，再从仓库 HG-2B 分支启动开发脚本：
