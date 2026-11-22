@@ -6,7 +6,7 @@ import {
 import type { CatalogProvider, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
 import { latestEpisodeProgress, formatEpisodePosition } from "./progress";
 import { watchedEpisodeCount, watchedPercent } from "./recentActivity";
-import { RecentActivity } from "./RecentActivity";
+import { ContinueWatchingShelf } from "./ContinueWatchingShelf";
 import { LocalLibraryView } from "./LocalLibraryView";
 import { DiscoveryHome } from "./DiscoveryHome";
 
@@ -390,7 +390,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       ? <LocalLibraryView key={mode} favoritesOnly={mode === "favorites"}
           onPlay={onPlayLocal} playerError={playerError} />
       : mode === "history" ? <>
-          <RecentActivity includeLocal={false} limit={24} busy={working} refreshKey={refreshKey}
+          <ContinueWatchingShelf includeLocal={false} limit={24} busy={working} refreshKey={refreshKey}
             onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
           <h3 className="discovery-section-title">本地媒体观看历史</h3>
           <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} playerError={playerError} />
