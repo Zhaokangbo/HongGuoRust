@@ -53,11 +53,9 @@ pub async fn player_tracks(
     window: WebviewWindow,
     session_id: u64,
 ) -> Result<crate::player::tracks::TrackList, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        window.state::<PlayerService>().tracks(session_id)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || window.state::<PlayerService>().tracks(session_id))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// Select an existing audio/subtitle track; None disables subtitles only.
@@ -68,8 +66,7 @@ pub async fn player_select_track(
     kind: String,
     track_id: Option<i64>,
 ) -> Result<crate::player::tracks::TrackList, String> {
-    let kind = crate::player::tracks::TrackKind::from_ipc(&kind)
-        .map_err(str::to_owned)?;
+    let kind = crate::player::tracks::TrackKind::from_ipc(&kind).map_err(str::to_owned)?;
     tauri::async_runtime::spawn_blocking(move || {
         window
             .state::<PlayerService>()
