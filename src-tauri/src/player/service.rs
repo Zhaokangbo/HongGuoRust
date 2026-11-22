@@ -65,7 +65,6 @@ pub struct PlayerService {
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
     preview: PreviewService,
-    preferences: Arc<PreferencesStore>,
 }
 
 impl PlayerService {
@@ -93,7 +92,6 @@ impl PlayerService {
             library,
             provider_progress,
             preview: PreviewService::default(),
-            preferences,
         })
     }
 
