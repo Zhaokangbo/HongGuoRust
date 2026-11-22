@@ -219,7 +219,11 @@ pub fn catalog_recently_watched(
             Ok(value) => value,
             Err(_) => continue,
         };
-        let episode = match detail.episodes.iter().find(|ep| ep.id == record.episode_id) {
+        let episode = match detail
+            .episodes
+            .iter()
+            .find(|ep| ep.id == record.episode_id)
+        {
             Some(value) => value.clone(),
             None => continue,
         };
@@ -227,11 +231,18 @@ pub fn catalog_recently_watched(
             Ok(MediaTarget::Https(url)) => url,
             _ => continue,
         };
-        if progress.get(&detail.series.id, &record.episode_id, &url)?.is_none() {
+        if progress
+            .get(&detail.series.id, &record.episode_id, &url)?
+            .is_none()
+        {
             continue;
         }
         seen.insert(record.series_id);
-        results.push(RecentCatalogEpisode { series: detail.series, episode, progress: record });
+        results.push(RecentCatalogEpisode {
+            series: detail.series,
+            episode,
+            progress: record,
+        });
         if results.len() == limit {
             break;
         }
