@@ -5,7 +5,11 @@ use crate::catalog::{
 };
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
-    controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
+    controls::PlayerControl,
+    preferences::{PlayerPreferences, PreferencesStore},
+    service::PlayerService,
+    state::PlayerSnapshot,
+    window,
 };
 use serde::Serialize;
 use std::collections::HashSet;
@@ -130,6 +134,24 @@ pub async fn set_rate(window: WebviewWindow, rate: f64) -> Result<(), String> {
 #[tauri::command]
 pub async fn set_volume(window: WebviewWindow, volume: f64) -> Result<(), String> {
     dispatch_control(window, PlayerControl::SetVolume(volume)).await
+}
+
+/// Playback preferences contain no media source URLs or file paths.
+#[tauri::command]
+pub fn get_player_preferences(
+    preferences: State<'_, Arc<PreferencesStore>>,
+) -> Result<PlayerPreferences, String> {
+    preferences.snapshot()
+}
+
+/// Auto-next is for the existing local playlist only; never auto-advance
+/// Provider episodes or change the native playback worker.
+#[tauri::command]
+pub fn set_player_auto_next(
+    preferences: State<'_, Arc<PreferencesStore>>,
+    value: bool,
+) -> Result<PlayerPreferences, String> {
+    preferences.set_auto_next(value)
 }
 
 #[tauri::command]
