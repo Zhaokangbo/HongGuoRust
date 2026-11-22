@@ -213,14 +213,14 @@
 ### 后续路线
 
 - UI-2：Draft PR #34；精确 HEAD CI 已全绿，Windows 实机验收仍待用户明确确认。
-- UI-3：Draft PR #36；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 Windows M1/M2 CI 已双绿，精确 HEAD Debug 验收包已准备；18 项 Windows 实机验收待用户完成。
+- UI-3：Draft PR #36；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 Windows M1/M2 CI 已双绿，用户已明确确认 Windows 实机验收通过。
 - UI-4：本地媒体、历史、收藏进一步海报化/统一交互；需保留现有磁盘与观看记录语义。
 - UI-5：详情页与播放器控制栏的深度体验优化、性能与 Windows 全量回归。
 - HG2B 的独立验收状态不得因 UI-1 通过而误标完成；PR #31/#32/#33/#34/#36 均不得自动合并。
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 M1/M2 已 completed/success，Debug 验收包已准备；Windows 实机验收待用户完成。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 M1/M2 已 completed/success，用户已确认 Windows 实机验收通过。当前 UI-4 分支为 `feat/ui-4-personal-library`，Draft PR #37。
 
 ### 2026-11-22 接手复核：UI-3 最新 HEAD 与当前验收门槛
 
@@ -271,3 +271,14 @@
 - Windows 首次启动：解压到独立目录，在 PowerShell 执行 `Set-ExecutionPolicy -Scope Process Bypass`、` .\\get-mpv.ps1 -Destination .`、` .\\hongguorust.exe`（命令中不需要前导空格）。`get-mpv.ps1` 固定下载源并校验 mpv archive SHA-256 与 `libmpv-2.dll` SHA-256。需要 Windows 10/11 x64 和 WebView2 Runtime。网络诊断可选执行 ` .\\check-https-network.ps1`。不要覆盖/删除 `%LOCALAPPDATA%\\HongGuoRust`。
 - 18 项验收重点覆盖：默认 Home、浏览态 HWND 隐藏、导航/Provider、真实 Hero/封面、搜索和筛选竞态、Continue Watching、横向分类货架、hover/键盘可访问性、Community browse-only、允许播放与返回浏览、本地 MP4/收藏/历史/续播、480×320 响应式、播放器控制回归和重启数据持久性。
 - 当前状态：精确 HEAD Windows CI 双绿；Windows 实机验收仍 pending，不能因 CI 双绿标记 UI-3 完成或允许合并。下一步由用户运行本包并反馈 18 项验收结果；根据失败项继续修复。PR #36 继续 Draft / unmerged，未经用户明确授权不合并。
+### 2026-11-22 UI-3 owner acceptance confirmed; UI-4 development started
+
+- 用户已明确反馈 UI-3 Windows 实机测试通过。记录为 owner manual acceptance passed for UI-3 exact tested HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`; the exact-head M1 `45041004835` and M2 `45041004830` were both completed/success. PR #36 description has been updated with the owner sign-off. This is not merge authorization.
+- UI-3 PR #36 remains open / Draft / unmerged. The earlier stacked dependencies #31/#32/#33/#34 also remain open / Draft / unmerged; do not merge or bypass the established sequence.
+- Created UI-4 branch `feat/ui-4-personal-library` directly from UI-3 accepted code HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224`. Current UI-4 PR #37 is open / Draft / unmerged, base `main`, current HEAD `f4abe675ce4b08ec06d047629a31e88865c80072`: https://github.com/Zhaokangbo/HongGuoRust/pull/37.
+- UI-4 implementation commit `0c825943b0cdf413f96f35881666b14564875da6` added responsive local media/history/favorites cards, summary counters, shared search/status filters/sorting, empty/loading/error states, manual refresh, favorite toggle, explicit clear-history/remove-entry confirmation, and a neutral MP4 file tile. It deliberately does not invent local posters because LocalMedia has no cover/thumbnail contract.
+- Follow-up test-only commit `f4abe675ce4b08ec06d047629a31e88865c80072` refined the locale-aware natural-title sort assertion. Added `tests/local-library.test.mjs` (7 pure view-model tests), `npm run test:local-library` in the required `npm run build` chain, and `docs/acceptance/ui-4.md` with 21 Windows manual acceptance checks. `docs/roadmap.md` on the UI-4 branch now records UI-3 owner acceptance and UI-4 development.
+- The UI-4 diff relative to UI-3 HEAD is limited to: `src/catalog/LocalLibraryView.tsx`, `src/catalog/localBrowse.ts`, `src/style.css`, `package.json`, new `tests/local-library.test.mjs`, new `docs/acceptance/ui-4.md`, and `docs/roadmap.md`. No Rust source, persistence format, Tauri IPC command, libmpv worker, native session, HWND geometry, Provider contract, playback authorization or media-file operations changed.
+- Pure local-library view-model tests were exercised in a temporary Node 22.16 harness: 7/7 passed. This is a local logic check only, not the GitHub Windows CI result. PR #37 has just been created; **do not query/poll Actions until the user reports “编译完成”**.
+- UI-4 invariants: queue IDs are generated from current visible sorted/filtered records and omit unavailable files; remove-library-entry only removes the index record and must not delete the original disk file; clearing history must not remove the file or favorite; un-favoriting must not clear history; local absolute paths and signed media URLs must not be displayed. Provider Continue Watching remains on its existing validated path.
+- Next: wait for the user to report UI-4 build completion, then check exact HEAD `f4abe675ce4b08ec06d047629a31e88865c80072` Windows M1/M2 once. If both pass, download that exact M2 Debug artifact, verify ZIP/EXE SHA-256, prepare an isolated Windows test kit and let the user run all 21 checks in `docs/acceptance/ui-4.md`. Keep PR #37 Draft; no merge without explicit authorization and prerequisite sequence.
