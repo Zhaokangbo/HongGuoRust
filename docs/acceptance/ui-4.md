@@ -48,6 +48,6 @@ UI-4 turns the existing local MP4, local playback history and favorites pages in
 ## Status
 
 - Code: in development on feat/ui-4-personal-library.
-- Windows M1/M2 CI: pending exact-head run.
+- Windows M1/M2 CI: **PASS** on exact HEAD `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03` — [M1 run 45047805176](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/45047805176), [M2 playback run 45047805159](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/45047805159). M2 Debug artifact ID `14764800311`; ZIP SHA-256 `9021693acc36b0b5f1b946f4e26f59313ada0b3c15a2d882f2fca90fa419425c`; inner EXE SHA-256 `44cde497eed65192c54d2dc7748388431f5596f487979b3c44e3e771266c0f6b`.
 - Windows manual acceptance: pending.
 - Merge: prohibited until exact-head CI, owner acceptance, stacked prerequisites and explicit owner merge authorization are satisfied.
