@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import { persistLocalAutoNext, readPlayerPreferences } from "./player/preferences";
 import {
   changeMediaTrack, getMediaTracks, selectedTrackId, trackLabel, usableTrackList,
   type TrackKind, type TrackList,
@@ -41,6 +42,9 @@ function App() {
   const previewVersionRef = useRef(0);
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(100);
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [preferencesError, setPreferencesError] = useState("");
+  const [autoNextSaving, setAutoNextSaving] = useState(false);
   const [mediaTracks, setMediaTracks] = useState<TrackList | null>(null);
   const [trackBusy, setTrackBusy] = useState(false);
   const [trackError, setTrackError] = useState("");
@@ -93,12 +97,42 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setRate(1);
-    setVolume(100);
-    lastAudibleVolumeRef.current = 100;
+    // Rust restores saved native volume/speed for every new libmpv session.
+    // Do not reset the UI to 1x/100% on episode changes.
     setSeekPreview(null);
     setSeekText("0");
   }, [snapshot?.sessionId]);
+
+  useEffect(() => {
+    let mounted = true;
+    void readPlayerPreferences().then(saved => {
+      if (!mounted) return;
+      setRate(saved.playbackRate);
+      setVolume(saved.volume);
+      lastAudibleVolumeRef.current = saved.lastAudibleVolume;
+      setAutoNext(saved.autoNext);
+      setPreferencesError("");
+      setPreferencesReady(true);
+    }).catch(reason => {
+      if (mounted) setPreferencesError("播放器设置无法读取：" + String(reason));
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  async function changeAutoNextSetting(enabled: boolean) {
+    if (!preferencesReady || autoNextSaving) return;
+    setAutoNextSaving(true);
+    setPreferencesError("");
+    try {
+      const saved = await persistLocalAutoNext(enabled);
+      setAutoNext(saved.autoNext);
+      lastAudibleVolumeRef.current = saved.lastAudibleVolume;
+    } catch (reason) {
+      setPreferencesError("自动连播偏好保存失败：" + String(reason));
+    } finally {
+      setAutoNextSaving(false);
+    }
+  }
 
   async function command(name: PlayerCommand, args?: Record<string, unknown>): Promise<boolean> {
     setBusy(true);
@@ -539,7 +573,8 @@ function App() {
             onClick={() => void movePlaylist(1)} title="按本次播放列表顺序播放下一部">下一部</button>
           <label className="playlist-auto-next" title="仅自然播完才自动播放下一部；手动停止或出错不连播">
             <input type="checkbox" checked={autoNext}
-              onChange={event => setAutoNext(event.target.checked)} />
+              disabled={!preferencesReady || autoNextSaving}
+              onChange={event => { void changeAutoNextSetting(event.target.checked); }} />
             自动连播
           </label>
           {autoNext && snapshot?.state === "Ended" &&
@@ -574,20 +609,31 @@ function App() {
         </label>
         {trackError && <span className="player-track-error" role="alert">{trackError}</span>}
         <label>倍速
-          <select aria-label="播放倍速" value={rate} disabled={!controllable}
-            onChange={e => { const next = Number(e.target.value); setRate(next); void command("set_rate", { rate: next }); }}>
+          <select aria-label="播放倍速" value={rate} disabled={!controllable || !preferencesReady}
+            title="保存为下次播放的默认倍速"
+            onChange={e => {
+              const next = Number(e.target.value);
+              void command("set_rate", { rate: next }).then(ok => {
+                if (ok) setRate(next);
+              });
+            }}>
             {[0.5, 1, 1.5, 2].map(value => <option value={value} key={value}>{value}×</option>)}
+            {![0.5, 1, 1.5, 2].includes(rate) && <option value={rate}>{rate}×</option>}
           </select>
         </label>
         <label>音量
-          <select aria-label="播放音量" value={volume} disabled={!controllable}
+          <select aria-label="播放音量" value={volume} disabled={!controllable || !preferencesReady}
+            title="音量与静音状态自动保存"
             onChange={e => {
               const next = Number(e.target.value);
-              setVolume(next);
-              if (next > 0) lastAudibleVolumeRef.current = next;
-              void command("set_volume", { volume: next });
+              void command("set_volume", { volume: next }).then(ok => {
+                if (!ok) return;
+                setVolume(next);
+                if (next > 0) lastAudibleVolumeRef.current = next;
+              });
             }}>
             {[0, 25, 50, 75, 100].map(value => <option value={value} key={value}>{value}%</option>)}
+            {![0, 25, 50, 75, 100].includes(volume) && <option value={volume}>{volume}%</option>}
           </select>
         </label>
         <button disabled={busy || !connected} aria-keyshortcuts="F11 F"
@@ -597,6 +643,11 @@ function App() {
           aria-expanded={shortcutHelpOpen} aria-controls="player-shortcut-help"
           aria-keyshortcuts="Shift+Slash"
           onClick={() => setShortcutHelpOpen(value => !value)}>快捷键 ?</button>
+        {preferencesError && <span role="alert" className="player-preferences-error"
+          title={preferencesError}>设置异常</span>}
+        <span className="player-preferences-hint" title="倍速、音量与本地列表自动连播偏好保存在本机">
+          {preferencesReady ? "设置自动保存" : "设置未加载"}
+        </span>
         <span className="player-status">{snapshot?.state ?? "—"}</span>
         <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
       </div>
