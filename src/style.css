@@ -348,3 +348,19 @@ main.fullscreen header, main.fullscreen footer { display: none; }
   cursor: not-allowed;
   opacity: .5;
 }
+
+/* M12-A diagnostic counters fit in the existing horizontally scrollable bar. */
+.player-health-summary {
+  color: #b5dfc7;
+  font: 11px Consolas, monospace;
+  flex: none;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-health-error {
+  color: #ffb7a8;
+  font-size: 11px;
+  flex: none;
+  cursor: help;
+}
