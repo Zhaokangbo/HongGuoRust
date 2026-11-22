@@ -216,10 +216,21 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - `CatalogService::new` 在 demo/local/manifest 外仅注册**空数据红果占位 Provider**，不注册获授权内容 Transport，不伪装已接入红果真实剧集、不调用未授权接口。未来 HTTP 传输实现需补充 DNS/重定向/凭证后端/取消/超时审核，不以基本 URL 检查代替完整 SSRF 防护。
 - 完整事实依据与待核验授权问题：[HG-1 接入研究与架构](architecture/hg1-hongguo-integration.md)。[HG-1 Windows 合约与 UI 验收](acceptance/hg1.md) 10 项，需最终 SHA M1/M2 以及 Windows 实际回归。
 
-**HG-2（后续）：授权 API 传输与可观察的内容源入口**
+**HG-1 Windows 验收结果**：PR #29 HEAD `a036d65e6212bb324325423e3550ef952395d05d` 的 M1 #45001304015 / M2 #45001304036 全绿，用户明确反馈 10/10 实机验收通过。仅「红果接入（待授权）」空目录/禁播来源在常规程序中注册；没有真实内容授权，PR 仍 Draft。
 
-- 若获得官方或合作方的接口许可、可调用的真实沙盒、媒体授权范围与域名名单：实现 HTTP transport 和真实搜索/详情/选集 IPC；未授权时仍只允许合成/自有内容测试源，明显标注“非红果真实内容”。
-- 凭证在后端而非 WebView，安全验证 DNS 解析、每次重定向、超时、取消、分页、错误码、资源有效期。
+**HG-2A（开发中）：优先复用 GitHub 上已有非官方 SDK，真实目录/搜索/选集实验**
+
+- 用户要求从纯 Mock 方向调整为**直接参考开源 PC 客户端**，已核对 `beilunyang/openhongguo` Node/Go SDK 的 `discover/search/getSeries/listEpisodes/resolvePlayback`，以及 `kyrqon/hongguo-web` 的 SDK→本地 API 数据转换、`zfdang/hongguo-open-player` 的桌面前端/本机后端方案。
+- 采用上游 `openhongguo@0.4.0` **独立可选 Node.js Sidecar**，通过固定 `127.0.0.1:19091` + 随机本机 token 与 Rust 实验 Provider 通信，使用现有搜索/详情/选集/播放目标数据结构。必须由用户显式在 Windows 启动，**普通应用与 Release 默认不出现实验源**，不能把非官方 SDK 误当官方许可。
+- 实验来源 ID 为 `hgcommunity`、名称为「红果社区 SDK（非官方实验）」，与仍禁播的 `hongguo` 完全区分；上游真实搜索失败则显示失败，不替换演示资源；Mock 仅作 Node CI 的确定性测试。
+- 初版只允许未受保护的直接 HTTPS MP4，且 Rust 还要检查用户**明确设置的媒体主机白名单**；不处理 CENC/DRM 密钥、会员付费墙或已触发的反滥用挑战。上游匿名设备/签名/限流和接口寿命由 SDK 决定，不重写逆向算法。
+- 开源许可证与平台资源授权**分开核验**：`openhongguo` 包标 Apache-2.0，README 另外声明学习/非商用用途；实际能请求作品不等于可向其他用户公开发布客户端。正式发行前必须进一步检查第三方许可、上游协议与内容/媒体权利。
+- 详细参考：[HG-2A 技术路线](architecture/hg2a-community-sdk-integration.md)，[HG-2A Windows 10 项验收](acceptance/hg2a.md)。**当前仍未完成本分支 Windows M1/M2、真实上游实机测试或实际媒体播放验证，不得标记已接通/已通过。**
+
+**HG-2B（后续）：真实 SDK 可用性与稳定性复测**
+
+- 在 Windows 上记录实际目录/搜索/详情可访问性、限流/空响应/设备验证提示，不做设备池、签名算法逆向或隐藏的批量重试；若 SDK 实际不可用，优先核对已发布版本或经授权的替代接口，而不是输出假成功。
+- 公开分发之前单独处理 API/内容许可、签名 URL、真实 CDN DNS/IP/重定向、隐私和凭证策略，避免将开发实验自动升级为正式产品。
 
 **HG-3 / HG-4（后续）：获授权媒体播放及产品整合**
 
