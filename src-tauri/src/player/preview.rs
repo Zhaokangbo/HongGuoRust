@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, TryLockError};
+use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const STEP_SEC: u64 = 5;
@@ -233,8 +233,8 @@ fn render_image(
 }
 
 impl PreviewService {
-    /// Invalid input is rejected; busy, unsupported media and timeout degrade
-    /// to None. Requests supersede older generations without queuing MPV work.
+    /// Invalid input is rejected; unsupported media and timeout degrade to None.
+    /// Only one worker renders at a time and stale queued requests return early.
     pub fn frame(
         &self,
         session_id: u64,
@@ -246,11 +246,14 @@ impl PreviewService {
             return Err("invalid_preview_session".into());
         }
         let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
-        let mut cache = match self.cache.try_lock() {
+        let mut cache = match self.cache.lock() {
             Ok(guard) => guard,
-            Err(TryLockError::WouldBlock) => return Ok(None),
-            Err(TryLockError::Poisoned(_)) => return Ok(None),
+            Err(_) => return Ok(None),
         };
+        // An older queued request must not render after a newer hover arrives.
+        if self.generation.load(Ordering::Acquire) != generation {
+            return Ok(None);
+        }
         if let Some(frame) = cache.get(session_id, bucket) {
             return Ok(Some(frame));
         }
