@@ -14,6 +14,7 @@
     "test:episode-queue": "node --experimental-strip-types --test tests/episode-queue.test.mjs",
     "test:provider-progress": "node --experimental-strip-types --test tests/provider-progress.test.mjs",
     "test:recent-activity": "node --experimental-strip-types --test tests/recent-activity.test.mjs",
+    "test:local-library": "node --experimental-strip-types --test tests/local-library.test.mjs",
     "test:player-shortcuts": "node --experimental-strip-types --test tests/player-shortcuts.test.mjs",
     "test:thumbnail-preview": "node --experimental-strip-types --test tests/thumbnail-preview.test.mjs",
     "test:media-tracks": "node --experimental-strip-types --test tests/media-tracks.test.mjs",
@@ -23,7 +24,7 @@
     "test:m12c-fault-fixtures": "node --test tests/m12c-fault-fixtures.test.mjs",
     "test:hg2a-community": "node --test tests/hg2a-community-gateway.test.mjs",
     "test:hg2b-covers": "node --experimental-strip-types --test tests/hg2b-cover.test.mjs",
-    "build": "npm run typecheck && npm run test:discovery && npm run test:episode-queue && npm run test:provider-progress && npm run test:recent-activity && npm run test:player-shortcuts && npm run test:thumbnail-preview && npm run test:media-tracks && npm run test:player-preferences && npm run test:runtime-health && npm run test:m12b-trend && npm run test:m12c-fault-fixtures && npm run test:hg2a-community && npm run test:hg2b-covers && vite build",
+    "build": "npm run typecheck && npm run test:discovery && npm run test:episode-queue && npm run test:provider-progress && npm run test:recent-activity && npm run test:local-library && npm run test:player-shortcuts && npm run test:thumbnail-preview && npm run test:media-tracks && npm run test:player-preferences && npm run test:runtime-health && npm run test:m12b-trend && npm run test:m12c-fault-fixtures && npm run test:hg2a-community && npm run test:hg2b-covers && vite build",
     "tauri": "cargo tauri"
   },
   "dependencies": {
