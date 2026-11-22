@@ -116,6 +116,7 @@ fn main() {
             commands::stop,
             commands::set_paused,
             commands::seek_to,
+            commands::player_preview_frame,
             commands::set_rate,
             commands::set_volume,
             commands::open_https,
