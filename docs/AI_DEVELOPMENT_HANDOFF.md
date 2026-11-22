@@ -100,7 +100,7 @@
 
 **新对话可直接发送下面这段话：**
 
-> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先读取 main 上的 `AGENTS.md` 和 `docs/AI_DEVELOPMENT_HANDOFF.md`，再通过 GitHub 核实实际 PR、branch、HEAD、Windows Actions 和代码，不要把交接文档里的旧 SHA 当成当前事实。当前重点是 **UI-3 Netflix 风格首页重构**：Draft PR #36，分支 `feat/ui-3-netflix-home`，当前记录 HEAD `9e6e563c36b847f406633a106f0aa3e0514a8659`；PR #36 是基于 UI-2 PR #34 的累积 stacked diff，PR #35 是同一 UI-3 分支的重复 PR，已关闭且未合并。UI-3 已实现启动默认进入内容首页、首次挂载隐藏原生视频 HWND、横向内容导航、真实海报 Hero、继续观看/类型横向轨道，以及黑/灰/红的全局视觉（播放器 66px header / 96px footer 几何不变）。当前 UI-3 的 Windows M1 run `45036493727` 和 Windows M2 playback run `45036493718` 在首次核对时均为 in_progress；不要持续轮询，等我说“编译完成”后再查一次最终结果并准备 Windows Debug/validation kit。UI-3 的 18 项 Windows 实机验收尚未完成；UI-2 PR #34 的实机验收也不要擅自标记通过。依赖顺序为 #31 → #32 → #33 → #34 → #36；所有 PR 保持 Draft/未合并，除非我明确授权。必须保留 Rust/libmpv worker、native session ID、Tauri IPC、Provider 数据契约、封面安全入口、媒体权限和 HWND 几何。由你直接维护 GitHub 代码、Draft PR、CI 修复和 Windows 调试包，我负责 Windows 实机验收。**每个开发阶段都要提交 GitHub 并及时更新 main 上的交接文档**，确保新会话可以无缝接手。
+> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先读取 main 上的 `AGENTS.md` 和 `docs/AI_DEVELOPMENT_HANDOFF.md`，再通过 GitHub 核实实际 PR、branch、HEAD、Windows Actions 和代码，不要把交接文档里的旧 SHA 当成当前事实。当前重点是 **UI-3 Netflix 风格首页重构**：Draft PR #36，分支 `feat/ui-3-netflix-home`，当前记录 HEAD `6cc2c45a9736c015f7f12cf109ea3894c970e937`；PR #36 是基于 UI-2 PR #34 的累积 stacked diff，PR #35 是同一 UI-3 分支的重复 PR，已关闭且未合并。UI-3 已实现启动默认进入内容首页、首次挂载隐藏原生视频 HWND、横向内容导航、真实海报 Hero、继续观看/类型横向轨道，以及黑/灰/红的全局视觉（播放器 66px header / 96px footer 几何不变）。当前 UI-3 的 Windows M1 run `45038072535` 和 Windows M2 playback run `45038072543` 在首次核对时均为 in_progress；不要持续轮询，等我说“编译完成”后再查一次最终结果并准备 Windows Debug/validation kit。UI-3 的 18 项 Windows 实机验收尚未完成；UI-2 PR #34 的实机验收也不要擅自标记通过。依赖顺序为 #31 → #32 → #33 → #34 → #36；所有 PR 保持 Draft/未合并，除非我明确授权。必须保留 Rust/libmpv worker、native session ID、Tauri IPC、Provider 数据契约、封面安全入口、媒体权限和 HWND 几何。由你直接维护 GitHub 代码、Draft PR、CI 修复和 Windows 调试包，我负责 Windows 实机验收。**每个开发阶段都要提交 GitHub 并及时更新 main 上的交接文档**，确保新会话可以无缝接手。
 
 **交接文件更新纪律：**每个阶段至少维护：当前阶段、PR/branch/HEAD、构建状态+artifact ID、已经明确通过的验收条目、尚待验证的条目、遇到的问题/修复、下一步动作。**禁止把未运行/未通过状态写成通过。**优先将本文件更新到 main，确保下一段对话不会从旧功能分支获取过期状态；如果 main 提交权限不可用，才更新工作分支并明确告知用户路径。
 
@@ -167,14 +167,15 @@
 用户明确选择了 Netflix 首页参考图，并要求不再以空播放器作为启动入口。UI-3 已从 UI-2 PR #34 的精确 HEAD 派生，按用户要求由 Chat 端直接维护 GitHub 代码，不依赖 Work 原型流程。
 
 - **分支**：`feat/ui-3-netflix-home`。
-- **主 Draft PR #36**：[feat(ui-3): Netflix-inspired browse-first desktop experience](https://github.com/Zhaokangbo/HongGuoRust/pull/36)，base `main`，Open / Draft / 未合并；当前 HEAD `9e6e563c36b847f406633a106f0aa3e0514a8659`。
+- **主 Draft PR #36**：[feat(ui-3): Netflix-inspired browse-first desktop experience](https://github.com/Zhaokangbo/HongGuoRust/pull/36)，base `main`，Open / Draft / 未合并；当前 HEAD `6cc2c45a9736c015f7f12cf109ea3894c970e937`。
 - **重复 PR 处理**：PR #35 原先以 UI-2 分支为 base，且与 #36 指向同一 UI-3 head；为避免两个活动 PR 混淆，#35 已关闭并标注由 #36 取代，未合并。今后只跟进 #36。
 - **依赖链**：#31 → #32 → #33 → #34 → #36。#31–#34 仍为 Draft/未合并；不得合并或擅自调整依赖。
 - **代码提交**：
   - `e282c4a77eac03e06da127e364120faf995f0a0c`：UI-3 首轮首页/导航/样式/验收文档实现。
   - `7de8574ddd4b89ada26bf5489ce38f59e9e412b8`：启动时尽早调用既有 `set_catalog_visible(true)`，避免先呈现空播放器或 native video HWND 遮挡内容首页。
   - `bf361a6e6a4649c5a8ff4bef3db1878f8104c819`：将首页搜索/来源/类型筛选移出 Hero 条件分支，保证无焦点作品时仍可恢复筛选。
-  - `0f7343d02623983cad1a1abe150457c9d507eb7c`、`9e6e563c36b847f406633a106f0aa3e0514a8659`：更新 M2/M1 Windows smoke tests，先从默认 Home 显式进入 Player，再检查 Idle IPC 和本地文件播放。
+  - `0f7343d02623983cad1a1abe150457c9d507eb7c`、`6cc2c45a9736c015f7f12cf109ea3894c970e937`：更新 M2/M1 Windows smoke tests，先从默认 Home 显式进入 Player，再检查 Idle IPC 和本地文件播放。
+  - `6cc2c45a9736c015f7f12cf109ea3894c970e937`：M2 smoke test 进一步等待“播放器”按钮变为 enabled，避免 Rust bridge 尚未连接时提前点击。
 - **实际改动**：
   - `src/main.tsx`：`catalogOpen` 默认 true；应用首次挂载时通过既有 Tauri IPC 隐藏 native video HWND；用户主动播放后仍走原有 Rust/libmpv 路径，返回播放器行为不变。
   - `src/catalog/CatalogView.tsx`：将 UI-2 侧边栏改为 Netflix 风格横向导航，保留首页、探索、我的视频、最近播放、收藏和动态 Provider 来源。
@@ -185,8 +186,8 @@
 - **数据与工程边界**：没有修改 Rust、libmpv worker、native session ID、Tauri IPC 契约、Provider 数据契约、媒体授权或 HWND 几何；封面仍走 `CoverImage` / `safeCoverUrl`；不生成虚假海报、评分、热度或可播放状态。
 - **CI 首次核对**：HEAD `7de8574ddd4b89ada26bf5489ce38f59e9e412b8` 的 Windows M2 run `45036493718`、M1 run `45036493727` 首次核对时均为 `in_progress`，后续 HEAD 已前进，不再作为当前验收依据。
 - **CI 失败定位与修复**：HEAD `bf361a6e6a4649c5a8ff4bef3db1878f8104c819` 的 M2 run `45036753289` 中，`npm run build`、`cargo fmt`、Rust tests、Debug EXE 构建和 artifact 上传均通过；失败发生在 `scripts/smoke-player.py` 等待 UIA `Idle`，因为 UI-3 默认 Home 隐藏播放器 footer。已在 `0f7343d` / `9e6e563` 更新 M2/M1 smoke scripts：先点击首页的“播放器”入口，再验证 Idle、文件选择和播放/关闭流程。该失败是旧测试脚本未适配新启动流程，不是编译失败。
-- **最新精确 HEAD CI**：当前 HEAD `9e6e563c36b847f406633a106f0aa3e0514a8659` 的 Windows M1 run `45037762031`、Windows M2 playback run `45037762037` 在最近一次核对时均为 `in_progress`；不得持续轮询或写成通过。
-- **Artifact**：旧 M2 失败 run `45036753289` 曾上传 Debug artifact `HongGuoRust-M2-debug-x64` ID `14760131534`（SHA-256 `f4e362a31eee558f55addf81f1bd89395ebcb028d72c7b9b7adfa779c9f2f7c2`）和诊断 artifact `windows-playback-diagnostics` ID `14760311041`。前者不作为最终验收包分发，因为该 run 的 M2 smoke 未通过。当前 HEAD `9e6e563` 的正式 artifact 尚待 CI 完成；用户通知“编译完成”后再检查最终结果与 artifact ID。
+- **最新精确 HEAD CI**：当前 HEAD `6cc2c45a9736c015f7f12cf109ea3894c970e937` 的 Windows M1 run `45038072535`、Windows M2 playback run `45038072543` 在最近一次核对时均为 `in_progress`；不得持续轮询或写成通过。此前 HEAD `9e6e563` 对应的 run 已被新提交取代，不作为最终验收依据。
+- **Artifact**：旧 M2 失败 run `45036753289` 曾上传 Debug artifact `HongGuoRust-M2-debug-x64` ID `14760131534`（SHA-256 `f4e362a31eee558f55addf81f1bd89395ebcb028d72c7b9b7adfa779c9f2f7c2`）和诊断 artifact `windows-playback-diagnostics` ID `14760311041`。前者不作为最终验收包分发，因为该 run 的 M2 smoke 未通过。当前 HEAD `6cc2c45` 的正式 artifact 尚待 CI 完成；用户通知“编译完成”后再检查最终结果与 artifact ID。
 - **Windows 实机验收**：尚未开始，18 项均待用户验收。UI-2 PR #34 的 16 项验收也不能因 UI-1 通过而推定通过。
 - **下一步**：等待用户说“编译完成” → 一次性核对 #36 精确 HEAD 的 M1/M2 最终 CI → 若通过则准备 Windows 调试/validation kit 和 SHA-256 → 用户按 `docs/acceptance/ui-3.md` 验收 → 每次验收结论同步更新 main handoff。PR #36 保持 Draft，不合并。
 
@@ -219,4 +220,4 @@
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，HEAD `9e6e563c36b847f406633a106f0aa3e0514a8659`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；不要根据聊天摘要猜测代码状态。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，HEAD `6cc2c45a9736c015f7f12cf109ea3894c970e937`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；不要根据聊天摘要猜测代码状态。
