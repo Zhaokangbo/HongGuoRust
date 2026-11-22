@@ -220,4 +220,16 @@
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，HEAD `6cc2c45a9736c015f7f12cf109ea3894c970e937`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；不要根据聊天摘要猜测代码状态。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，最新已核对 HEAD `84537517b383c43dd5bee5ea18981b6621a5f8b6`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；该 HEAD 的 Windows M1/M2 CI 尚待用户通知“编译完成”后再核对最终结果。
+
+### 2026-11-22 接手复核：UI-3 最新 HEAD 与当前验收门槛
+
+- 本次按仓库 AGENTS.md 要求重新读取 main handoff，并通过 GitHub 连接器核对 PR、HEAD、文件差异与 CI 进度；没有合并任何 PR。
+- 当前最新 UI 主线为 Draft PR #36：feat/ui-3-netflix-home，base main，最新 HEAD 84537517b383c43dd5bee5ea18981b6621a5f8b6。PR #36 open / draft / unmerged；前一 UI-3 重复 PR #35 closed / not merged。
+- UI 依赖链仍为 #31 → #32 → #33 → #34 → #36。#31/#32/#33/#34 均 open / Draft / unmerged；#33 UI-1 HEAD e3e26294feb92d5d130a9dddfa5f07aff1c20d80；#34 UI-2 HEAD 78eee73d5a3d84e4f26d76ca23905439b860c600。不因后续 UI 分支已通过编译而跳过上游 Windows 实机验收或合并授权。
+- UI-3 相对 UI-2 精确基线 78eee73d5a3d84e4f26d76ca23905439b860c600 有 8 个提交、8 个文件差异：src/main.tsx、src/catalog/DiscoveryHome.tsx、src/catalog/CatalogView.tsx、src/catalog/ContinueWatchingShelf.tsx、src/style.css、两份 Windows smoke 脚本及新增 docs/acceptance/ui-3.md。不改 Rust/libmpv worker、native session、HWND 几何、Tauri IPC 合约、Provider 合约或播放授权。
+- UI-3 当前实现：启动默认进入内容首页并调用既有 set_catalog_visible(true) 隐藏原生视频 HWND；首页真实数据 Hero、搜索/来源/类型筛选、真实类型横向海报轨道、仅在存在观看记录时展示继续观看；导航、探索、详情、本地媒体、历史、收藏及播放器周边采用黑/炭灰/红色主题。18 项 Windows 验收见 docs/acceptance/ui-3.md。
+- CI 当前状态（不作为最终通过）：PR #36 描述记录最新 HEAD 84537517b383c43dd5bee5ea18981b6621a5f8b6 的 Windows M1/M2 工作流正在运行；M2 前端构建、Rust 构建/测试和播放/窗口 smoke 已报告通过（含 20 次播放器窗口关闭循环）；M1 前端构建和 Rust 测试已报告通过，release 构建与 Home→Player IPC/正常退出 smoke 仍在运行。遵守不持续轮询约定：不要查询或宣称最终 CI 结果，直到用户通知“编译完成”。此前 HEAD 6cc2c45a9736c015f7f12cf109ea3894c970e937 的 run 45038072535 / 45038072543 不可用于替代最新 HEAD 验收。
+- 当前 HEAD 的最终 M2 Debug artifact 尚未确认；此前旧失败 run 45036753289 的 artifact 14760131534 不得分发。待最新 HEAD M1/M2 同时 completed/success 后，再下载该 HEAD 的 M2 artifact、核对 ZIP/EXE SHA-256，并制作独立目录 Windows test kit；不要覆盖 %LOCALAPPDATA%\HongGuoRust。
+- HG-2B PR #32 当前 HEAD ac6614c94ef35095666054971a7c42c302982e2e 的 Windows M1 45018039636 / M2 45018039660 已 completed/success。用户最新实机截图显示 9 张不同真实社区海报，只确认 HG-2B 验收第 3 项（搜索列表真实封面）通过；详情/剧集及其余 HG-2B 手动项仍须独立验收。
+- 下一步：等待用户“编译完成”通知；然后仅核对 PR #36 最新 HEAD 的 M1/M2 最终结果一次。若双绿，准备并验证同 SHA Windows 调试包，用户按 docs/acceptance/ui-3.md 18 项实机验收。PR #36 继续 Draft，不合并；不把 CI 成功等同于实机通过。
