@@ -134,7 +134,10 @@ impl PreferencesStore {
 
     /// Atomic copy-on-write update. Persist first, commit the in-memory value
     /// only after MoveFileExW succeeds; old data is not overwritten on errors.
-    fn update(&self, apply: impl FnOnce(&mut PlayerPreferences)) -> Result<PlayerPreferences, String> {
+    fn update(
+        &self,
+        apply: impl FnOnce(&mut PlayerPreferences),
+    ) -> Result<PlayerPreferences, String> {
         if let Some(error) = &self.load_error {
             return Err(error.clone());
         }
@@ -175,8 +178,14 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture() -> PathBuf {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        std::env::temp_dir().join(format!("hongguorust-settings-{}-{unique}", std::process::id()))
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "hongguorust-settings-{}-{unique}",
+            std::process::id()
+        ))
     }
 
     #[test]
