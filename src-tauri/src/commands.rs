@@ -17,6 +17,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewWindow};
 
+/// M12-A read-only in-memory diagnostics; never returns names, paths or URLs.
+#[tauri::command]
+pub fn get_runtime_health(
+    player: State<'_, PlayerService>,
+) -> crate::player::health::RuntimeHealth {
+    player.runtime_health()
+}
+
 #[tauri::command]
 pub fn get_snapshot(player: State<'_, PlayerService>) -> PlayerSnapshot {
     static FIRST: AtomicBool = AtomicBool::new(true);
