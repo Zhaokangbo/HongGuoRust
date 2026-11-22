@@ -326,8 +326,14 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     {!detail && <nav className="catalog-tabs" aria-label="内容来源">
       <button type="button" className={mode === "home" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("home"); setError(""); }}>首页</button>
-      <button type="button" className={mode === "demo" ? "catalog-tab active" : "catalog-tab"}
-        onClick={() => { setMode("demo"); setError(""); }}>演示内容</button>
+      <button type="button" className={mode === "demo" && sourceId !== "hongguo" ? "catalog-tab active" : "catalog-tab"}
+        onClick={() => { setMode("demo"); setSourceId("demo"); setError(""); }}>演示内容</button>
+      <button type="button"
+        className={mode === "demo" && sourceId === "hongguo" ? "catalog-tab active" : "catalog-tab"}
+        onClick={() => {
+          setMode("demo"); setSourceId("hongguo"); setInput("");
+          setSearch(""); setError("");
+        }}>红果接入</button>
       <button type="button" className={mode === "local" ? "catalog-tab active" : "catalog-tab"}
         onClick={() => { setMode("local"); setError(""); }}>我的视频</button>
       <button type="button" className={mode === "history" ? "catalog-tab active" : "catalog-tab"}
@@ -372,7 +378,13 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       {!loading && <span role="status">共 {total} 条内容</span>}
     </div>}
 
-    {!detail && mode === "demo" && <form className="catalog-search" onSubmit={submit}>
+    {!detail && mode === "demo" && sourceId === "hongguo" && <div className="catalog-manifest-info" role="status">
+      <strong>HG-1 · 红果接入准备中（尚未授权）</strong>
+      <p>已在 Rust 中注册独立的 HongGuo Provider，但目前没有可确认授权的红果剧集接口或播放权限。
+        此处不会显示虚构的真实作品，也不会自动抓取平台内容。后续接入需先确认接口访问、剧集分发及 Windows 播放授权。</p>
+    </div>}
+
+    {!detail && mode === "demo" && sourceId !== "hongguo" && <form className="catalog-search" onSubmit={submit}>
       <input type="search" value={input} onChange={event => setInput(event.target.value)}
         placeholder="搜索作品名称、类型或关键词" aria-label="搜索内容" maxLength={128} />
       <button type="submit">搜索</button>
@@ -452,7 +464,11 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           onSelect={id => void showDetail(id)} onExplore={openExplorer}
           onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
       : loading ? <p className="catalog-empty" role="status">正在加载内容…</p>
-      : items.length === 0 ? <p className="catalog-empty">没有匹配的内容，试试“城市”或“自然”。</p>
+      : items.length === 0 ? <p className="catalog-empty">
+        {sourceId === "hongguo"
+          ? "红果接入接口尚未授权，当前不提供真实作品搜索或播放。已完成可扩展的 Provider 接入入口。"
+          : "没有匹配的内容，试试“城市”或“自然”。"}
+      </p>
       : <div className="catalog-grid">
         {items.map(item => <button key={item.id} type="button"
           className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
