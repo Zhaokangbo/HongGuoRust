@@ -477,12 +477,12 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
 
     {mode === "local" || mode === "favorites"
       ? <LocalLibraryView key={mode} favoritesOnly={mode === "favorites"}
-          onPlay={onPlayLocal} playerError={playerError} />
+          onPlay={onPlayLocal} />
       : mode === "history" ? <>
           <ContinueWatchingShelf includeLocal={false} limit={24} busy={working} refreshKey={refreshKey}
             onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
           <h3 className="discovery-section-title">本地媒体观看历史</h3>
-          <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} playerError={playerError} />
+          <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} />
         </>
       : detail ? <div className="catalog-detail">
       <div className={"catalog-detail-backdrop artwork-" + detail.series.artwork} aria-hidden="true">
