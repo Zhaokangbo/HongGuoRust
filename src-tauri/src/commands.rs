@@ -219,11 +219,7 @@ pub fn catalog_recently_watched(
             Ok(value) => value,
             Err(_) => continue,
         };
-        let episode = match detail
-            .episodes
-            .iter()
-            .find(|ep| ep.id == record.episode_id)
-        {
+        let episode = match detail.episodes.iter().find(|ep| ep.id == record.episode_id) {
             Some(value) => value.clone(),
             None => continue,
         };
