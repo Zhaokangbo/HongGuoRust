@@ -125,6 +125,46 @@ fn valid_public_host(host: &str) -> bool {
             .contains(&labels.last().unwrap().to_ascii_lowercase().as_str())
 }
 
+/// Visible production source: no partner API or desktop content rights have
+/// been granted to this application. Never resolves a real media target.
+/// The approved mock transport below remains unregistered pending entitlement.
+#[derive(Default)]
+pub struct HongGuoUnavailableProvider;
+
+impl ContentProvider for HongGuoUnavailableProvider {
+    fn id(&self) -> &'static str {
+        "hongguo"
+    }
+
+    fn name(&self) -> &'static str {
+        "红果接入（待授权）"
+    }
+
+    fn supports_search(&self) -> bool {
+        false
+    }
+
+    fn supports_detail(&self) -> bool {
+        false
+    }
+
+    fn supports_play(&self) -> bool {
+        false
+    }
+
+    fn search(&self, _query: &str) -> Result<Vec<Series>, String> {
+        Ok(Vec::new())
+    }
+
+    fn detail(&self, _series_id: &str) -> Result<Option<SeriesDetail>, String> {
+        Ok(None)
+    }
+
+    fn resolve_episode(&self, _series_id: &str, _episode_id: &str) -> Result<MediaTarget, String> {
+        Err("hg_not_authorized: 红果播放接口尚未授权".into())
+    }
+}
+
 pub struct HongGuoAuthorizedProvider {
     transport: Arc<dyn ApprovedCatalogTransport>,
     media_host: String,
@@ -237,6 +277,19 @@ impl ContentProvider for HongGuoAuthorizedProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn production_placeholder_never_exposes_authorized_mock_or_a_playable_target() {
+        let slot = HongGuoUnavailableProvider;
+        assert_eq!(slot.id(), "hongguo");
+        assert!(slot.name().contains("待授权"));
+        assert!(!slot.supports_search());
+        assert!(!slot.supports_detail());
+        assert!(!slot.supports_play());
+        assert!(slot.search("").unwrap().is_empty());
+        assert!(slot.detail("synthetic-1").unwrap().is_none());
+        assert!(slot.resolve_episode("synthetic-1", "ep-1").is_err());
+    }
 
     struct MockAuthorizedTransport;
 
