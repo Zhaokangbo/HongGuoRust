@@ -1,6 +1,7 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
 use super::hongguo::HongGuoUnavailableProvider;
+use super::hgcommunity::HgCommunityProvider;
 use super::local::LocalLibraryProvider;
 use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
@@ -85,13 +86,19 @@ impl Default for CatalogService {
 
 impl CatalogService {
     pub fn new(library: Arc<LocalLibrary>, manifest: Arc<OwnedManifestStore>) -> Self {
-        Self::from_providers(vec![
+        let mut providers: Vec<Box<dyn ContentProvider>> = vec![
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
             Box::new(OwnedManifestProvider::new(manifest)),
             Box::new(HongGuoUnavailableProvider),
-        ])
-        .expect("built-in provider IDs must be unique and valid")
+        ];
+        // The unofficial community SDK is opt-in and debug-build only. Its
+        // failure must never replace or unlock the real HongGuo placeholder.
+        if let Some(experimental) = HgCommunityProvider::from_env() {
+            providers.push(Box::new(experimental));
+        }
+        Self::from_providers(providers)
+            .expect("built-in provider IDs must be unique and valid")
     }
 
     fn from_providers(providers: Vec<Box<dyn ContentProvider>>) -> Result<Self, String> {
