@@ -86,7 +86,11 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 /* Opt-in community metadata only; distinguish absent URL from image load failures. */
 .catalog-artwork > .catalog-cover-diagnostic,
 .catalog-detail-art > .catalog-cover-diagnostic,
-.discovery-hero-art > .catalog-cover-diagnostic {
+.discovery-hero-art > .catalog-cover-diagnostic,
+.catalog-detail-backdrop > .catalog-cover-diagnostic,
+.catalog-detail-poster > .catalog-cover-diagnostic,
+.discovery-featured-backdrop > .catalog-cover-diagnostic,
+.discovery-poster-art > .catalog-cover-diagnostic {
   position: absolute; z-index: 3; top: 9px; left: 9px; right: 9px;
   width: fit-content; max-width: calc(100% - 18px); padding: 4px 7px;
   font: 11px/1.35 system-ui, sans-serif; letter-spacing: 0;
