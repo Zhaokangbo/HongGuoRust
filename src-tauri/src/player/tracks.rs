@@ -58,7 +58,7 @@ pub fn safe_track_label(value: String) -> Option<String> {
     let clean = value.trim();
     if clean.is_empty()
         || clean.contains("://")
-        || clean.contains(['/', '\\', '?', '&', '='])
+        || clean.chars().any(|ch| matches!(ch, '/' | '\\' | '?' | '&' | '='))
         || clean.chars().any(char::is_control)
     {
         return None;
