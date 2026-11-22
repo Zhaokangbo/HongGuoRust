@@ -85,7 +85,9 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
   const currentGenre = genre === "all" || genres.includes(genre) ? genre : "all";
   const visible = useMemo(() => discoveryItems(items, currentGenre), [items, currentGenre]);
   const hero = useMemo(() => discoveryHero(visible), [visible]);
-  const others = hero ? visible.filter(item => item.id !== hero.id) : [];
+  const genreRows = useMemo(() => genres
+    .map(name => ({ name, items: visible.filter(item => item.genre.trim() === name) }))
+    .filter(row => row.items.length > 0), [genres, visible]);
 
   function onSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -124,55 +126,42 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
   }
 
   return <section className="discovery-home" aria-label="首页内容发现">
-    <div className="discovery-intro">
-      <div>
-        <p className="catalog-eyebrow">HONGGUORUST · DISCOVER</p>
-        <h3>发现下一部想看的作品</h3>
-        <p>汇集已接入的内容、你添加的本地视频和自有媒体清单。只展示实际获取到的目录信息。</p>
-      </div>
-      <button type="button" className="discovery-explore"
-        onClick={() => onExplore(source, query)}>
-        探索全部内容
-      </button>
-    </div>
-
-    <ContinueWatchingShelf includeLocal limit={6} busy={busy} refreshKey={refreshKey}
-      onPlayProvider={onPlayProvider} onPlayLocal={onPlayLocal} />
-
     <form className="discovery-search" onSubmit={onSearch}>
+      <span className="discovery-search-icon" aria-hidden="true">⌕</span>
       <input type="search" value={input} maxLength={128}
-        aria-label="首页搜索作品" placeholder="按作品名称、类型或关键词搜索"
+        aria-label="首页搜索作品" placeholder="搜索片名、类型或关键词"
         onChange={event => setInput(event.target.value)} />
       <button type="submit" disabled={loading}>搜索</button>
       <button type="button" className="catalog-ghost" disabled={loading}
-        onClick={() => setRefreshKey(value => value + 1)}>刷新首页</button>
+        onClick={() => setRefreshKey(value => value + 1)}>刷新</button>
     </form>
 
-    <div className="discovery-filters">
-      <span>内容来源</span>
-      <div className="discovery-pills" aria-label="首页按内容来源筛选">
-        <button type="button" aria-pressed={source === "all"}
-          className={source === "all" ? "active" : ""}
-          onClick={() => chooseSource("all")}>全部</button>
-        {(sources.length ? sources : sourceFallback).map(provider =>
-          <button type="button" key={provider.id}
-            aria-pressed={source === provider.id}
-            className={source === provider.id ? "active" : ""}
-            onClick={() => chooseSource(provider.id)}>{provider.name}</button>)}
+    <div className="discovery-filter-panel">
+      <div className="discovery-filters">
+        <span>内容来源</span>
+        <div className="discovery-pills" aria-label="首页按内容来源筛选">
+          <button type="button" aria-pressed={source === "all"}
+            className={source === "all" ? "active" : ""}
+            onClick={() => chooseSource("all")}>全部</button>
+          {(sources.length ? sources : sourceFallback).map(provider =>
+            <button type="button" key={provider.id}
+              aria-pressed={source === provider.id}
+              className={source === provider.id ? "active" : ""}
+              onClick={() => chooseSource(provider.id)}>{provider.name}</button>)}
+        </div>
       </div>
-    </div>
-
-    <div className="discovery-filters">
-      <span>已加载内容分类</span>
-      <div className="discovery-pills" aria-label="首页分类筛选">
-        <button type="button" aria-pressed={currentGenre === "all"}
-          className={currentGenre === "all" ? "active" : ""}
-          onClick={() => setGenre("all")}>全部分类</button>
-        {genres.map(name => <button type="button" key={name}
-          aria-pressed={currentGenre === name}
-          className={currentGenre === name ? "active" : ""}
-          onClick={() => setGenre(name)}>{name}</button>)}
-      </div>
+      {genres.length > 0 && <div className="discovery-filters">
+        <span>作品类型</span>
+        <div className="discovery-pills" aria-label="首页按真实作品类型筛选">
+          <button type="button" aria-pressed={currentGenre === "all"}
+            className={currentGenre === "all" ? "active" : ""}
+            onClick={() => setGenre("all")}>全部类型</button>
+          {genres.map(name => <button type="button" key={name}
+            aria-pressed={currentGenre === name}
+            className={currentGenre === name ? "active" : ""}
+            onClick={() => setGenre(name)}>{name}</button>)}
+        </div>
+      </div>}
     </div>
 
     {error && <div className="catalog-request-error" role="alert">
@@ -184,38 +173,59 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
     {loading ? <p className="catalog-empty" role="status">正在整理已接入的内容…</p>
       : hero ? <>
         <div className="discovery-summary" role="status">
-          已加载 {items.length} / {total} 条 · 当前分类 {visible.length} 条
+          当前展示 {visible.length} 部 · 已加载 {items.length} / {total} 部作品
         </div>
-        <button type="button" disabled={busy} className="discovery-hero"
-          onClick={() => onSelect(hero.id)}>
-          <span className={"discovery-hero-art artwork-" + hero.artwork} aria-hidden="true">
+        <button type="button" disabled={busy} className="discovery-featured"
+          onClick={() => onSelect(hero.id)} aria-label={"查看作品详情：" + hero.title}>
+          <span className={"discovery-featured-backdrop artwork-" + hero.artwork} aria-hidden="true">
             <CoverImage url={hero.coverUrl} diagnostic={hero.providerId === "hgcommunity"} eager priority />
-            <span>{discoverySourceLabel(hero.providerId, names)}</span>
           </span>
-          <span className="discovery-hero-copy">
-            <small>为你发现 · 来自已接入内容源</small>
+          <span className="discovery-featured-overlay" aria-hidden="true" />
+          <span className="discovery-featured-copy">
+            <small>内容焦点 · {discoverySourceLabel(hero.providerId, names)}</small>
             <strong>{hero.title}</strong>
-            <span>{hero.genre} · {hero.episodeCount} 集 · {discoverySourceLabel(hero.providerId, names)}</span>
-            <span className="discovery-description">{hero.description || "查看作品详情与可用剧集。"}</span>
-            <span className="discovery-hero-cta">查看作品详情</span>
+            <span className="discovery-featured-meta">{hero.genre} · {hero.episodeCount} 集</span>
+            <span className="discovery-featured-description">
+              {hero.description || "查看作品详情与已接入的剧集信息。"}
+            </span>
+            <span className="discovery-featured-cta">查看作品详情 <i aria-hidden="true">→</i></span>
           </span>
+          <span className="discovery-featured-footnote">基于当前内容源返回顺序展示，不代表人气排名</span>
         </button>
-        {others.length > 0 && <>
-          <h3 className="discovery-section-title">更多可浏览内容</h3>
-          <div className="catalog-grid">
-            {others.map((item, index) => <button type="button" key={item.id}
-              className="catalog-card" disabled={busy} onClick={() => onSelect(item.id)}>
-              <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
-                <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
-                   eager={index < 6} priority={index === 0} />
-                <span>{discoverySourceLabel(item.providerId, names)}</span>
-              </span>
-              <strong>{item.title}</strong>
-              <span className="catalog-meta">{item.genre} · {item.episodeCount} 集</span>
-              <span className="catalog-card-badge">{item.badge}</span>
-            </button>)}
-          </div>
-        </>}
+
+        <ContinueWatchingShelf includeLocal limit={6} busy={busy} refreshKey={refreshKey}
+          onPlayProvider={onPlayProvider} onPlayLocal={onPlayLocal} />
+
+        {genreRows.length > 0 && <div className="discovery-rails">
+          {genreRows.map(row => <section className="discovery-rail" key={row.name}>
+            <div className="discovery-rail-heading">
+              <div><h3>{row.name}</h3><span>按已接入作品类型整理</span></div>
+              <small>{row.items.length} 部</small>
+            </div>
+            <div className="discovery-rail-track">
+              {row.items.map((item, index) => <button type="button" key={item.id}
+                className="discovery-poster-card" disabled={busy}
+                onClick={() => onSelect(item.id)}>
+                <span className={"discovery-poster-art artwork-" + item.artwork} aria-hidden="true">
+                  <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
+                    eager={index < 5} priority={index === 0} />
+                  <span className="discovery-poster-source">
+                    {discoverySourceLabel(item.providerId, names)}
+                  </span>
+                  <span className="discovery-poster-hover">查看详情 <i aria-hidden="true">→</i></span>
+                </span>
+                <strong>{item.title}</strong>
+                <span className="discovery-poster-meta">{item.episodeCount} 集 · {item.badge}</span>
+              </button>)}
+            </div>
+          </section>)}
+        </div>}
+
+        <div className="discovery-bottom-actions">
+          <span>内容来自已连接的 Provider；没有生成虚构的榜单或评分。</span>
+          <button type="button" className="catalog-ghost"
+            onClick={() => onExplore(source, query)}>打开完整探索页</button>
+        </div>
       </> : !error && <div className="discovery-empty">
         <p>当前条件下没有可展示的内容。</p>
         <button type="button" className="catalog-ghost"
@@ -229,12 +239,12 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
       </div>}
 
     {!loading && nextOffset !== null && <div className="catalog-pagination">
-      <span>已加载 {items.length} / {total} 条</span>
+      <span>已加载 {items.length} / {total} 部</span>
       <button type="button" disabled={loadingMore || busy}
         onClick={() => void loadMore()}>{loadingMore ? "正在加载…" : "加载更多内容"}</button>
     </div>}
 
-    <p className="catalog-disclaimer">首页只使用已连接 Provider 返回的真实元数据；展示顺序不是人气榜单。
+    <p className="catalog-disclaimer">首页只使用已连接 Provider 返回的真实元数据；内容焦点与类型分组不代表热度或评分排名。
       分类仅在已加载条目中筛选，可点击“加载更多内容”扩展范围。导入内容及媒体使用权限由用户自行确认。</p>
   </section>;
 }
