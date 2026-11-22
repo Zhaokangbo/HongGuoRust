@@ -22,7 +22,7 @@ $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
 if (!$version) { throw 'Missing Cargo package version' }
 $connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
 $home = -join ([char[]](0x9996, 0x9875))
-$names = @('HongGuoRust', $connected, $home, '播放器', $version)
+$names = @('HongGuoRust', $connected, $home, '播放器')
 $diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
 $env:HONGGUORUST_LOG_DIR = $diag
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS --force-renderer-accessibility".Trim()
@@ -71,16 +71,21 @@ try {
 
     $idleCondition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, 'Idle')
+    $versionCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $version)
     $idleDeadline = [DateTime]::UtcNow.AddSeconds(30)
     $idle = $null
+    $versionVisible = $null
     do {
         $process.Refresh()
         if ($process.HasExited) { throw "Application exited while opening player surface: $($process.ExitCode)" }
         $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
         $idle = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $idleCondition)
-        if (!$idle) { Start-Sleep -Milliseconds 300 }
-    } while (!$idle -and [DateTime]::UtcNow -lt $idleDeadline)
+        $versionVisible = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $versionCondition)
+        if (!$idle -or !$versionVisible) { Start-Sleep -Milliseconds 300 }
+    } while ((!$idle -or !$versionVisible) -and [DateTime]::UtcNow -lt $idleDeadline)
     if (!$idle) { throw 'Player surface did not expose the Rust Idle snapshot' }
+    if (!$versionVisible) { throw "Player surface did not expose app version $version" }
 
     $log = Join-Path $diag "player-$($process.Id).log"
     if (!(Select-String -Path $log -Pattern 'first snapshot IPC.*state=Idle' -Quiet)) { throw 'Missing Rust Idle IPC evidence' }
