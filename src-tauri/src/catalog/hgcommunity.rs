@@ -137,7 +137,9 @@ impl HgCommunityProvider {
         if !status.starts_with("HTTP/1.1 ") || status.len() < 12 {
             return Err("hgcommunity_invalid_http".into());
         }
-        let status_code: u16 = status[9..12]
+        let status_code: u16 = status
+            .get(9..12)
+            .ok_or("hgcommunity_invalid_http")?
             .parse()
             .map_err(|_| "hgcommunity_invalid_http")?;
         let mut length = None;
