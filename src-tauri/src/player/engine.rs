@@ -42,19 +42,40 @@ pub struct Engine {
     cache_waiting: bool,
 }
 
+/// Only allow the numerical libmpv error variant into the UI/logging
+/// contract. Other Debug/Display errors may include a source URL, query token,
+/// local path or untrusted remote response text.
+fn safe_mpv_error_code(debug: &str) -> String {
+    let Some(raw) = debug.strip_prefix("Raw(").and_then(|s| s.strip_suffix(')')) else {
+        return "mpv_native_error".into();
+    };
+    if raw.is_empty()
+        || raw.len() > 7
+        || !raw
+            .bytes()
+            .enumerate()
+            .all(|(i, c)| c.is_ascii_digit() || (i == 0 && c == b'-'))
+        || raw.parse::<i32>().is_err()
+    {
+        return "mpv_native_error".into();
+    }
+    format!("Raw({raw})")
+}
+
 fn native_error(stage: &'static str, e: libmpv2::Error) -> Failure {
-    let code = format!("{e:?}");
-    // -13 is libmpv's generic loading failure. It is not proof of HTTP 403:
-    // the source may be denied, unavailable, return non-media, or fail locally.
-    let message = if code.contains("Raw(-13)") {
-        "媒体加载失败（libmpv -13）。请检查 VPN 或代理端口是否有效、网络和资源权限，确认 HTTPS 地址返回 MP4 而非 403/XML/HTML。".into()
+    let code = safe_mpv_error_code(&format!("{e:?}"));
+    // Raw(-13) is a generic libmpv load failure, NOT proof of HTTP 403.
+    // Never forward Error::Display text: it may contain signed URL queries,
+    // filesystem paths or arbitrary remote diagnostics.
+    let message = if code == "Raw(-13)" {
+        "媒体加载失败（libmpv -13）。请检查 VPN/代理、网络、资源权限或文件完整性，确认 HTTPS 链接返回 MP4 而非 HTML/XML。"
     } else {
-        e.to_string()
+        "播放器原生处理失败。请检查媒体文件完整性、网络连通性和访问权限，再尝试重新打开。"
     };
     Failure {
         stage,
         code,
-        message,
+        message: message.into(),
     }
 }
 
@@ -350,6 +371,33 @@ mod tests {
             classify_end_reason(mpv_end_file_reason::Redirect),
             Ok(None)
         ));
+    }
+
+    #[test]
+    fn native_error_codes_never_leak_paths_urls_or_signed_query_parameters() {
+        for debug in [
+            "NotFound https://cdn.example.com/a.mp4?token=super-secret",
+            "Raw(-13) query=https://private.example.com/secret.mp4",
+            "Raw(-13)\\nC:\\\\Users\\\\Private\\\\video.mp4",
+            "NetworkFailure",
+            "Raw(-133333333)",
+            "Raw(13.0)",
+            "Raw(-13",
+        ] {
+            assert_eq!(safe_mpv_error_code(debug), "mpv_native_error");
+        }
+        assert_eq!(safe_mpv_error_code("Raw(-13)"), "Raw(-13)");
+        assert_eq!(safe_mpv_error_code("Raw(-1)"), "Raw(-1)");
+        assert_eq!(safe_mpv_error_code("Raw(0)"), "Raw(0)");
+        assert_eq!(safe_mpv_error_code("Raw(-2147483648)"), "mpv_native_error");
+    }
+
+    #[test]
+    fn generic_failure_does_not_infer_http_status_from_libmpv_loading_code() {
+        let code = safe_mpv_error_code("Raw(-13)");
+        assert_eq!(code, "Raw(-13)");
+        assert!(safe_mpv_error_code("https://host/video.mp4?sig=secret")
+            .contains("native_error"));
     }
 
     #[test]
