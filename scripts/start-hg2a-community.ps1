@@ -32,9 +32,9 @@ if ($listener) {
   $listenerPid = [int]$listener.OwningProcess
   $listenerProcess = Get-Process -Id $listenerPid -ErrorAction SilentlyContinue
   $listenerName = if ($listenerProcess) { $listenerProcess.ProcessName } else { 'unknown' }
-  throw ("HG-2A port 127.0.0.1:19091 is already in use by PID {0} ({1}). " +
-    "Inspect the process before closing it; this launcher will not terminate or reuse it." -f
-    $listenerPid, $listenerName)
+  $message = ('HG-2A port 127.0.0.1:19091 is already in use by PID {0} ({1}). ' +
+    'Inspect the process before closing it; this launcher will not terminate or reuse it.')
+  throw ($message -f $listenerPid, $listenerName)
 }
 $node = (Get-Command node.exe -ErrorAction Stop).Source
 $tokenBytes = New-Object byte[] 32
