@@ -321,9 +321,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           : mode === "local" ? "管理你自己选择的本地 MP4，文件始终保留在原始位置。"
           : "通过统一 Content Provider 检索演示与本机媒体；演示条目仅使用公开测试素材。"}</p>
       </div>
-      <button className="catalog-ghost" disabled={working} onClick={() => { if (detail) setDetail(null); else void onBack(); }}>
-        {detail ? "← 返回列表" : "← 返回播放器"}
-      </button>
+      {detail && <button className="catalog-ghost" disabled={working}
+        onClick={() => setDetail(null)}>← 返回列表</button>}
     </div>
 
     {!detail && <nav className="catalog-tabs" aria-label="内容来源">
