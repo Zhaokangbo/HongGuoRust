@@ -27,6 +27,8 @@ pub struct Series {
     pub genre: String,
     pub badge: String,
     pub artwork: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_url: Option<String>,
     pub episode_count: usize,
     pub provider_id: String,
 }
@@ -38,6 +40,7 @@ pub struct Episode {
     pub number: usize,
     pub title: String,
     pub runtime_label: String,
+    pub playable: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -153,6 +156,7 @@ impl DemoDefinition {
             genre: self.genre.into(),
             badge: self.badge.into(),
             artwork: self.artwork.into(),
+            cover_url: None,
             episode_count: self.episodes,
             provider_id: "demo".into(),
         }
@@ -164,6 +168,7 @@ impl DemoDefinition {
             number: index + 1,
             title: format!("第 {} 集 · 测试片段", index + 1),
             runtime_label: "00:20".into(),
+            playable: true,
         }
     }
 }
