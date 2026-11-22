@@ -2,6 +2,7 @@ use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
 use super::history::{finish, HistorySession};
 use super::provider_history::{finish_provider, ProviderHistorySession};
+use super::preview::{PreviewFrame, PreviewService};
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use crate::catalog::progress::ProviderProgressStore;
@@ -42,6 +43,7 @@ enum Command {
 struct Shared {
     player: PlayerState,
     closing: bool,
+    preview_source: Option<(u64, MediaSource)>,
 }
 
 pub struct PlayerService {
@@ -50,6 +52,7 @@ pub struct PlayerService {
     worker: Mutex<Option<JoinHandle<()>>>,
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
+    preview: PreviewService,
 }
 
 impl PlayerService {
@@ -72,6 +75,7 @@ impl PlayerService {
             worker: Mutex::new(Some(worker)),
             library,
             provider_progress,
+            preview: PreviewService::default(),
         })
     }
 
@@ -131,6 +135,8 @@ impl PlayerService {
         let filename = source.label();
         let kind = source.kind();
         let id = shared.player.begin(filename);
+        self.preview.cancel();
+        shared.preview_source = Some((id, source.clone()));
         let accepted = Instant::now();
         if self
             .tx
@@ -144,6 +150,7 @@ impl PlayerService {
             })
             .is_err()
         {
+            shared.preview_source = None;
             let failure = Failure {
                 stage: "dispatch",
                 code: "worker_exited".into(),
@@ -159,6 +166,7 @@ impl PlayerService {
     }
 
     pub fn stop(&self) -> Result<(), String> {
+        self.preview.cancel();
         let shared = self.state.lock().unwrap();
         if shared.closing {
             return Err("Window is closing".into());
@@ -192,7 +200,48 @@ impl PlayerService {
             .map_err(|_| "Playback control timed out".to_owned())?
     }
 
+    /// The preview uses its own Mpv image-output handle on a blocking task.
+    /// Only the active native session can request it; source URLs never enter IPC.
+    pub fn preview_frame(
+        &self,
+        session_id: u64,
+        seconds: f64,
+    ) -> Result<Option<PreviewFrame>, String> {
+        let source = {
+            let shared = self.state.lock().unwrap();
+            if shared.closing {
+                return Ok(None);
+            }
+            let snapshot = shared.player.snapshot();
+            if snapshot.session_id != Some(session_id)
+                || !matches!(
+                    snapshot.state,
+                    PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Buffering
+                )
+            {
+                return Ok(None);
+            }
+            match shared.preview_source.as_ref() {
+                Some((id, source)) if *id == session_id => source.clone(),
+                _ => return Ok(None),
+            }
+        };
+        let frame = self.preview.frame(session_id, seconds, &source)?;
+        let current = self.state.lock().unwrap();
+        if current.closing
+            || current.player.snapshot().session_id != Some(session_id)
+            || !matches!(
+                current.player.snapshot().state,
+                PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Buffering
+            )
+        {
+            return Ok(None);
+        }
+        Ok(frame)
+    }
+
     pub fn begin_close(&self) -> bool {
+        self.preview.cancel();
         let mut shared = self.state.lock().unwrap();
         if shared.closing {
             return false;
