@@ -269,9 +269,13 @@ impl CatalogService {
         {
             return Err("invalid_episode_id: Invalid episode ID".into());
         }
-        let target = self
-            .provider(source)?
-            .resolve_episode(local_id, episode_id)?;
+        let provider = self.provider(source)?;
+        // Capability metadata is enforced by Rust, never just by a disabled UI
+        // control. An unapproved source cannot return a target to PlayerService.
+        if !provider.supports_play() {
+            return Err("provider_not_authorized: 当前内容源没有播放授权".into());
+        }
+        let target = provider.resolve_episode(local_id, episode_id)?;
         match target {
             MediaTarget::Https(url) => {
                 crate::player::source::public_https_url(&url).map(MediaTarget::Https)
