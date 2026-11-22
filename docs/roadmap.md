@@ -279,5 +279,5 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - UI-1：桌面壳与发现首页，Draft PR #33，累积依赖 HG-2A/HG-2B。
 - UI-2：目录信息架构、详情和发现页改造，Draft PR #34。
 - UI-3：browse-first Netflix 风格首页，Draft PR #36；Windows M1/M2 精确 HEAD 双绿，用户已确认 Windows 实机验收通过。
-- UI-4：本地媒体、历史和收藏的统一个人媒体中心；Draft PR #37，分支 feat/ui-4-personal-library，当前 HEAD c0f5830eb937fec965ebb8852ef0b25a5a204009。基于已验收 UI-3 精确 HEAD 派生；保持磁盘文件、历史、收藏与播放列表语义不变。已修复本地库重复错误提示、限制原生错误细节显示、补充逐项无障碍标签，并按当前视图修正搜索/筛选文案及“入库顺序”排序标签；提高小字号辅助信息对比度。
+- UI-4：本地媒体、历史和收藏的统一个人媒体中心；Draft PR #37，分支 feat/ui-4-personal-library，当前 HEAD 95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03。基于已验收 UI-3 精确 HEAD 派生；保持磁盘文件、历史、收藏与播放列表语义不变。已修复本地库重复错误提示、限制原生错误细节显示、补充逐项无障碍标签，并按当前视图修正搜索/筛选文案及“入库顺序”排序标签；提高小字号辅助信息对比度。精确 HEAD 的 Windows M1/M2 CI 均 completed/success（runs 45047805176 / 45047805159）；M2 Debug artifact 14764800311，ZIP SHA256 9021693acc36b0b5f1b946f4e26f59313ada0b3c15a2d882f2fca90fa419425c。21 项 Windows 实机验收仍待用户确认。
 - UI-5：详情页与播放器控制栏深度体验优化，待 UI-4 验收后再立项。
