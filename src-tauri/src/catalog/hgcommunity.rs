@@ -40,6 +40,32 @@ fn is_host(value: &str) -> bool {
         && !value.contains("..")
 }
 
+/// Only display public HTTPS cover images provided by the opt-in SDK.
+ /// Never accept credentials, private IP literals, fragments or unsafe schemes.
+ /// This is syntactic validation, not a network DNS/redirect pinning guarantee.
+fn valid_cover_url(value: &str) -> Option<&str> {
+    if value.len() > 2048
+        || !value.starts_with("https://")
+        || value.contains('#')
+        || value.bytes().any(|byte| byte <= 0x20 || byte == 0x7f)
+    {
+        return None;
+    }
+    let host = value[8..].split(['/', '?']).next()?;
+    let suffix = host.rsplit('.').next()?;
+    if !is_host(host)
+        || host.contains('@')
+        || host.contains(':')
+        || suffix.len() < 2
+        || !suffix.bytes().all(|byte| byte.is_ascii_alphabetic())
+        || ["local", "localhost", "internal", "test", "invalid"].contains(&suffix)
+        || host.parse::<std::net::IpAddr>().is_ok()
+    {
+        return None;
+    }
+    Some(value)
+}
+
 fn url_encode(value: &str) -> String {
     let mut result = String::new();
     for byte in value.bytes() {
@@ -202,6 +228,7 @@ impl HgCommunityProvider {
             genre: genre.into(),
             badge: "非官方社区数据（实验）".into(),
             artwork: "studio".into(),
+            cover_url: valid_cover_url(item["coverUrl"].as_str()).map(str::to_owned),
             episode_count: count as usize,
             provider_id: "hgcommunity".into(),
         })
@@ -281,6 +308,7 @@ impl HgCommunityProvider {
                 number: number as usize,
                 title: title.into(),
                 runtime_label: "—".into(),
+                playable: raw_ep["playable"].as_bool().unwrap_or(false),
             });
         }
         episodes.sort_by_key(|ep| ep.number);
@@ -337,7 +365,7 @@ impl ContentProvider for HgCommunityProvider {
         let detail = self
             .detail_inner(series_id, None)?
             .ok_or("hgcommunity_unknown_series")?;
-        if !detail.episodes.iter().any(|ep| ep.id == episode_id) {
+        if !detail.episodes.iter().any(|ep| ep.id == episode_id && ep.playable) {
             return Err("hgcommunity_unknown_episode".into());
         }
         let value = self.get_json(
