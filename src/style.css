@@ -2866,12 +2866,12 @@ main.catalog-mode .catalog-episodes .catalog-episode-card:hover:not(:disabled) {
   border-color: #666;
   background: #222;
 }
-main.catalog-mode .catalog-episodes .catalog-episode-card.is-current {
+main.catalog-mode .catalog-episodes .catalog-episode-card.is-resume-target {
   border-color: #e50914;
   box-shadow: inset 3px 0 #e50914;
   background: #211517;
 }
-main.catalog-mode .catalog-episodes .catalog-episode-card.is-current strong { color: #ff5961; }
+main.catalog-mode .catalog-episodes .catalog-episode-card.is-resume-target strong { color: #ff5961; }
 main.catalog-mode .catalog-episodes .catalog-episode-card:focus-visible,
 main.catalog-mode .catalog-description-toggle:focus-visible,
 main.catalog-mode .catalog-episode-tools button:focus-visible {
