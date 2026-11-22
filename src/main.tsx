@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import { formatRuntimeHealth, getRuntimeHealth, type RuntimeHealth } from "./player/runtimeHealth";
 import { persistLocalAutoNext, readPlayerPreferences } from "./player/preferences";
 import {
   changeMediaTrack, getMediaTracks, selectedTrackId, trackLabel, usableTrackList,
@@ -44,6 +45,11 @@ function App() {
   const [volume, setVolume] = useState(100);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [preferencesError, setPreferencesError] = useState("");
+  const [healthVisible, setHealthVisible] = useState(false);
+  const [healthReport, setHealthReport] = useState<RuntimeHealth | null>(null);
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [healthError, setHealthError] = useState("");
+  const healthRequestRef = useRef(0);
   const [autoNextSaving, setAutoNextSaving] = useState(false);
   const [mediaTracks, setMediaTracks] = useState<TrackList | null>(null);
   const [trackBusy, setTrackBusy] = useState(false);
@@ -131,6 +137,41 @@ function App() {
       setPreferencesError("自动连播偏好保存失败：" + String(reason));
     } finally {
       setAutoNextSaving(false);
+    }
+  }
+
+  async function refreshHealth() {
+    const request = ++healthRequestRef.current;
+    setHealthBusy(true);
+    setHealthError("");
+    try {
+      const report = await getRuntimeHealth();
+      if (healthRequestRef.current === request) setHealthReport(report);
+    } catch (reason) {
+      if (healthRequestRef.current === request) setHealthError(String(reason));
+    } finally {
+      if (healthRequestRef.current === request) setHealthBusy(false);
+    }
+  }
+
+  function toggleHealth() {
+    if (healthVisible) {
+      healthRequestRef.current++;
+      setHealthVisible(false);
+      setHealthBusy(false);
+    } else {
+      setHealthVisible(true);
+      void refreshHealth();
+    }
+  }
+
+  async function copyHealth() {
+    if (!healthReport) return;
+    try {
+      await navigator.clipboard.writeText(formatRuntimeHealth(healthReport));
+      setHealthError("");
+    } catch {
+      setHealthError("无法复制诊断信息，请检查系统剪贴板权限");
     }
   }
 
@@ -648,6 +689,25 @@ function App() {
         <span className="player-preferences-hint" title="倍速、音量与本地列表自动连播偏好保存在本机">
           {preferencesReady ? "设置自动保存" : "设置未加载"}
         </span>
+        <button type="button" aria-expanded={healthVisible}
+          title="只读诊断：仅含当前进程的会话、缓冲、退出统计，不采集视频路径和 URL"
+          onClick={toggleHealth}>运行诊断</button>
+        {healthVisible && <>
+          <button type="button" disabled={healthBusy || !connected} onClick={() => void refreshHealth()}>
+            {healthBusy ? "读取中…" : "刷新"}
+          </button>
+          {healthReport && <span className="player-health-summary" role="status"
+            title={formatRuntimeHealth(healthReport)}>
+            打开 {healthReport.sessionsOpened} · 缓冲 {healthReport.bufferEvents}
+            /{healthReport.bufferTotalMs}ms · 释放 {healthReport.libmpvReleases}
+            /{healthReport.maxReleaseMs}ms
+          </span>}
+          <button type="button" disabled={!healthReport} onClick={() => void copyHealth()}>
+            复制诊断
+          </button>
+          {healthError && <span role="alert" className="player-health-error"
+            title={healthError}>诊断读取/复制失败</span>}
+        </>}
         <span className="player-status">{snapshot?.state ?? "—"}</span>
         <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
       </div>
