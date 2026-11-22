@@ -140,18 +140,31 @@
 
 - 采用现代桌面流媒体/媒体中心方向：深色沉浸式界面、真实海报优先、明确导航层级、统一卡片/表单/按钮/状态、适配 Windows 窗口尺寸。
 - UI-1：设计 token、应用导航/页面框架、首页；UI-2：探索页/海报墙/详情；UI-3：播放器控件；UI-4：本地媒体/历史/收藏；UI-5：Windows 实机和全量回归。
-- UI 改版使用独立开发分支与 Draft PR；预期从已验收的 HG2B 代码基线派生，PR 合并顺序必须遵守 #32 及之前 stacked PR 依赖。未经用户明确授权不得合并。
+- 用户明确要求由当前 Chat 直接接手 GitHub 工程开发，不切换 Work、不再要求复制提示词或先选择视觉概念。已采用此前双方确认的现代流媒体影院风格作为默认方向。
+- UI 改版使用独立开发分支与 Draft PR；从 HG-2B 代码基线派生，PR 合并顺序必须遵守 #31 → #32 → UI PR。未经用户明确授权不得合并。
 - 必须保持 Rust 播放内核、libmpv worker 所有权、Native session ID、Tauri IPC、Provider 数据契约、播放权限/仅浏览边界不变；不得把敏感媒体 URL、凭证或本地绝对路径暴露到 UI/历史。
 - 原生视频 HWND 的尺寸/定位、全屏与 catalog 显示切换是硬约束。UI 可重新组织 HTML 控件，但不得假设 HTML overlay 能覆盖原生 HWND，也不得在无专项验证时改变播放器窗口几何。
-- 本次尚未创建 UI 分支、PR 或修改前端代码。Product Design 的视觉 ideation/原型流程需要在 ChatGPT Work 模式进行；在用户选定视觉方向前，不开始大规模 UI 实现。
+- 玩家主窗口既有 66px header / 96px player footer 是硬约束；UI-1 只调整 catalog header 内部排版和 catalog 内容样式，不调整视频区域或播放器 footer。
+
+### UI-1 当前实现与 GitHub 状态（2026-11-22 UTC）
+
+- **开发分支**：`feat/ui-1-cinematic-discovery`，从 HG-2B PR #32 精确 HEAD `ac6614c94ef35095666054971a7c42c302982e2e` 创建。
+- **Draft PR #33**：[feat(ui-1): cinematic desktop shell and discovery home](https://github.com/Zhaokangbo/HongGuoRust/pull/33)，Open / Draft / 未合并，base `main`，当前 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66`。该 PR 是累积 stacked diff（77 个文件），其中 UI-1 新增/修改的实际文件为 `src/main.tsx`、`src/catalog/DiscoveryHome.tsx`、`src/style.css`、`docs/acceptance/ui-1.md`；前置 HG2A/HG2B 代码随堆叠基线一并出现在相对 main 的 PR diff 中。
+- **UI-1 实际代码**：
+  - `src/main.tsx`：应用品牌区加入简洁的 PERSONAL MEDIA CENTER 标识；保留现有 header 行高与播放器结构。
+  - `src/catalog/DiscoveryHome.tsx`：首页文案调整为准确描述实际接入内容，不暗示虚构榜单或未授权内容。
+  - `src/style.css`：新增 UI-1 设计 token 与现代影院风格覆盖；优化 catalog header、标题、tabs、来源工具、搜索框、焦点/悬停状态；真实海报卡片改为 2:3 竖版展示；强化首页 banner、真实内容焦点卡片、筛选和继续观看卡片；增加窄窗口布局与 focus-visible 状态。
+  - `docs/acceptance/ui-1.md`：新增 10 项 Windows 实机验收清单。
+- **最近提交**：`62b384861118d7450a0f829a1347683836a8600a`（品牌 header）、`2f2df6f9280648d8e1af35f0791c5302972b2293`（首页文案）、`1150de644993bf056726ecc246d9b45e1b007261`（视觉 token 与样式）、`916474d5ea25cbc8a009631f36d6818b53e20f66`（UI-1 验收文档，当前 HEAD）。
+- **当前 CI**：精确 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66` 的 Windows M2 run `45025871696` 与 Windows M1 run `45025871727` 在首次查询时均为 `in_progress`。按用户协作约定，不持续轮询；等待用户通知“编译完成”后再检查最终结果。当前不得宣称 CI 通过，也没有可供用户验收的 UI-1 Windows artifact。
+- **Windows 实机验收**：尚未开始；按 `docs/acceptance/ui-1.md` 逐项执行。UI-1 代码提交不代表 UI-1 视觉、键盘或播放器回归已通过。
+- **合并纪律**：#31、#32、#33 均保持 Draft/未合并；#32 的 HG-2B 实机验收仍有未完成项。必须先完成各自验收、按 #31 → #32 → #33 顺序处理，并取得用户明确合并授权。
 
 ### 最新实机结果与下一步
 
-- 2026-11-22 用户提供 Windows 详情页截图：真实封面、作品简介、107 集剧集列表均可见；顶部提示明确为真实目录浏览模式，未配置允许媒体域名，不会解析或播放；每集按钮显示“仅可浏览”。这些截图支持详情内容展示与全局播放保护通过。
-- 截图没有证明某个单集因上游 `playable=false` 而被单独标识为“上游标记不可播放”；全局仅浏览会禁用全部剧集，因此这项必须单独验证，不能与全局权限保护混为一谈。
-- 这次没有代码变更，不额外触发 CI。PR #32 仍为 Draft / 未合并。
-
-1. 在 Product Design / Work 模式完成三套有明显差异的视觉方向（例如影院沉浸式、现代流媒体、简洁媒体库），明确导航、首页、海报墙、详情和播放器控件的整体规则，让用户选择一套方向；当前普通 Chat 不启动需要 Work 环境的 ideation。
-2. 选定方向后，从已核实的 HG-2B 代码基线建立 UI-1 独立开发分支与 Draft PR，先完成设计 token、应用导航/页面框架和首页；不触碰 Rust/libmpv/IPC/Provider。
-3. UI-1 每个可验收切片都提交 GitHub、更新 main 交接文档，并由用户在 Windows 实机验收；会话结束时输出可直接交给下一会话的最新接力 prompt。
-4. HG-2B 后续合并前仍需补齐单集 `playable=false` 状态独立验证、封面失败安全回退、搜索刷新竞态及 M7–HG2A 回归；不得因 UI 开发而误标 HG-2B 全量验收通过。
+- HG-2B 已确认的用户实机结果仍是：列表真实封面通过；详情真实封面、简介、107 集列表与全局仅浏览提示/禁播状态已由用户截图确认。单集上游 `playable=false` 独立状态显示、失败回退、搜索刷新竞态及 M7–HG2A 完整回归仍未全部验收。
+- UI-1 当前只提交了前端展示层改动，没有修改 Rust/libmpv/IPC/Provider 或播放授权逻辑。
+- 等待用户报告 Windows M1/M2 构建完成；收到后核对精确 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66` 的两条 workflow。若通过，再提供匹配 SHA 的 debug artifact / 部署步骤；若失败，读取对应 job 日志修复。
+- UI-1 实机验收重点：品牌 header/连接状态、全部导航 tab、首页搜索与来源/分类筛选、真实海报 2:3 展示、详情跳转、继续观看、窗口缩放/无横向溢出、键盘焦点，以及返回播放器后 HWND/96px footer/播放控制回归。
+- UI-1 验收通过后，再开始 UI-2（探索列表、海报墙与详情页）；随后 UI-3 播放器控件、UI-4 本地媒体/历史/收藏、UI-5 全量 Windows 回归。
+- 不因 UI 开发而误标 HG-2B 全量验收通过，也不得自动合并任何 Draft PR。
