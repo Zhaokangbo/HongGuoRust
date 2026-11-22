@@ -10,7 +10,6 @@ import {
 
 interface Props {
   onPlay: (id: number, orderedIds: number[], origin: string) => Promise<boolean>;
-  playerError: string;
   historyOnly?: boolean;
   favoritesOnly?: boolean;
 }
@@ -46,7 +45,7 @@ function progressPercent(item: LocalMedia): number | null {
 }
 
 export function LocalLibraryView({
-  onPlay, playerError, historyOnly = false, favoritesOnly = false,
+  onPlay, historyOnly = false, favoritesOnly = false,
 }: Props) {
   const mode: LibraryMode = historyOnly ? "history" : favoritesOnly ? "favorites" : "local";
   const origin = historyOnly ? "最近播放" : favoritesOnly ? "我的收藏" : "我的视频";
@@ -71,7 +70,7 @@ export function LocalLibraryView({
         setError("");
       }
     } catch (reason) {
-      if (version === loadVersion.current) setError(String(reason));
+      if (version === loadVersion.current) setError("读取本地媒体库失败，请重试。");
     } finally {
       if (version === loadVersion.current) setLoading(false);
     }
@@ -82,7 +81,7 @@ export function LocalLibraryView({
     return () => { loadVersion.current++; };
   }, []);
 
-  async function mutate(action: () => Promise<void>, after?: () => void) {
+  async function mutate(action: () => Promise<void>, failureMessage: string, after?: () => void) {
     if (working) return;
     setWorking(true);
     setError("");
@@ -91,7 +90,7 @@ export function LocalLibraryView({
       await reload(false);
       after?.();
     } catch (reason) {
-      setError(String(reason));
+      setError(failureMessage);
     } finally {
       setWorking(false);
     }
@@ -105,7 +104,7 @@ export function LocalLibraryView({
       const selected = await addLocalMedia();
       if (selected) await reload(false);
     } catch (reason) {
-      setError(String(reason));
+      setError("添加本地 MP4 失败，请确认文件仍可访问且格式受支持。");
     } finally {
       setWorking(false);
     }
@@ -118,7 +117,7 @@ export function LocalLibraryView({
     try {
       await onPlay(id, playlistFromVisible(visible), origin);
     } catch (reason) {
-      setError(String(reason));
+      setError("无法启动本地视频，请确认文件仍存在且格式受支持。");
     } finally {
       setWorking(false);
     }
@@ -232,8 +231,8 @@ export function LocalLibraryView({
         onClick={() => { setQuery(""); setFilter("all"); }}>清除筛选</button>}
     </div>
 
-    {(error || playerError) && <div className="personal-library-error" role="alert">
-      <span>{error || playerError}</span>
+    {error && <div className="personal-library-error" role="alert">
+      <span>{error}</span>
       {error && <button type="button" onClick={() => void reload(true)}>重试</button>}
     </div>}
 
@@ -262,6 +261,7 @@ export function LocalLibraryView({
             : item.lastPlayedMs !== null ? "观看中" : "未播放";
         const favoriteLabel = favoritesOnly ? "取消收藏"
           : item.favorite ? "已收藏" : "收藏";
+        const playLabel = resume ? "继续播放" : item.completed ? "重新播放" : "播放";
         return <article className={"personal-media-card" + (!item.available ? " is-missing" : "")}
           key={item.id}>
           <div className="personal-media-art" aria-hidden="true">
@@ -292,15 +292,17 @@ export function LocalLibraryView({
               <small>{item.completed ? "已完成" : "已观看 " + clock(item.positionSec)}</small>
             </div>}
             <div className="personal-media-actions">
-              <button type="button" className="personal-media-play" disabled={working || !item.available}
-                onClick={() => void play(item.id)}>
-                {resume ? "继续播放" : item.completed ? "重新播放" : "播放"}
+              <button type="button" className="personal-media-play"
+                aria-label={playLabel + " " + item.title}
+                disabled={working || !item.available} onClick={() => void play(item.id)}>
+                {playLabel}
               </button>
               <button type="button" className="personal-media-favorite" disabled={working}
                 aria-pressed={item.favorite}
                 aria-label={(item.favorite ? "取消收藏 " : "收藏 ") + item.title}
                 onClick={() => void mutate(
                   () => setLocalFavorite(item.id, !item.favorite),
+                  "更新收藏状态失败，请重试。",
                 )}>
                 <span aria-hidden="true">{item.favorite ? "★" : "☆"}</span>
                 {favoriteLabel}
@@ -310,25 +312,33 @@ export function LocalLibraryView({
               ? <div className="personal-media-confirm" role="group" aria-label="清除观看记录确认">
                   <span>仅清除记录，不删除视频。</span>
                   <button type="button" disabled={working}
-                    onClick={() => void mutate(() => clearLocalHistory(item.id), () => setConfirmClearId(null))}>
+                    aria-label={"确认清除 " + item.title + " 的观看记录"}
+                    onClick={() => void mutate(() => clearLocalHistory(item.id),
+                      "清除观看记录失败，请重试。", () => setConfirmClearId(null))}>
                     确认清除
                   </button>
                   <button type="button" className="is-secondary" disabled={working}
+                    aria-label={"取消清除 " + item.title + " 的观看记录"}
                     onClick={() => setConfirmClearId(null)}>取消</button>
                 </div>
               : <button type="button" className="personal-media-text-action" disabled={working}
+                  aria-label={"清除 " + item.title + " 的观看记录"}
                   onClick={() => setConfirmClearId(item.id)}>清除记录</button>
               : !favoritesOnly && (confirmRemoveId === item.id
                 ? <div className="personal-media-confirm" role="group" aria-label="移除媒体确认">
                     <span>仅从媒体库移除，不删除原文件。</span>
                     <button type="button" disabled={working}
-                      onClick={() => void mutate(() => removeLocalMedia(item.id), () => setConfirmRemoveId(null))}>
+                      aria-label={"确认将 " + item.title + " 移出媒体库"}
+                      onClick={() => void mutate(() => removeLocalMedia(item.id),
+                        "移除媒体库条目失败，请重试。", () => setConfirmRemoveId(null))}>
                       确认移除
                     </button>
                     <button type="button" className="is-secondary" disabled={working}
+                      aria-label={"取消移除 " + item.title}
                       onClick={() => setConfirmRemoveId(null)}>取消</button>
                   </div>
                 : <button type="button" className="personal-media-text-action" disabled={working}
+                    aria-label={"将 " + item.title + " 移出媒体库"}
                     onClick={() => setConfirmRemoveId(item.id)}>移出媒体库</button>)}
           </div>
         </article>;
