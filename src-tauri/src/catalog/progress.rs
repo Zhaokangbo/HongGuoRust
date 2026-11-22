@@ -489,6 +489,37 @@ mod tests {
     }
 
     #[test]
+    fn recent_snapshots_are_sorted_and_do_not_serialize_media_sources() {
+        let path = test_path();
+        let store = ProviderProgressStore::from_path(path.clone());
+        let secret_source = "https://example.com/video.mp4?private_key=do-not-expose";
+        store
+            .mark_started("manifest:my-series", "ep-1", secret_source)
+            .unwrap();
+        store
+            .save_progress(
+                "manifest:my-series",
+                "ep-1",
+                secret_source,
+                Some(9.0),
+                Some(30.0),
+                false,
+            )
+            .unwrap();
+        let recent = store.list_recent().unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].series_id, "manifest:my-series");
+        assert_eq!(recent[0].episode_id, "ep-1");
+        let exposed = serde_json::to_string(&recent).unwrap();
+        assert!(!exposed.contains("private_key"));
+        assert!(!exposed.contains("sourceFingerprint"));
+        assert!(!exposed.contains("https://"));
+        assert!(recent[0].last_played_ms > 0);
+        drop(store);
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
     fn corrupt_file_is_not_overwritten() {
         let path = test_path();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
