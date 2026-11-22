@@ -6,16 +6,16 @@
 
 ## 0. HG-2B：HEIC 封面解码兼容修复（2026-11-22 UTC）
 
-- **PR #32 当前状态**：[Draft PR #32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)，open / draft / 未合并，base `main`，分支 `feat/hg2b-real-covers-and-episode-status`。最新 HEAD：`19bf91399a8302a63dca9838e16d7791f5347ab0`。不得擅自合并。
-- **最新 HEAD CI**：Windows M1 run `45017280362` 与 Windows M2 playback run `45017280352` 已触发，最近一次查询均为 `in_progress`。遵守用户要求，不持续轮询；等待用户说“编译完成”后再查询最终结果一次。旧 HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac` 的 M1 `45011433042`、M2 `45011433033` 曾全绿，但不能替代新 HEAD CI。
-- **用户 Windows 本地当前状态**：用户已 checkout 旧 HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac`，并有未跟踪文件 `?? scripts/hg2a-sdk/package-lock.json`。不要删除、reset 或 stash 该文件。新 HEAD CI 通过后，用户再 fetch/switch 到 `19bf91399a8302a63dca9838e16d7791f5347ab0`；执行 `npm install --prefix .\\scripts\\hg2a-sdk --ignore-scripts` 会更新本地可选 sidecar 依赖与该未跟踪 lockfile，保留它即可。
+- **PR #32 当前状态**：[Draft PR #32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)，open / draft / 未合并，base `main`，分支 `feat/hg2b-real-covers-and-episode-status`。最新 HEAD：`a2dc7715e6a6a61d8261ed2c2798fb50d2f3d7fd`。不得擅自合并。
+- **最新 HEAD CI**：Windows M1 run `45017603249`（queued）与 Windows M2 playback run `45017603283`（in_progress）已触发。遵守用户要求，不持续轮询；等待用户说“编译完成”后再查询最终结果一次。旧 HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac` 的 M1 `45011433042`、M2 `45011433033` 曾全绿，但不能替代新 HEAD CI。
+- **用户 Windows 本地当前状态**：用户已 checkout 旧 HEAD `7b8735de8cc67dc00d3e5cd68b44cbd39f0e44ac`，并有未跟踪文件 `?? scripts/hg2a-sdk/package-lock.json`。不要删除、reset 或 stash 该文件。新 HEAD CI 通过后，用户再 fetch/switch 到 `a2dc7715e6a6a61d8261ed2c2798fb50d2f3d7fd`；执行 `npm install --prefix .\\scripts\\hg2a-sdk --ignore-scripts` 会更新本地可选 sidecar 依赖与该未跟踪 lockfile，保留它即可。
 - **根因证据**：用户在真正附加到 HongGuoRust WebView2 的 DevTools Network → Img 中看到至少一张封面 HTTP `200 OK`，Remote Address `127.0.0.1:7897`，Response `Content-Type: image/heic`、`Content-Length: 33636`。Preview 面板显示破损图标，应用的 `CoverImage.tsx` 已触发 `img onError`。这强烈指向 HEIC 图片解码不兼容，而不是请求未到达 CDN。DevTools Console 底部的 `.well-known/appspecific/com.chrome.devtools.json` CSP 报错是 DevTools 自身辅助请求，不是封面请求；不扩大 `connect-src`。
-- **本次代码修复（commit `19bf91399a8302a63dca9838e16d7791f5347ab0`）**：
+- **本次代码修复（commit `a2dc7715e6a6a61d8261ed2c2798fb50d2f3d7fd`）**：
   - `scripts/hg2a-sdk/server.mjs`：新增受限 Loopback Image Relay。仅允许当前实测海报域 `fqnovelpic.com` 根域及子域；原始签名 URL 仅保存在 sidecar 本次进程内存。返回随机 128-bit opaque ID 对应的 `http://127.0.0.1:19091/v1/covers/<id>`，不把 signed URL 暴露给 React/Rust/UI/诊断日志。
   - sidecar 下载器使用用户现有 `HTTPS_PROXY` / `ALL_PROXY` / `HTTP_PROXY` 环境代理；代理明确失败时不回退直连。最多两次 allowlist 内重定向，限制源/输出 5 MiB、HEIC 解码 12 MP、最多 4 个并发、内存缓存 16 MiB/100 张，opaque ID 15 分钟过期；不落盘、不自动重试。
   - `image/heic` / `image/heif` 使用 `libheif-js/wasm-bundle` 解码，再用 `jpeg-js` 编码 JPEG；JPEG/PNG/WebP/AVIF/GIF 经 MIME allowlist 后原样返回。依赖固定为 `libheif-js@1.23.5`（LGPL-3.0）、`jpeg-js@0.4.4`（BSD-3-Clause）、`https-proxy-agent@9.1.0`（MIT），以及原有 `openhongguo@0.4.0`。
   - `src/catalog/coverUrl.ts`、`src-tauri/src/catalog/hgcommunity.rs` 接受严格固定的本机 opaque cover URL；`src-tauri/tauri.conf.json` 仅在 `img-src` 加入 `http://127.0.0.1:19091`，保持 `connect-src` 不变。普通演示/本地内容不改变。
-  - 更新 `tests/hg2a-community-gateway.test.mjs`、`tests/hg2b-cover.test.mjs`，覆盖 opaque URL、HEIC→JPEG 中继、host allowlist、无令牌图片请求、Origin 拒绝、未知 ID 和解码失败关闭。M1/M2 workflow 新增安装可选 sidecar codecs 的步骤。
+  - 更新 `tests/hg2a-community-gateway.test.mjs`、`tests/hg2b-cover.test.mjs`，覆盖 opaque URL、HEIC→JPEG 中继、host allowlist、无令牌图片请求、Origin 拒绝、未知 ID；新增 `heicRuntimeAvailable()` 检查 WASM/编码器依赖真实可加载，并验证畸形 HEIC 失败关闭。`HG2B_COVER_DIAG` 的 direct/recovered 统计现在按允许的 `fqnovelpic.com` host 计算，未允许 host 会计入 missing。M1/M2 workflow 新增安装可选 sidecar codecs 的步骤。
 - **安全边界/剩余验证**：目前仅从用户截图确认 `fqnovelpic.com`；若其他作品 CDN host 不同，先核实真实 Network host，再按精确域名后缀扩展，禁止改成任意 URL proxy。DNS 重绑定/代理侧解析差异仍是进一步公开发布审查项。LGPL-3.0 第三方许可证/源码信息需在发布时保留。此功能只处理公开封面，不触碰媒体流、DRM、会员权限或播放授权。
 - **下一步**：等待新 HEAD 的 M1/M2 CI 完成，不轮询。两者成功后再下载并校验同 SHA M2 artifact，准备新的 Windows Debug test kit；用户在 Windows 实机验收真实封面、搜索刷新、详情封面和 M7–M12 回归。CI 成功不代表 Windows 实机验收通过。
 ## 1. 项目入口与用户工作方式
