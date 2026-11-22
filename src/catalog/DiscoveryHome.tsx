@@ -190,7 +190,7 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
           onClick={() => onSelect(hero.id)}>
           <span className={"discovery-hero-art artwork-" + hero.artwork} aria-hidden="true">
             <CoverImage url={hero.coverUrl} />
-            {discoverySourceLabel(hero.providerId, names)}
+            <span>{discoverySourceLabel(hero.providerId, names)}</span>
           </span>
           <span className="discovery-hero-copy">
             <small>首页焦点 · 来自现有内容源</small>
