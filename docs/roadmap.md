@@ -279,5 +279,5 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - UI-1：桌面壳与发现首页，Draft PR #33，累积依赖 HG-2A/HG-2B。
 - UI-2：目录信息架构、详情和发现页改造，Draft PR #34。
 - UI-3：browse-first Netflix 风格首页，Draft PR #36；Windows M1/M2 精确 HEAD 双绿，用户已确认 Windows 实机验收通过。
-- UI-4：本地媒体、历史和收藏的统一个人媒体中心；Draft PR #37，分支 feat/ui-4-personal-library，当前 HEAD 95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03。基于已验收 UI-3 精确 HEAD 派生；保持磁盘文件、历史、收藏与播放列表语义不变。已修复本地库重复错误提示、限制原生错误细节显示、补充逐项无障碍标签，并按当前视图修正搜索/筛选文案及“入库顺序”排序标签；提高小字号辅助信息对比度。精确 HEAD 的 Windows M1/M2 CI 均 completed/success（runs 45047805176 / 45047805159）；M2 Debug artifact 14764800311，ZIP SHA256 9021693acc36b0b5f1b946f4e26f59313ada0b3c15a2d882f2fca90fa419425c。21 项 Windows 实机验收仍待用户确认。
-- UI-5：详情页与播放器控制栏深度体验优化，待 UI-4 验收后再立项。
+- UI-4：本地媒体、历史和收藏的统一个人媒体中心；Draft PR #37，分支 `feat/ui-4-personal-library`，应用代码 HEAD `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03` 的 Windows M1/M2 CI 双绿，用户已使用隔离 Debug 测试包明确确认 21/21 项 Windows 实机验收通过。测试包来自 M2 artifact `14764800311`；ZIP SHA256 `9021693acc36b0b5f1b946f4e26f59313ada0b3c15a2d882f2fca90fa419425c`，EXE SHA256 `44cde497eed65192c54d2dc7748388431f5596f487979b3c44e3e771266c0f6b`。PR #37 仍 Draft / 未合并，需遵循堆叠依赖与显式合并授权。
+- UI-5：详情页与播放器控制栏深度体验优化；已在 UI-4 21/21 实机验收后启动。独立 Draft PR / 分支 `feat/ui-5-detail-player-experience`。计划：详情页简介展开、观看进度摘要、剧集搜索/状态筛选/正倒序；播放器控制栏分组、静音/恢复音量、紧凑可访问布局与 Windows 回归。保持 66px Header / 96px Footer、原生 HWND、Rust/libmpv worker、native session ID 与 Tauri IPC 契约不变。
