@@ -9,6 +9,7 @@ import {
 } from "./player/mediaTracks";
 import { fetchPreviewFrame, previewBucket, previewTimeAtPointer, validPreviewFrame, type PreviewFrame } from "./player/thumbnailPreview";
 import { resolvePlayerShortcut, type PlayerShortcut } from "./player/keyboardShortcuts";
+import { volumeAfterMute } from "./player/volume";
 import { nextAtNaturalEof, type LocalPlaylist } from "./player/autoNext";
 import { CatalogView } from "./catalog/CatalogView";
 import type { SeriesDetail } from "./catalog/types";
@@ -534,6 +535,15 @@ function App() {
   }, [catalogOpen, fullscreen, shortcutHelpOpen, connected, controllable,
       snapshot?.positionSec, snapshot?.durationSec, snapshot?.state, volume, busy]);
 
+  async function toggleMute() {
+    if (!controllable || !preferencesReady) return;
+    const next = volumeAfterMute(volume, lastAudibleVolumeRef.current);
+    const ok = await command("set_volume", { volume: next });
+    if (!ok) return;
+    setVolume(next);
+    if (next > 0) lastAudibleVolumeRef.current = next;
+  }
+
   return <main className={fullscreen ? "fullscreen" : catalogOpen ? "catalog-mode" : ""}>
     <header className="app-header">
       <div className="app-brand">
@@ -554,22 +564,22 @@ function App() {
       ? <CatalogView onBack={backToPlayer} onPlay={playFromCatalog} onPlayLocal={playFromLocal} playerError={commandError} />
       : <section aria-label="视频画面" />}
     <footer className="player-controls">
-      <div className="player-actions">
-        <button disabled={busy || !connected} onClick={() => void playUnqueued("open_local")}>打开本地 MP4</button>
+      <div className="player-actions" role="group" aria-label="打开与管理媒体">
+        <button className="player-action-secondary" disabled={busy || !connected} onClick={() => void playUnqueued("open_local")}>打开本地 MP4</button>
         <input aria-label="公开 HTTPS MP4 直链" type="url" spellCheck={false}
           placeholder="粘贴公开 HTTPS MP4 直链" title={`示例：${SAMPLE}`}
           value={httpsUrl} onChange={e => setHttpsUrl(e.target.value)} />
-        <button disabled={busy || !connected || !httpsUrl.trim()}
+        <button className="player-action-primary" disabled={busy || !connected || !httpsUrl.trim()}
           onClick={() => void playUnqueued("open_https", { url: httpsUrl.trim() })}>播放 HTTPS</button>
-        <button disabled={busy || !connected || snapshot?.state === "Idle"}
+        <button className="player-action-secondary" disabled={busy || !connected || snapshot?.state === "Idle"}
           onClick={() => void playUnqueued("stop")}>停止</button>
         <span className="filename" title={snapshot?.filename}>{snapshot?.filename}</span>
         {error && <span role="alert" title={error}>{error}</span>}
       </div>
-      <div className="player-timeline">
+      <div className="player-timeline" role="group" aria-label="播放进度">
         <span>{clock(seekPreview ?? snapshot?.positionSec)}</span>
         <div className="player-range">
-          <input type="range" aria-label="视频进度" min={0} max={Math.max(1, duration)}
+          <input type="range" aria-label="视频进度" aria-valuetext={clock(seekPreview ?? snapshot?.positionSec) + " / " + clock(snapshot?.durationSec)} min={0} max={Math.max(1, duration)}
             step={0.25} disabled={!seekable} value={Math.min(preview, Math.max(1, duration))}
             onPointerEnter={updateHover} onPointerMove={updateHover}
             onPointerLeave={clearHover} onBlur={clearHover}
@@ -589,139 +599,157 @@ function App() {
         </div>
         <span>{clock(snapshot?.durationSec)}</span>
       </div>
-      <div className="player-transport">
-        <button disabled={!controllable} aria-keyshortcuts="Space K"
-          title="快捷键：空格 / K"
-          onClick={() => void command("set_paused", { paused: snapshot?.state !== "Paused" })}>
-          {snapshot?.state === "Paused" ? "继续" : "暂停"}
-        </button>
-        {episodeQueue && <>
-          <span className="episode-context" title={episodeQueue.seriesTitle}>
-            {episodeQueue.seriesTitle} · 第 {episodeQueue.episodes[episodeQueue.index].number} 集
-            · {episodeQueue.index + 1}/{episodeQueue.episodes.length}
-          </span>
-          <button disabled={busy || !connected || !adjacentEpisode(episodeQueue, -1)}
-            onClick={() => void moveEpisode(-1)} title="仅在当前作品内切换上一集">上一集</button>
-          <button disabled={busy || !connected || !adjacentEpisode(episodeQueue, 1)}
-            onClick={() => void moveEpisode(1)} title="仅在当前作品内切换下一集">下一集</button>
-          {currentEpisodeEnded(episodeQueue, snapshot) &&
-            <span className="episode-completion" role="status">
-              {adjacentEpisode(episodeQueue, 1)
-                ? "本集已播完，点击“下一集”继续"
-                : "本作品已播放到最后一集"}
-            </span>}
-          {currentEpisodeFailed(episodeQueue, snapshot) &&
-            <span className="episode-completion" role="alert">本集播放失败，可重试或切换剧集</span>}
-          {currentEpisodeFailed(episodeQueue, snapshot) &&
-            <button disabled={busy || !connected}
-              onClick={() => void retryEpisode()}>重试本集</button>}
-        </>}
-        {playlist && <>
-          <button disabled={busy || playlist.index === 0}
-            onClick={() => void movePlaylist(-1)} title="按本次播放列表顺序播放上一部">上一部</button>
-          <span className="playlist-indicator" title={playlist.origin + " · 当前临时播放列表"}>
-            列表 {playlist.index + 1}/{playlist.ids.length}
-          </span>
-          <button disabled={busy || playlist.index >= playlist.ids.length - 1}
-            onClick={() => void movePlaylist(1)} title="按本次播放列表顺序播放下一部">下一部</button>
-          <label className="playlist-auto-next" title="仅自然播完才自动播放下一部；手动停止或出错不连播">
-            <input type="checkbox" checked={autoNext}
-              disabled={!preferencesReady || autoNextSaving}
-              onChange={event => { void changeAutoNextSetting(event.target.checked); }} />
-            自动连播
+      <div className="player-transport" role="group" aria-label="播放器控制栏" tabIndex={0}>
+        <div className="player-transport-group player-transport-primary" role="group" aria-label="播放与剧集导航">
+          <button className="player-control-primary" disabled={!controllable}
+            aria-label={snapshot?.state === "Paused" ? "继续播放" : "暂停播放"}
+            aria-keyshortcuts="Space K" title="空格 / K：暂停或继续"
+            onClick={() => void command("set_paused", { paused: snapshot?.state !== "Paused" })}>
+            {snapshot?.state === "Paused" ? "继续" : "暂停"}
+          </button>
+          {episodeQueue && <>
+            <span className="episode-context" title={episodeQueue.seriesTitle}>
+              {episodeQueue.seriesTitle} · 第 {episodeQueue.episodes[episodeQueue.index].number} 集
+              · {episodeQueue.index + 1}/{episodeQueue.episodes.length}
+            </span>
+            <button disabled={busy || !connected || !adjacentEpisode(episodeQueue, -1)}
+              onClick={() => void moveEpisode(-1)} title="仅在当前作品内切换上一集">上一集</button>
+            <button disabled={busy || !connected || !adjacentEpisode(episodeQueue, 1)}
+              onClick={() => void moveEpisode(1)} title="仅在当前作品内切换下一集">下一集</button>
+            {currentEpisodeEnded(episodeQueue, snapshot) &&
+              <span className="episode-completion" role="status">
+                {adjacentEpisode(episodeQueue, 1)
+                  ? "本集已播完，点击“下一集”继续"
+                  : "本作品已播放到最后一集"}
+              </span>}
+            {currentEpisodeFailed(episodeQueue, snapshot) &&
+              <span className="episode-completion" role="alert">本集播放失败，可重试或切换剧集</span>}
+            {currentEpisodeFailed(episodeQueue, snapshot) &&
+              <button disabled={busy || !connected}
+                onClick={() => void retryEpisode()}>重试本集</button>}
+          </>}
+          {playlist && <>
+            <button disabled={busy || playlist.index === 0}
+              onClick={() => void movePlaylist(-1)} title="按本次播放列表顺序播放上一部">上一部</button>
+            <span className="playlist-indicator" title={playlist.origin + " · 当前临时播放列表"}>
+              列表 {playlist.index + 1}/{playlist.ids.length}
+            </span>
+            <button disabled={busy || playlist.index >= playlist.ids.length - 1}
+              onClick={() => void movePlaylist(1)} title="按本次播放列表顺序播放下一部">下一部</button>
+            <label className="playlist-auto-next" title="仅自然播完才自动播放下一部；手动停止或出错不连播">
+              <input type="checkbox" checked={autoNext}
+                disabled={!preferencesReady || autoNextSaving}
+                onChange={event => { void changeAutoNextSetting(event.target.checked); }} />
+              自动连播
+            </label>
+            {autoNext && snapshot?.state === "Ended" &&
+              snapshot.sessionId === playlist.sessionId &&
+              playlist.index === playlist.ids.length - 1 &&
+              <span className="playlist-indicator" role="status">列表已播放完毕</span>}
+            {autoNextError && <span className="playlist-auto-error" role="alert">{autoNextError}</span>}
+          </>}
+        </div>
+        <span className="player-transport-separator" aria-hidden="true" />
+        <div className="player-transport-group player-transport-seek" role="group" aria-label="跳转控制">
+          <label>跳转秒数
+            <input aria-label="跳转秒数" type="number" min={0} step={1} value={seekText}
+              onChange={e => setSeekText(e.target.value)} />
           </label>
-          {autoNext && snapshot?.state === "Ended" &&
-            snapshot.sessionId === playlist.sessionId &&
-            playlist.index === playlist.ids.length - 1 &&
-            <span className="playlist-indicator" role="status">列表已播放完毕</span>}
-          {autoNextError && <span className="playlist-auto-error" role="alert">{autoNextError}</span>}
-        </>}
-        <label>跳转秒数
-          <input aria-label="跳转秒数" type="number" min={0} step={1} value={seekText}
-            onChange={e => setSeekText(e.target.value)} />
-        </label>
-        <button disabled={!controllable || seekText.trim() === "" || !Number.isFinite(Number(seekText)) || Number(seekText) < 0}
-          onClick={() => void applySeek(Number(seekText))}>跳转</button>
-        <label>音轨
-          <select aria-label="音轨" disabled={!controllable || busy || trackBusy || !mediaTracks || mediaTracks.audio.length === 0}
-            value={mediaTracks ? selectedTrackId(mediaTracks.audio, false) : ""}
-            onChange={event => { void selectMediaTrack("audio", event.target.value); }}>
-            <option value="" disabled>无可用音轨</option>
-            {mediaTracks?.audio.map((track, index) =>
-              <option value={String(track.id)} key={track.id}>{trackLabel(track, index)}</option>)}
-          </select>
-        </label>
-        <label>字幕
-          <select aria-label="字幕轨道" disabled={!controllable || busy || trackBusy || !mediaTracks || mediaTracks.subtitles.length === 0}
-            value={mediaTracks ? selectedTrackId(mediaTracks.subtitles, true) : "off"}
-            onChange={event => { void selectMediaTrack("subtitle", event.target.value); }}>
-            <option value="off">关闭字幕</option>
-            {mediaTracks?.subtitles.map((track, index) =>
-              <option value={String(track.id)} key={track.id}>{trackLabel(track, index)}</option>)}
-          </select>
-        </label>
-        {trackError && <span className="player-track-error" role="alert">{trackError}</span>}
-        <label>倍速
-          <select aria-label="播放倍速" value={rate} disabled={!controllable || !preferencesReady}
-            title="保存为下次播放的默认倍速"
-            onChange={e => {
-              const next = Number(e.target.value);
-              void command("set_rate", { rate: next }).then(ok => {
-                if (ok) setRate(next);
-              });
-            }}>
-            {[0.5, 1, 1.5, 2].map(value => <option value={value} key={value}>{value}×</option>)}
-            {![0.5, 1, 1.5, 2].includes(rate) && <option value={rate}>{rate}×</option>}
-          </select>
-        </label>
-        <label>音量
-          <select aria-label="播放音量" value={volume} disabled={!controllable || !preferencesReady}
-            title="音量与静音状态自动保存"
-            onChange={e => {
-              const next = Number(e.target.value);
-              void command("set_volume", { volume: next }).then(ok => {
-                if (!ok) return;
-                setVolume(next);
-                if (next > 0) lastAudibleVolumeRef.current = next;
-              });
-            }}>
-            {[0, 25, 50, 75, 100].map(value => <option value={value} key={value}>{value}%</option>)}
-            {![0, 25, 50, 75, 100].includes(volume) && <option value={volume}>{volume}%</option>}
-          </select>
-        </label>
-        <button disabled={busy || !connected} aria-keyshortcuts="F11 F"
-          title="F 或 F11 切换全屏，Esc 退出"
-          onClick={() => void toggleFullscreen(!fullscreen)}>全屏 F11</button>
-        <button type="button" className="player-help-trigger"
-          aria-expanded={shortcutHelpOpen} aria-controls="player-shortcut-help"
-          aria-keyshortcuts="Shift+Slash"
-          onClick={() => setShortcutHelpOpen(value => !value)}>快捷键 ?</button>
-        {preferencesError && <span role="alert" className="player-preferences-error"
-          title={preferencesError}>设置异常</span>}
-        <span className="player-preferences-hint" title="倍速、音量与本地列表自动连播偏好保存在本机">
-          {preferencesReady ? "设置自动保存" : "设置未加载"}
-        </span>
-        <button type="button" aria-expanded={healthVisible}
-          title="只读诊断：仅含当前进程的会话、缓冲、退出统计，不采集视频路径和 URL"
-          onClick={toggleHealth}>运行诊断</button>
-        {healthVisible && <>
-          <button type="button" disabled={healthBusy || !connected} onClick={() => void refreshHealth()}>
-            {healthBusy ? "读取中…" : "刷新"}
+          <button disabled={!controllable || seekText.trim() === "" || !Number.isFinite(Number(seekText)) || Number(seekText) < 0}
+            onClick={() => void applySeek(Number(seekText))}>跳转</button>
+        </div>
+        <span className="player-transport-separator" aria-hidden="true" />
+        <div className="player-transport-group player-transport-media" role="group" aria-label="音轨与播放设置">
+          <label>音轨
+            <select aria-label="音轨" disabled={!controllable || busy || trackBusy || !mediaTracks || mediaTracks.audio.length === 0}
+              value={mediaTracks ? selectedTrackId(mediaTracks.audio, false) : ""}
+              onChange={event => { void selectMediaTrack("audio", event.target.value); }}>
+              <option value="" disabled>无可用音轨</option>
+              {mediaTracks?.audio.map((track, index) =>
+                <option value={String(track.id)} key={track.id}>{trackLabel(track, index)}</option>)}
+            </select>
+          </label>
+          <label>字幕
+            <select aria-label="字幕轨道" disabled={!controllable || busy || trackBusy || !mediaTracks || mediaTracks.subtitles.length === 0}
+              value={mediaTracks ? selectedTrackId(mediaTracks.subtitles, true) : "off"}
+              onChange={event => { void selectMediaTrack("subtitle", event.target.value); }}>
+              <option value="off">关闭字幕</option>
+              {mediaTracks?.subtitles.map((track, index) =>
+                <option value={String(track.id)} key={track.id}>{trackLabel(track, index)}</option>)}
+            </select>
+          </label>
+          {trackError && <span className="player-track-error" role="alert">{trackError}</span>}
+          <label>倍速
+            <select aria-label="播放倍速" value={rate} disabled={!controllable || !preferencesReady}
+              title="保存为下次播放的默认倍速"
+              onChange={e => {
+                const next = Number(e.target.value);
+                void command("set_rate", { rate: next }).then(ok => {
+                  if (ok) setRate(next);
+                });
+              }}>
+              {[0.5, 1, 1.5, 2].map(value => <option value={value} key={value}>{value}×</option>)}
+              {![0.5, 1, 1.5, 2].includes(rate) && <option value={rate}>{rate}×</option>}
+            </select>
+          </label>
+          <label>音量
+            <select aria-label="播放音量" value={volume} disabled={!controllable || !preferencesReady}
+              title="音量与静音状态自动保存"
+              onChange={e => {
+                const next = Number(e.target.value);
+                void command("set_volume", { volume: next }).then(ok => {
+                  if (!ok) return;
+                  setVolume(next);
+                  if (next > 0) lastAudibleVolumeRef.current = next;
+                });
+              }}>
+              {[0, 25, 50, 75, 100].map(value => <option value={value} key={value}>{value}%</option>)}
+              {![0, 25, 50, 75, 100].includes(volume) && <option value={volume}>{volume}%</option>}
+            </select>
+          </label>
+          <button type="button" className="player-mute-toggle" aria-pressed={volume === 0}
+            aria-label={volume === 0 ? "取消静音并恢复上次音量" : "静音"}
+            title={volume === 0 ? "恢复上次非静音音量" : "静音"}
+            disabled={!controllable || !preferencesReady} onClick={() => void toggleMute()}>
+            {volume === 0 ? "恢复声音" : "静音"}
           </button>
-          {healthReport && <span className="player-health-summary" role="status"
-            title={formatRuntimeHealth(healthReport)}>
-            打开 {healthReport.sessionsOpened} · 缓冲 {healthReport.bufferEvents}
-            /{healthReport.bufferTotalMs}ms · 释放 {healthReport.libmpvReleases}
-            /{healthReport.maxReleaseMs}ms
-          </span>}
-          <button type="button" disabled={!healthReport} onClick={() => void copyHealth()}>
-            复制诊断
-          </button>
-          {healthError && <span role="alert" className="player-health-error"
-            title={healthError}>诊断读取/复制失败</span>}
-        </>}
-        <span className="player-status">{snapshot?.state ?? "—"}</span>
-        <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
+        </div>
+        <span className="player-transport-separator" aria-hidden="true" />
+        <div className="player-transport-group player-transport-utility" role="group" aria-label="播放器工具">
+          <button disabled={busy || !connected} aria-keyshortcuts="F11 F"
+            title="F 或 F11 切换全屏，Esc 退出"
+            onClick={() => void toggleFullscreen(!fullscreen)}>全屏 F11</button>
+          <button type="button" className="player-help-trigger"
+            aria-expanded={shortcutHelpOpen} aria-controls="player-shortcut-help"
+            aria-keyshortcuts="Shift+Slash"
+            onClick={() => setShortcutHelpOpen(value => !value)}>快捷键 ?</button>
+          {preferencesError && <span role="alert" className="player-preferences-error"
+            title={preferencesError}>设置异常</span>}
+          <span className="player-preferences-hint" title="倍速、音量与本地列表自动连播偏好保存在本机">
+            {preferencesReady ? "设置自动保存" : "设置未加载"}
+          </span>
+          <button type="button" aria-expanded={healthVisible}
+            title="只读诊断：仅含当前进程的会话、缓冲、退出统计，不采集视频路径和 URL"
+            onClick={toggleHealth}>运行诊断</button>
+          {healthVisible && <>
+            <button type="button" disabled={healthBusy || !connected} onClick={() => void refreshHealth()}>
+              {healthBusy ? "读取中…" : "刷新"}
+            </button>
+            {healthReport && <span className="player-health-summary" role="status"
+              title={formatRuntimeHealth(healthReport)}>
+              打开 {healthReport.sessionsOpened} · 缓冲 {healthReport.bufferEvents}
+              /{healthReport.bufferTotalMs}ms · 释放 {healthReport.libmpvReleases}
+              /{healthReport.maxReleaseMs}ms
+            </span>}
+            <button type="button" disabled={!healthReport} onClick={() => void copyHealth()}>
+              复制诊断
+            </button>
+            {healthError && <span role="alert" className="player-health-error"
+              title={healthError}>诊断读取/复制失败</span>}
+          </>}
+          <span className="player-status">{snapshot?.state ?? "—"}</span>
+          <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
+        </div>
       </div>
     </footer>
     {!catalogOpen && shortcutHelpOpen && <aside id="player-shortcut-help"
