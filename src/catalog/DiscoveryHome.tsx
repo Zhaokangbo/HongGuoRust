@@ -3,6 +3,7 @@ import {
   catalogErrorMessage, isCatalogCancellation, searchCatalogPage,
 } from "./api";
 import type { CatalogProvider, Series } from "./types";
+import { RecentActivity } from "./RecentActivity";
 import {
   discoveryGenres, discoveryHero, discoveryItems, discoverySourceLabel,
 } from "./discovery";
@@ -12,6 +13,8 @@ interface Props {
   busy: boolean;
   onSelect: (id: string) => void;
   onExplore: (sourceId: string, query: string) => void;
+  onPlayProvider: (seriesId: string, episodeId: string) => Promise<boolean>;
+  onPlayLocal: (id: number) => Promise<boolean>;
 }
 
 const PAGE_SIZE = 50;
@@ -21,7 +24,7 @@ const sourceFallback: CatalogProvider[] = [
   { id: "manifest", name: "自有媒体清单", supportsSearch: true, supportsDetail: true, supportsPlay: true },
 ];
 
-export function DiscoveryHome({ sources, busy, onSelect, onExplore }: Props) {
+export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvider, onPlayLocal }: Props) {
   const [source, setSource] = useState("all");
   const [genre, setGenre] = useState("all");
   const [input, setInput] = useState("");
@@ -131,6 +134,9 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore }: Props) {
         浏览完整目录
       </button>
     </div>
+
+    <RecentActivity includeLocal limit={6} busy={busy} refreshKey={refreshKey}
+      onPlayProvider={onPlayProvider} onPlayLocal={onPlayLocal} />
 
     <form className="discovery-search" onSubmit={onSearch}>
       <input type="search" value={input} maxLength={128}
