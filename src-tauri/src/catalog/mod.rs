@@ -3,6 +3,7 @@
 
 #[allow(dead_code)]
 mod hongguo;
+mod hgcommunity;
 mod local;
 mod manifest;
 pub mod progress;
