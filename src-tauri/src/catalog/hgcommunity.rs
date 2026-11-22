@@ -365,7 +365,11 @@ impl ContentProvider for HgCommunityProvider {
         let detail = self
             .detail_inner(series_id, None)?
             .ok_or("hgcommunity_unknown_series")?;
-        if !detail.episodes.iter().any(|ep| ep.id == episode_id && ep.playable) {
+        if !detail
+            .episodes
+            .iter()
+            .any(|ep| ep.id == episode_id && ep.playable)
+        {
             return Err("hgcommunity_unknown_episode".into());
         }
         let value = self.get_json(
@@ -423,7 +427,10 @@ mod tests {
             "https://covers.example.org/a.jpg#frag",
             "https://covers.example.org/a.jpg\\nHeader:secret",
         ] {
-            assert!(valid_cover_url(url).is_none(), "unexpected allowed cover URL");
+            assert!(
+                valid_cover_url(url).is_none(),
+                "unexpected allowed cover URL"
+            );
         }
         let mapped = HgCommunityProvider::map_series(&serde_json::json!({
             "id": "real-123",
