@@ -32,7 +32,7 @@
 | M10-C1 Provider 剧集断点、跨重启 | [PR #20](https://github.com/Zhaokangbo/HongGuoRust/pull/20), `feat/m10c1-provider-progress`, HEAD `8da84c56f5b0655623504462ebf836b28e7e062b` | Windows M1/M2 已通过；用户只明确反馈了部分旧验收项目 | **其余手动回归仍需明确确认**，保持 Draft |
 | M10-C2 首页继续观看、剧集进度与本地历史合并 | [PR #21](https://github.com/Zhaokangbo/HongGuoRust/pull/21), `feat/m10c2-history-home`, HEAD `096d73b4b12247343b9e4277ea5e360ad38f4e9a` | M1/M2 通过；Windows **第 1–8 项明确通过**，第 9–11 项未被逐项确认 | 先验收并合并 #20，补齐 #21 余下验收，重检最终 HEAD 后合并 |
 | M11-A 键盘快捷键/帮助 | [PR #22](https://github.com/Zhaokangbo/HongGuoRust/pull/22), `feat/m11a-player-shortcuts`, HEAD `ba4160dfd422d1f1124b42ec7cfb173c189029a9` | M1/M2 通过；**Windows 10/10 已由用户明确报告全通过** | 先完成并合并 #20、#21，再确认 stacked diff/CI，才合并 #22 |
-| M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, latest HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | 初次 CI (HEAD `2b026427772fd224794f3dfbcc938ae8a137f391`) M1/M2 在 rustfmt 失败；**已按日志修复 4 处差异并提交新 HEAD**，新一轮结果尚未检查；Windows 实机待验收 | 先通过最终 HEAD M1/M2，下载 ZIP 验收真实出图；#20–#22 依次合并后才能合并 #23 |
+| M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, latest HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | 初次 CI (HEAD `2b026427772fd224794f3dfbcc938ae8a137f391`) M1/M2 在 rustfmt 失败；**已按日志修复 4 处差异并提交新 HEAD**；M1 #44987943244 / M2 #44987943231 已启动（首次查询为 in_progress），结果尚未确认；Windows 实机待验收 | 先通过最终 HEAD M1/M2，下载 ZIP 验收真实出图；#20–#22 依次合并后才能合并 #23 |
 
 **关于用户最近一句“全部测试通过”：**指紧接上一轮的 **M11-A 全部 10 项**。不能将该句话自动扩展为早前 #20/#21 所有尚未明确反馈的验收。
 
@@ -49,7 +49,7 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. 查询 PR #23 HEAD，确认 M11-B 最近 Rust fmt 修复提交及其 Windows M1/M2 状态；**不要在用户未通知构建完成时反复查询**。本次用户已通知初次 CI 完成，失败日志显示 4 个格式差异，已修复并触发下一轮 CI；**下一轮尚未收到用户完成通知**，不要查询/轮询该轮。
+1. 查询 PR #23 HEAD，确认 M11-B 最近 Rust fmt 修复提交及其 Windows M1/M2 状态；**不要在用户未通知构建完成时反复查询**。本次用户已通知初次 CI 完成，失败日志显示 4 个格式差异，已修复并触发下一轮 CI；**下一轮已确认开始，但尚未收到用户完成通知**，不要查询/轮询该轮；最终提交为 `6446271e17b6dc3d59a0a252bd0d65b84d07ad77`。
 2. 如果最终 HEAD M1/M2 失败：读取失败 job 日志，直接修改 GitHub 分支；提交后用户监控下一轮 CI。
 3. 如果最终 HEAD M1/M2 通过：下载 `HongGuoRust-M2-debug-x64` artifact，通过容器核实 ZIP 存在、文件清单、EXE SHA-256 和 ZIP SHA-256，并生成独立目录 PowerShell 部署脚本；只有在真实文件创建后才给 sandbox 下载链接。
 4. 用户 Windows 真机执行 `docs/acceptance/m11-b.md` 的 12 项验收，重点核对实图、独立解码、不干扰主音画、连续拖动、变更集与弱网退化。
