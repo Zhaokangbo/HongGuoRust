@@ -26,7 +26,7 @@ export function validateFixtureManifest(manifest) {
         !expected.has(scenario.id) || ids.has(scenario.id) ||
         scenario.fileName !== expected.get(scenario.id) ||
         typeof scenario.expectation !== "string" ||
-        !/^[a-zA-Z0-9,; .'-]{1,120}$/.test(scenario.expectation)) {
+        !/^[a-zA-Z0-9,; .'\/-]{1,120}$/.test(scenario.expectation)) {
       throw new Error("Unexpected or duplicate M12-C fixture entry");
     }
     ids.add(scenario.id);
