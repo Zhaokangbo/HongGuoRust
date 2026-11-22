@@ -80,7 +80,7 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **当前阶段 HG-2B 详情/选集实机验收**：[Draft PR #32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)，`feat/hg2b-real-covers-and-episode-status`，最新 SHA `ac6614c94ef35095666054971a7c42c302982e2e`。用户已确认搜索列表中 9 张真实不同海报正常显示，验收第 3 项通过；先点击作品验证详情封面、简介、剧集列表，重点复测此前 `hgcommunity_http_503`。当前 Node `loadSeriesDetail` 优先调用 `getSeriesBatch([seriesId])` 一次取详情与分集，严格校验 ID，不做自动重试/播放调用；错误分类为 `RATE_LIMITED`、`CONTENT_UNAVAILABLE`、`TRANSPORT` 等。随后确认首页封面、不可播放集保留但禁用、未配置媒体主机时默认仅浏览、封面失败安全回退、搜索刷新竞态和 M7–HG2A 回归。旧 Draft #20–#29/#31/#32 均未合并，重复 #30 已关闭，禁止擅自合并。
+1. **HG-2B 详情页实机验收（2026-11-22）已取得关键通过项**：[Draft PR #32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)，`feat/hg2b-real-covers-and-episode-status`，经重新核对仍为 Open / Draft / 未合并，HEAD `ac6614c94ef35095666054971a7c42c302982e2e`。用户最新 Windows 截图显示真实作品封面、作品简介、共 107 集的真实剧集列表，以及顶部明确的“真实剧集目录浏览模式 / 未配置允许的媒体域名 / 不会尝试解析或播放视频”提示；每个剧集按钮均显示“仅可浏览”。本次记为：详情封面通过、简介通过、107 集列表通过、全局仅浏览/播放保护通过。**单集上游 `playable=false` 状态与全局仅浏览禁用的视觉区分尚未由该截图证明**，仍需单独验收；也未据此宣称封面失败回退、搜索刷新竞态及 M7–HG2A 全回归通过。此前同一 HEAD 的 Windows M1/M2 CI 均 completed/success（见下方 run）；截图本身未展示 EXE 哈希，若后续测试包不是该 HEAD 对应产物需重新核对。PR 不得擅自合并。
 2. **核心改动已提交**：`scripts/hg2a-sdk/server.mjs` 现在从开源 `openhongguo@0.4.0` 返回的 `cover_url` 转发安全合法的 `coverUrl`，保留签名查询参数；`src-tauri/src/catalog/mod.rs` 的 `Series.cover_url: Option<String>`，`src-tauri/src/catalog/hgcommunity.rs` 独立 URL 校验；`src/catalog/coverUrl.ts` 和 `CoverImage.tsx` 懒加载，错误回退旧渐变封面；页面卡片、首页焦点/普通卡片和作品详情使用真海报。Tauri CSP 仅放行 `img-src https:`，`connect-src` 不变，图片发往 CDN 仍有 IP/远端可观测性问题；字符串校验不是完整 SSRF/DNS/redirect 安全方案。
 3. **分集状态**：Node SDK 保留 `playable=false` 条目而不删掉，Rust `Episode.playable: bool` 各现有 Provider 默认 true，HG community 从上游真实字段读取；界面保留禁播集数并提示上游不可播放，native resolve 再次强制检验；未明确允许媒体主机时社区源详情只能浏览、选集按钮不可点。真实元数据可见不等于 DRM/会员/播放授权，禁止绕过。
 4. **测试与文档**：`tests/hg2b-cover.test.mjs` 覆盖 Node 前端双向 URL 拒绝 HTTP、内网 IP、带密码 URL、非标准端口、控制字符、过长 URL，合法 HTTPS 带签名 query 保留；`tests/hg2a-community-gateway.test.mjs` 模拟真实 `cover_url` 和不可播放选集，Node 测试链加入 `npm run build`。Rust 增加 `valid_cover_url` 单测。[HG-2B Windows 10 项实机验收](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/hg2b-real-covers-and-episode-status/docs/acceptance/hg2b.md) 要求看到实际不同封面/详情、失败回退、`playable=false` 禁播及 M7–HG2A 回归。
@@ -100,9 +100,16 @@
 
 **新对话可直接发送下面这段话：**
 
-> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先用 GitHub 连接器读取 main 上的 `docs/AI_DEVELOPMENT_HANDOFF.md`，再核对当前所有 Draft PR 的实际 HEAD、验收门槛、相关源文件和 GitHub Actions。遵循文档中的协作方式：直接修改代码、维护 Draft PR、我负责 Windows 真机验收、我说 CI 编译完成后再查看结果、未明确授权不要合并。请从文档的“当前下一步操作”继续，并在每阶段结束时同步更新此交接文件。
+> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先读取 main 上的 `AGENTS.md` 和 `docs/AI_DEVELOPMENT_HANDOFF.md`，再通过 GitHub 核实当前所有相关 PR 的状态/HEAD、Windows Actions 和实际代码，不要把交接文档中的旧 SHA 当作当前事实。HG-2B PR #32 当前记录的基线是 `feat/hg2b-real-covers-and-episode-status` / `ac6614c94ef35095666054971a7c42c302982e2e`；2026-11-22 我已在 Windows 实机确认详情真实封面、简介、107 集列表和全局仅浏览/不解析播放保护通过，但单集上游 `playable=false` 的独立状态显示、封面失败回退、搜索竞态及 M7–HG2A 回归仍未全部验收。下一步按交接文档进入 UI-1：先使用 Product Design 完成三套视觉方向并让我选择，再创建独立 Draft PR；选择方向前不要大规模改 UI。必须保持 Rust/libmpv worker、native session ID、Tauri IPC、Provider 数据契约、媒体域名白名单和原生视频 HWND 几何不变。由你直接维护 GitHub 代码和 PR，我负责 Windows 实机验收；我说“编译完成”后再查看 CI；没有我的明确授权不要合并。**每一项实质代码进展、验收结论或里程碑，都要及时提交 GitHub 并同步更新 main 上的交接文档**，不要等到会话结束才补记。
 
 **交接文件更新纪律：**每个阶段至少维护：当前阶段、PR/branch/HEAD、构建状态+artifact ID、已经明确通过的验收条目、尚待验证的条目、遇到的问题/修复、下一步动作。**禁止把未运行/未通过状态写成通过。**优先将本文件更新到 main，确保下一段对话不会从旧功能分支获取过期状态；如果 main 提交权限不可用，才更新工作分支并明确告知用户路径。
+
+## 9. 用户要求的 GitHub 同步纪律
+
+- 每一项实质代码进展、用户实机验收结果、里程碑完成或开发路线调整，都应在该项完成后及时提交 GitHub；优先同步更新 `main` 上的 `docs/AI_DEVELOPMENT_HANDOFF.md`，必要时同时更新对应验收文档。
+- 不能只在聊天中口头记录进度，也不能等会话结束才集中补记。每次提交后核实 commit SHA 和文件内容，再向用户报告链接。
+- 仅讨论/分析且没有形成新结论时不制造空提交；没有代码改动时可只提交交接文档，不为刷新 CI 而改动代码。
+- 会话切换前，必须提供当前 PR/branch/HEAD、已通过/未通过验收、最新 GitHub commit、下一步和一段可直接复制给新会话的 prompt。会话切换不代表自动合并 PR。
 
 ## 8. 参考入口
 
@@ -118,7 +125,7 @@
 - 本次重新读取 main 的 `AGENTS.md` 与本交接文档，并核对 GitHub PR、分支和 Actions；没有仅凭聊天记录推断状态。
 - HG2B PR #32：Open / Draft / 未合并，base `main`，分支 `feat/hg2b-real-covers-and-episode-status`，HEAD `ac6614c94ef35095666054971a7c42c302982e2e`。
 - 同一 HEAD 的 Windows M1 run `45018039636` 和 Windows M2 playback run `45018039660` 均 completed / success。当前未发现额外的 commit status 记录；以 workflow run 结果为 CI 依据。
-- 用户最新提供的 Windows 截图已显示社区 SDK 内容列表中的多张不同真实海报，列表封面项可记为已通过；详情、剧集状态、仅浏览保护和剩余回归仍未验收。PR #32 不得擅自合并。
+- 用户已提供两次 Windows 实机截图：此前列表页显示多张不同真实海报；2026-11-22 详情页显示真实封面、简介、107 集列表和全局仅浏览保护。单集上游 `playable=false` 的独立状态显示、失败回退及剩余回归仍待验收。PR #32 不得擅自合并。
 
 ### 前端代码审查（仅检查，未修改代码）
 
@@ -138,8 +145,13 @@
 - 原生视频 HWND 的尺寸/定位、全屏与 catalog 显示切换是硬约束。UI 可重新组织 HTML 控件，但不得假设 HTML overlay 能覆盖原生 HWND，也不得在无专项验证时改变播放器窗口几何。
 - 本次尚未创建 UI 分支、PR 或修改前端代码。Product Design 的视觉 ideation/原型流程需要在 ChatGPT Work 模式进行；在用户选定视觉方向前，不开始大规模 UI 实现。
 
-### 下一步
+### 最新实机结果与下一步
 
-1. 用户在当前 Windows HG2B 测试程序中点击一张已加载真实海报，验证详情真实封面/简介、完整剧集列表、不可播放标识和默认“仅浏览、不开放播放”；失败时仅反馈脱敏 `HG2B_DETAIL_DIAG code=... status=...` 与截图，不发送签名 URL、Cookie、Token 或请求头。
-2. 在 Work 模式使用 Product Design 先完成视觉方向探索，提供三套明显不同的方案并由用户选择；当前普通 Chat 不启动 Product Design ideation。
-3. 选定方向后再从 HG2B 基线建立 UI-1 独立分支和 Draft PR，先完成 token / app shell / home，不触碰 Rust/libmpv/IPC。
+- 2026-11-22 用户提供 Windows 详情页截图：真实封面、作品简介、107 集剧集列表均可见；顶部提示明确为真实目录浏览模式，未配置允许媒体域名，不会解析或播放；每集按钮显示“仅可浏览”。这些截图支持详情内容展示与全局播放保护通过。
+- 截图没有证明某个单集因上游 `playable=false` 而被单独标识为“上游标记不可播放”；全局仅浏览会禁用全部剧集，因此这项必须单独验证，不能与全局权限保护混为一谈。
+- 这次没有代码变更，不额外触发 CI。PR #32 仍为 Draft / 未合并。
+
+1. 在 Product Design / Work 模式完成三套有明显差异的视觉方向（例如影院沉浸式、现代流媒体、简洁媒体库），明确导航、首页、海报墙、详情和播放器控件的整体规则，让用户选择一套方向；当前普通 Chat 不启动需要 Work 环境的 ideation。
+2. 选定方向后，从已核实的 HG-2B 代码基线建立 UI-1 独立开发分支与 Draft PR，先完成设计 token、应用导航/页面框架和首页；不触碰 Rust/libmpv/IPC/Provider。
+3. UI-1 每个可验收切片都提交 GitHub、更新 main 交接文档，并由用户在 Windows 实机验收；会话结束时输出可直接交给下一会话的最新接力 prompt。
+4. HG-2B 后续合并前仍需补齐单集 `playable=false` 状态独立验证、封面失败安全回退、搜索刷新竞态及 M7–HG2A 回归；不得因 UI 开发而误标 HG-2B 全量验收通过。
