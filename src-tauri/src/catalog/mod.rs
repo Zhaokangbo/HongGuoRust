@@ -56,6 +56,21 @@ pub enum MediaTarget {
 pub trait ContentProvider: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
+
+    /// Capabilities are provider-specific and checked again on the native
+    /// playback resolution path, not trusted from UI state alone.
+    fn supports_search(&self) -> bool {
+        true
+    }
+
+    fn supports_detail(&self) -> bool {
+        true
+    }
+
+    fn supports_play(&self) -> bool {
+        true
+    }
+
     fn search(&self, query: &str) -> Result<Vec<Series>, String>;
     fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String>;
     fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String>;
