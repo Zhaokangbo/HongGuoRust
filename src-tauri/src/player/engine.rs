@@ -396,8 +396,8 @@ mod tests {
     fn generic_failure_does_not_infer_http_status_from_libmpv_loading_code() {
         let code = safe_mpv_error_code("Raw(-13)");
         assert_eq!(code, "Raw(-13)");
-        assert!(safe_mpv_error_code("https://host/video.mp4?sig=secret")
-            .contains("native_error"));
+        let unsafe_debug = safe_mpv_error_code("https://host/video.mp4?sig=secret");
+        assert_eq!(unsafe_debug, "mpv_native_error");
     }
 
     #[test]
