@@ -1,5 +1,6 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
+use super::hongguo::HongGuoProvider;
 use super::local::LocalLibraryProvider;
 use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
@@ -88,6 +89,7 @@ impl CatalogService {
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
             Box::new(OwnedManifestProvider::new(manifest)),
+            Box::new(HongGuoProvider::default()),
         ])
         .expect("built-in provider IDs must be unique and valid")
     }
@@ -111,9 +113,9 @@ impl CatalogService {
             .map(|provider| ProviderInfo {
                 id: provider.id().into(),
                 name: provider.name().into(),
-                supports_search: true,
-                supports_detail: true,
-                supports_play: true,
+                supports_search: provider.supports_search(),
+                supports_detail: provider.supports_detail(),
+                supports_play: provider.supports_play(),
             })
             .collect()
     }
@@ -422,6 +424,27 @@ mod tests {
             .is_err());
         let mixed = service.search_page(None, Some("all"), 0, 50).unwrap();
         assert_eq!(mixed.total, 4);
+
+        let hongguo = service
+            .sources()
+            .into_iter()
+            .find(|source| source.id == "hongguo")
+            .expect("HongGuo entry is registered but gated");
+        assert!(hongguo.name.contains("待授权"));
+        assert!(!hongguo.supports_search);
+        assert!(!hongguo.supports_detail);
+        assert!(!hongguo.supports_play);
+        assert_eq!(
+            service
+                .search_page(None, Some("hongguo"), 0, 24)
+                .unwrap()
+                .total,
+            0
+        );
+        assert!(service.detail("hongguo:nonexistent").is_err());
+        assert!(service
+            .resolve_episode("hongguo:nonexistent", "ep-01")
+            .is_err());
         drop(service);
         drop(library);
         fs::remove_dir_all(dir).unwrap();
