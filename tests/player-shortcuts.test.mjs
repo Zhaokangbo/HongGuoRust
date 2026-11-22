@@ -20,13 +20,15 @@ test("space and K pause only for an active controllable player", () => {
 });
 
 test("keyboard focus and modifiers never hijack forms or browser shortcuts", () => {
-  for (const targetTag of ["INPUT", "TEXTAREA", "SELECT"]) {
+  for (const targetTag of ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"]) {
     assert.equal(shortcut(" ", { targetTag }), null);
     assert.equal(shortcut("ArrowRight", { targetTag }), null);
   }
   assert.equal(shortcut("m", { contentEditable: true }), null);
   assert.equal(shortcut("j", { targetRole: "textbox" }), null);
   assert.equal(shortcut("j", { targetRole: "searchbox" }), null);
+  assert.equal(shortcut(" ", { targetRole: "button" }), null);
+  assert.equal(shortcut("ArrowLeft", { targetRole: "slider" }), null);
   assert.equal(shortcut("j", { ctrlKey: true }), null);
   assert.equal(shortcut("j", { altKey: true }), null);
   assert.equal(shortcut("j", { metaKey: true }), null);
