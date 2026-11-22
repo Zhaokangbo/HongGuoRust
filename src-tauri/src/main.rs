@@ -117,6 +117,8 @@ fn main() {
             commands::set_paused,
             commands::seek_to,
             commands::player_preview_frame,
+            commands::player_tracks,
+            commands::player_select_track,
             commands::set_rate,
             commands::set_volume,
             commands::open_https,
