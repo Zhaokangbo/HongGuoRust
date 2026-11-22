@@ -4,6 +4,7 @@ import {
 } from "./api";
 import type { CatalogProvider, Series } from "./types";
 import { ContinueWatchingShelf } from "./ContinueWatchingShelf";
+import { CoverImage } from "./CoverImage";
 import {
   discoveryGenres, discoveryHero, discoveryItems, discoverySourceLabel,
 } from "./discovery";
@@ -188,6 +189,7 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
         <button type="button" disabled={busy} className="discovery-hero"
           onClick={() => onSelect(hero.id)}>
           <span className={"discovery-hero-art artwork-" + hero.artwork} aria-hidden="true">
+            <CoverImage url={hero.coverUrl} />
             {discoverySourceLabel(hero.providerId, names)}
           </span>
           <span className="discovery-hero-copy">
@@ -204,6 +206,7 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
             {others.map(item => <button type="button" key={item.id}
               className="catalog-card" disabled={busy} onClick={() => onSelect(item.id)}>
               <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
+                <CoverImage url={item.coverUrl} />
                 <span>{discoverySourceLabel(item.providerId, names)}</span>
               </span>
               <strong>{item.title}</strong>
