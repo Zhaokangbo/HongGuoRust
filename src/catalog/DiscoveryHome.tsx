@@ -3,7 +3,7 @@ import {
   catalogErrorMessage, isCatalogCancellation, searchCatalogPage,
 } from "./api";
 import type { CatalogProvider, Series } from "./types";
-import { RecentActivity } from "./RecentActivity";
+import { ContinueWatchingShelf } from "./ContinueWatchingShelf";
 import {
   discoveryGenres, discoveryHero, discoveryItems, discoverySourceLabel,
 } from "./discovery";
@@ -135,7 +135,7 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
       </button>
     </div>
 
-    <RecentActivity includeLocal limit={6} busy={busy} refreshKey={refreshKey}
+    <ContinueWatchingShelf includeLocal limit={6} busy={busy} refreshKey={refreshKey}
       onPlayProvider={onPlayProvider} onPlayLocal={onPlayLocal} />
 
     <form className="discovery-search" onSubmit={onSearch}>
