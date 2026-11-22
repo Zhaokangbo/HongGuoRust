@@ -331,3 +331,20 @@ main.fullscreen header, main.fullscreen footer { display: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* M11-C2: inline persistence feedback remains in the scrollable control row. */
+.player-preferences-hint {
+  color: #b7d4c2;
+  font-size: 11px;
+  flex: none;
+}
+.player-preferences-error {
+  color: #ffb7a8;
+  font-size: 11px;
+  flex: none;
+  cursor: help;
+}
+.player-transport .playlist-auto-next input:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
