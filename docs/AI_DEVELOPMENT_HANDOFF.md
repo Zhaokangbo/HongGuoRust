@@ -109,3 +109,37 @@
 - 仓库主文档：`README.md`、`docs/roadmap.md`。
 - 既有验收：`docs/acceptance/m10-c1.md`、`m10-c2.md`、`m11-a.md`、`m11-b.md`（**部分只在对应功能分支**）。
 - 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)、[#26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)、[#27](https://github.com/Zhaokangbo/HongGuoRust/pull/27)、[#28](https://github.com/Zhaokangbo/HongGuoRust/pull/28)、[#29](https://github.com/Zhaokangbo/HongGuoRust/pull/29)、[#30](https://github.com/Zhaokangbo/HongGuoRust/pull/30)、[#31](https://github.com/Zhaokangbo/HongGuoRust/pull/31)、[#32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)。
+
+
+## UI/UX 改版规划（2026-11-22）
+
+### 当前基线核对
+
+- 本次重新读取 main 的 `AGENTS.md` 与本交接文档，并核对 GitHub PR、分支和 Actions；没有仅凭聊天记录推断状态。
+- HG2B PR #32：Open / Draft / 未合并，base `main`，分支 `feat/hg2b-real-covers-and-episode-status`，HEAD `ac6614c94ef35095666054971a7c42c302982e2e`。
+- 同一 HEAD 的 Windows M1 run `45018039636` 和 Windows M2 playback run `45018039660` 均 completed / success。当前未发现额外的 commit status 记录；以 workflow run 结果为 CI 依据。
+- 用户最新提供的 Windows 截图已显示社区 SDK 内容列表中的多张不同真实海报，列表封面项可记为已通过；详情、剧集状态、仅浏览保护和剩余回归仍未验收。PR #32 不得擅自合并。
+
+### 前端代码审查（仅检查，未修改代码）
+
+- 技术栈为 Tauri 2 / Rust / libmpv2 + React 19 / TypeScript / Vite，样式集中在单一全局 `src/style.css`，当前没有引入专门的 UI 组件库或 utility CSS 框架。
+- `src/main.tsx` 集中承载播放器状态、Tauri IPC、会话/选集队列、键盘快捷键、诊断面板和播放器控件；播放器主控件仍在单一横向 footer 中，公开 HTTPS 地址输入、诊断、轨道、倍速、音量等控件同时占据该区域。
+- `src/catalog/CatalogView.tsx` 负责内容首页、来源切换、搜索、详情、剧集、历史和收藏等多个视图状态；导航仍是顶部横向 tabs。首页另由 `DiscoveryHome.tsx` 实现。
+- `src/style.css` 采用全局元素选择器和按里程碑追加的页面样式；根布局沿用 66px header / 内容区 / 96px player footer。此几何关系与原生 libmpv 视频 HWND 的窗口布局有关，不能在视觉重构中随意改变。
+- 截图和源码共同支持的主要 UX 问题：导航层级不够清晰；首页焦点区缺少强视觉媒体内容；海报网格在宽屏下卡片偏小；本地/历史/收藏使用偏工具型文字行；播放器控件密度过高、网络地址和诊断操作暴露在常驻主界面；空白区域与内容密度不均。
+- 以上是静态代码与用户截图审查，不是完整交互/无障碍审计；尚未对焦点顺序、键盘可达性、缩放、窄窗口和实际 hover 状态做逐项测试。
+
+### 已同意的改版范围与约束
+
+- 采用现代桌面流媒体/媒体中心方向：深色沉浸式界面、真实海报优先、明确导航层级、统一卡片/表单/按钮/状态、适配 Windows 窗口尺寸。
+- UI-1：设计 token、应用导航/页面框架、首页；UI-2：探索页/海报墙/详情；UI-3：播放器控件；UI-4：本地媒体/历史/收藏；UI-5：Windows 实机和全量回归。
+- UI 改版使用独立开发分支与 Draft PR；预期从已验收的 HG2B 代码基线派生，PR 合并顺序必须遵守 #32 及之前 stacked PR 依赖。未经用户明确授权不得合并。
+- 必须保持 Rust 播放内核、libmpv worker 所有权、Native session ID、Tauri IPC、Provider 数据契约、播放权限/仅浏览边界不变；不得把敏感媒体 URL、凭证或本地绝对路径暴露到 UI/历史。
+- 原生视频 HWND 的尺寸/定位、全屏与 catalog 显示切换是硬约束。UI 可重新组织 HTML 控件，但不得假设 HTML overlay 能覆盖原生 HWND，也不得在无专项验证时改变播放器窗口几何。
+- 本次尚未创建 UI 分支、PR 或修改前端代码。Product Design 的视觉 ideation/原型流程需要在 ChatGPT Work 模式进行；在用户选定视觉方向前，不开始大规模 UI 实现。
+
+### 下一步
+
+1. 用户在当前 Windows HG2B 测试程序中点击一张已加载真实海报，验证详情真实封面/简介、完整剧集列表、不可播放标识和默认“仅浏览、不开放播放”；失败时仅反馈脱敏 `HG2B_DETAIL_DIAG code=... status=...` 与截图，不发送签名 URL、Cookie、Token 或请求头。
+2. 在 Work 模式使用 Product Design 先完成视觉方向探索，提供三套明显不同的方案并由用户选择；当前普通 Chat 不启动 Product Design ideation。
+3. 选定方向后再从 HG2B 基线建立 UI-1 独立分支和 Draft PR，先完成 token / app shell / home，不触碰 Rust/libmpv/IPC。
