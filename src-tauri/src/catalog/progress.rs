@@ -215,6 +215,22 @@ impl ProviderProgressStore {
             .map(ProviderEpisodeProgress::from))
     }
 
+    /// Snapshot recent bookmarks without URLs or source fingerprints.
+    /// The catalog command must re-resolve each media target and verify
+    /// the current source fingerprint before exposing these records.
+    pub fn list_recent(&self) -> Result<Vec<ProviderEpisodeProgress>, String> {
+        self.ready()?;
+        let state = self.state.lock().map_err(|e| e.to_string())?;
+        let mut items: Vec<_> = state
+            .items
+            .iter()
+            .filter(|item| item.last_played_ms > 0)
+            .map(ProviderEpisodeProgress::from)
+            .collect();
+        items.sort_by(|left, right| right.last_played_ms.cmp(&left.last_played_ms));
+        Ok(items)
+    }
+
     pub fn resume_point(
         &self,
         series_id: &str,
