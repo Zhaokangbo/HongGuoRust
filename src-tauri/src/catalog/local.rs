@@ -25,6 +25,7 @@ impl LocalLibraryProvider {
                 "文件不可用".into()
             },
             artwork: "studio".into(),
+            cover_url: None,
             episode_count: 1,
             provider_id: "local".into(),
         }
@@ -68,6 +69,7 @@ impl ContentProvider for LocalLibraryProvider {
                 number: 1,
                 title: "播放本地视频".into(),
                 runtime_label: "MP4".into(),
+                playable: true,
             }],
         }))
     }
