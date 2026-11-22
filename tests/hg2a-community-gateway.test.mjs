@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createCommunityGateway } from "../scripts/hg2a-sdk/server.mjs";
+import { createCommunityGateway, enrichCatalogCovers } from "../scripts/hg2a-sdk/server.mjs";
 
 const token = "0123456789abcdef".repeat(4);
 const fakeSdk = {
@@ -74,6 +74,90 @@ test("real-SDK-shaped adapter maps catalog/search/detail into fixed bounded JSON
     assert.equal(target.code, 200);
     assert.match(target.body.mediaUrl, /^https:\/\/samplelib.com\//);
   });
+});
+
+test("HG-2B real SDK search parser missing cover_url is enriched through one metadata batch", async () => {
+  let calls = 0;
+  let idsSeen = [];
+  const sdk = {
+    ...fakeSdk,
+    async search() {
+      return { items: [
+        { id: "765401", title: "真实样式作品一", episode_count: 30 },
+        { id: "765402", title: "真实样式作品二", episode_count: 40 },
+      ] };
+    },
+    async getSeriesBatch(ids) {
+      calls++;
+      idsSeen = ids;
+      // Actual upstream getSeriesBatch shape is Array<{series, episodes}>.
+      return ids.map(id => ({
+        series: { id, title: "from detail, not a new search entry",
+          cover_url: "https://covers.example.org/" + id + ".webp?x-expires=1892345678" },
+        episodes: [],
+      }));
+    },
+  };
+  await withServer(sdk, async port => {
+    const reply = await get(port, "/v1/search?q=重生");
+    assert.equal(reply.code, 200);
+    assert.equal(reply.body.items[0].title, "真实样式作品一");
+    assert.equal(reply.body.items[0].coverUrl, "https://covers.example.org/765401.webp?x-expires=1892345678");
+    assert.equal(reply.body.items[1].coverUrl, "https://covers.example.org/765402.webp?x-expires=1892345678");
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(idsSeen, ["765401", "765402"]);
+});
+
+test("HG-2B optional cover batch failure never hides or fabricates search records", async () => {
+  const sdk = {
+    ...fakeSdk,
+    async search() {
+      return { items: [{ id: "923456", title: "真实目录元数据原样保留", episode_count: 51 }] };
+    },
+    async getSeriesBatch() {
+      const err = new Error("https://secret.example/private?token=supersecret");
+      err.code = "RATE_LIMITED";
+      throw err;
+    },
+  };
+  await withServer(sdk, async port => {
+    const reply = await get(port, "/v1/search?q=重生");
+    assert.equal(reply.code, 200);
+    assert.equal(reply.body.items.length, 1);
+    assert.equal(reply.body.items[0].title, "真实目录元数据原样保留");
+    assert.equal(reply.body.items[0].coverUrl, null);
+    assert.doesNotMatch(JSON.stringify(reply.body), /supersecret|secret\.example/);
+  });
+});
+
+test("HG-2B only one bounded metadata lookup, no spoofed IDs or overwrite of original covers", async () => {
+  let batches = 0;
+  let requested = [];
+  const input = Array.from({ length: 25 }, (_, n) => ({
+    id: String(760000 + n), title: "synthetic " + n,
+    cover_url: n === 0 ? "https://direct.example.org/direct.webp" : undefined,
+  }));
+  const sdk = {
+    async getSeriesBatch(ids) {
+      batches++;
+      requested = ids;
+      return [
+        { series: { id: "999999", cover_url: "https://evil.example.org/not-requested.jpg" } },
+        ...ids.map(id => ({ series: { id, cover_url: "https://detail.example.org/" + id + ".webp" } })),
+      ];
+    },
+  };
+  const { rows, diagnostics } = await enrichCatalogCovers(sdk, input);
+  assert.equal(batches, 1);
+  assert.equal(requested.length, 10);
+  assert.equal(rows[0].cover_url, "https://direct.example.org/direct.webp");
+  assert.equal(rows[1].cover_url, "https://detail.example.org/760001.webp");
+  assert.equal(rows[11].cover_url, undefined);
+  assert.equal(diagnostics.direct, 1);
+  assert.equal(diagnostics.recovered, 10);
+  assert.equal(diagnostics.missing, 14);
+  assert.equal(diagnostics.batchState, "ok");
 });
 
 test("missing or wrong local token and cross-site Origin are blocked before SDK runs", async () => {
