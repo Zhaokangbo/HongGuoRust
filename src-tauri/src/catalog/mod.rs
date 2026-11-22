@@ -1,9 +1,9 @@
 //! Content-provider boundary for M6. No scraping and no third-party credentials.
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
+mod hgcommunity;
 #[allow(dead_code)]
 mod hongguo;
-mod hgcommunity;
 mod local;
 mod manifest;
 pub mod progress;
