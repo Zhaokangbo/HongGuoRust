@@ -324,6 +324,7 @@ mod tests {
                 genre: String::new(),
                 badge: String::new(),
                 artwork: "studio".into(),
+                cover_url: None,
                 episode_count: 1,
                 provider_id: "spoofed".into(),
             }])
@@ -337,6 +338,7 @@ mod tests {
                     number: 1,
                     title: "Other".into(),
                     runtime_label: "00:20".into(),
+                    playable: true,
                 }],
             }))
         }
