@@ -599,7 +599,7 @@ function App() {
         </div>
         <span>{clock(snapshot?.durationSec)}</span>
       </div>
-      <div className="player-transport" role="group" aria-label="播放器控制栏" tabIndex={0}>
+      <div className="player-transport" role="group" aria-label="播放器控制栏">
         <div className="player-transport-group player-transport-primary" role="group" aria-label="播放与剧集导航">
           <button className="player-control-primary" disabled={!controllable}
             aria-label={snapshot?.state === "Paused" ? "继续播放" : "暂停播放"}
