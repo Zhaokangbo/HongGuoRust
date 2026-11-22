@@ -7,6 +7,8 @@ use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
     controls::PlayerControl, service::PlayerService, state::PlayerSnapshot, window,
 };
+use serde::Serialize;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Manager, State, WebviewWindow};
@@ -182,6 +184,59 @@ pub fn catalog_episode_progress(
         }
     }
     Ok(result)
+}
+
+/// Metadata-only recent series entries. Only media currently resolving to
+/// the same source may appear. This neither exposes source URLs nor changes
+/// the playback state; local items remain under M7 LocalLibrary.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentCatalogEpisode {
+    series: Series,
+    episode: crate::catalog::Episode,
+    progress: ProviderEpisodeProgress,
+}
+
+#[tauri::command]
+pub fn catalog_recently_watched(
+    catalog: State<'_, CatalogService>,
+    progress: State<'_, Arc<ProviderProgressStore>>,
+    limit: Option<usize>,
+) -> Result<Vec<RecentCatalogEpisode>, String> {
+    let limit = limit.unwrap_or(12);
+    if limit == 0 || limit > 24 {
+        return Err("invalid_page: Recent history limit must be 1..24".into());
+    }
+    let mut results = Vec::new();
+    let mut seen = HashSet::new();
+    // A capped scan protects synchronous IPC from very large history files.
+    // The oldest records beyond this window are still retained on disk.
+    for record in progress.list_recent()?.into_iter().take(120) {
+        if seen.contains(&record.series_id) || record.series_id.starts_with("local:") {
+            continue;
+        }
+        let detail = match catalog.detail(&record.series_id) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let episode = match detail.episodes.iter().find(|ep| ep.id == record.episode_id) {
+            Some(value) => value.clone(),
+            None => continue,
+        };
+        let url = match catalog.resolve_episode(&detail.series.id, &record.episode_id) {
+            Ok(MediaTarget::Https(url)) => url,
+            _ => continue,
+        };
+        if progress.get(&detail.series.id, &record.episode_id, &url)?.is_none() {
+            continue;
+        }
+        seen.insert(record.series_id);
+        results.push(RecentCatalogEpisode { series: detail.series, episode, progress: record });
+        if results.len() == limit {
+            break;
+        }
+    }
+    Ok(results)
 }
 
 #[tauri::command]
