@@ -1,4 +1,5 @@
 use super::controls::PlayerControl;
+use super::preferences::PlayerPreferences;
 use super::source::MediaSource;
 use super::state::Failure;
 use super::tracks::{safe_track_label, track_available, MediaTrack, TrackKind, TrackList};
@@ -101,6 +102,7 @@ impl Engine {
         source: &MediaSource,
         session: u64,
         opened: Instant,
+        preferences: PlayerPreferences,
     ) -> Result<Self, Failure> {
         let name = match source {
             MediaSource::Local(path) => {
@@ -138,6 +140,15 @@ impl Engine {
         if let Some(path) = diagnostic.as_deref() {
             tracing::info!(session_id=session, native_log=%path, "opt-in libmpv diagnostic enabled");
         }
+        // Apply saved controls to this new, private libmpv instance before
+        // loading media. A new session must not inherit a previous source's
+        // temporary track IDs, but does inherit global volume/speed preferences.
+        let volume_text = preferences.volume.to_string();
+        let rate_text = preferences.playback_rate.to_string();
+        mpv.command("set", &["volume", volume_text.as_str()])
+            .map_err(|e| native_error("initialize", e))?;
+        mpv.command("set", &["speed", rate_text.as_str()])
+            .map_err(|e| native_error("initialize", e))?;
         mpv.command("loadfile", &[name.as_str()])
             .map_err(|e| native_error("loadfile", e))?;
         Ok(Self {
