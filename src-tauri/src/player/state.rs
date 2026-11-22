@@ -318,6 +318,36 @@ mod tests {
     }
 
     #[test]
+    fn invalid_media_error_is_terminal_but_the_next_session_can_recover() {
+        let mut state = PlayerState::default();
+        let bad = state.begin("invalid synthetic media".into());
+        state.set_cache_waiting(bad, true);
+        let error = Failure {
+            stage: "playback",
+            code: "Raw(-13)".into(),
+            message: "媒体加载失败".into(),
+        };
+        state.update(bad, PlaybackState::Error, Some(error));
+        state.update(bad, PlaybackState::Ended, None);
+        state.mark_started(bad);
+        state.set_cache_waiting(bad, false);
+        let snapshot = state.snapshot();
+        assert_eq!(snapshot.state, PlaybackState::Error);
+        assert_eq!(snapshot.error.unwrap().code, "Raw(-13)");
+
+        let healthy = state.begin("healthy synthetic media".into());
+        state.update(bad, PlaybackState::Ended, None);
+        state.clear(Some(bad));
+        assert_eq!(state.snapshot().state, PlaybackState::Loading);
+        assert_eq!(state.snapshot().session_id, Some(healthy));
+        assert!(state.snapshot().error.is_none());
+        state.mark_started(healthy);
+        assert_eq!(state.snapshot().state, PlaybackState::Playing);
+        state.update(healthy, PlaybackState::Ended, None);
+        assert_eq!(state.snapshot().state, PlaybackState::Ended);
+    }
+
+    #[test]
     fn replacement_rejects_late_restart_end_error_and_stop() {
         let mut s = PlayerState::default();
         let a = s.begin("A.mp4".into());
