@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { createCommunityGateway } from "../scripts/hg2a-sdk/server.mjs";
 
 const token = "0123456789abcdef".repeat(4);
@@ -115,4 +117,17 @@ test("invalid identifiers and disabled episodes cannot resolve targets", async (
     assert.equal((await get(port, "/v1/series/12345/episodes/99999/play")).code, 404);
     assert.equal((await get(port, "/v1/search?q=" + "z".repeat(200))).code, 400);
   });
+});
+
+test("direct Windows-compatible CLI invocation fails closed without explicit opt-in", () => {
+  const script = fileURLToPath(new URL("../scripts/hg2a-sdk/server.mjs", import.meta.url));
+  const result = spawnSync(process.execPath, [script], {
+    env: { ...process.env, HONGGUORUST_HG2A_EXPERIMENT: "0", HONGGUORUST_HG2A_TOKEN: "" },
+    encoding: "utf8",
+    timeout: 5_000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 1, "direct invocation must execute the main() opt-in gate");
+  assert.match(result.stderr, /HG2A startup failed/);
+  assert.doesNotMatch(result.stderr, /token=|anonymous\.json|\.mp4\?/);
 });
