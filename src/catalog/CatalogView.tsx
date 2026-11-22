@@ -465,7 +465,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           onClick={() => setGenreFilter(name)}>{name}</button>)}
       </div>
       <small>显示 {visibleItems.length} / {total} 部</small>
-    </div>
+    </div>}
 
     {manifestInfo && <p className="catalog-manifest-info" role="status">{manifestInfo}</p>}
     {error && <div className="catalog-request-error" role="alert">
