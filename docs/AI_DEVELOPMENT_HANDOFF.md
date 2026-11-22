@@ -118,54 +118,57 @@
 - 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)、[#26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)、[#27](https://github.com/Zhaokangbo/HongGuoRust/pull/27)、[#28](https://github.com/Zhaokangbo/HongGuoRust/pull/28)、[#29](https://github.com/Zhaokangbo/HongGuoRust/pull/29)、[#30](https://github.com/Zhaokangbo/HongGuoRust/pull/30)、[#31](https://github.com/Zhaokangbo/HongGuoRust/pull/31)、[#32](https://github.com/Zhaokangbo/HongGuoRust/pull/32)。
 
 
-## UI/UX 改版规划（2026-11-22）
+## UI/UX 改版规划（2026-11-22，持续更新）
 
-### 当前基线核对
+### 当前 GitHub 基线（已重新核对）
 
-- 本次重新读取 main 的 `AGENTS.md` 与本交接文档，并核对 GitHub PR、分支和 Actions；没有仅凭聊天记录推断状态。
+- 技术栈：Tauri 2 / Rust / libmpv2 + React 19 / TypeScript / Vite；样式集中在全局 `src/style.css`，没有专门 UI 组件库。
 - HG2B PR #32：Open / Draft / 未合并，base `main`，分支 `feat/hg2b-real-covers-and-episode-status`，HEAD `ac6614c94ef35095666054971a7c42c302982e2e`。
-- 同一 HEAD 的 Windows M1 run `45018039636` 和 Windows M2 playback run `45018039660` 均 completed / success。当前未发现额外的 commit status 记录；以 workflow run 结果为 CI 依据。
-- 用户已提供两次 Windows 实机截图：此前列表页显示多张不同真实海报；2026-11-22 详情页显示真实封面、简介、107 集列表和全局仅浏览保护。单集上游 `playable=false` 的独立状态显示、失败回退及剩余回归仍待验收。PR #32 不得擅自合并。
+- UI-1 PR #33：Open / Draft / 未合并，base `main`，分支 `feat/ui-1-cinematic-discovery`，HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80`。
+- UI-1 最新精确 HEAD 的 Windows M1 run `45026280804` 与 Windows M2 playback run `45026280683` 均 completed / success。M2 Debug artifact：`HongGuoRust-M2-debug-x64`，artifact ID `14756091026`，SHA-256 `0a9cde3cb2dd1e9ced4cb906ac4341d7da57ef8d67d44ed2c3e54ecaea0ab38d`。
+- 用户已明确确认 UI-1 的 Windows 实机验收全部通过（10 项）；但用户反馈视觉变化不明显，认为 UI-1 更接近主题换肤而非完整产品改版。UI-1 可作为稳定样式基础，不代表整体 UI/UX 改版已完成。
+- PR #31、#32、#33 均保持 Open / Draft / 未合并；不得擅自合并。合并依赖顺序仍为 #31 → #32 → #33 → 后续 UI PR。
 
-### 前端代码审查（仅检查，未修改代码）
+### UI-1 已完成并验收
 
-- 技术栈为 Tauri 2 / Rust / libmpv2 + React 19 / TypeScript / Vite，样式集中在单一全局 `src/style.css`，当前没有引入专门的 UI 组件库或 utility CSS 框架。
-- `src/main.tsx` 集中承载播放器状态、Tauri IPC、会话/选集队列、键盘快捷键、诊断面板和播放器控件；播放器主控件仍在单一横向 footer 中，公开 HTTPS 地址输入、诊断、轨道、倍速、音量等控件同时占据该区域。
-- `src/catalog/CatalogView.tsx` 负责内容首页、来源切换、搜索、详情、剧集、历史和收藏等多个视图状态；导航仍是顶部横向 tabs。首页另由 `DiscoveryHome.tsx` 实现。
-- `src/style.css` 采用全局元素选择器和按里程碑追加的页面样式；根布局沿用 66px header / 内容区 / 96px player footer。此几何关系与原生 libmpv 视频 HWND 的窗口布局有关，不能在视觉重构中随意改变。
-- 截图和源码共同支持的主要 UX 问题：导航层级不够清晰；首页焦点区缺少强视觉媒体内容；海报网格在宽屏下卡片偏小；本地/历史/收藏使用偏工具型文字行；播放器控件密度过高、网络地址和诊断操作暴露在常驻主界面；空白区域与内容密度不均。
-- 以上是静态代码与用户截图审查，不是完整交互/无障碍审计；尚未对焦点顺序、键盘可达性、缩放、窄窗口和实际 hover 状态做逐项测试。
+- `src/main.tsx`：品牌 header 标识；保留 66px header 与播放器结构。
+- `src/catalog/DiscoveryHome.tsx`：首页文案准确描述已接入内容。
+- `src/catalog/CatalogView.tsx`：详情返回入口与全局播放器入口去重。
+- `src/style.css`：设计 token、深色配色、焦点/悬停、2:3 海报卡片、首页 banner、响应式样式。
+- `docs/acceptance/ui-1.md`：10 项 Windows 实机验收清单，用户已全部确认通过。
+- UI-1 没有修改 Rust、libmpv worker、native HWND、Tauri IPC、Provider 契约或播放权限。
 
-### 已同意的改版范围与约束
+### 用户对 UI-1 的反馈与 UI-2 方向
 
-- 采用现代桌面流媒体/媒体中心方向：深色沉浸式界面、真实海报优先、明确导航层级、统一卡片/表单/按钮/状态、适配 Windows 窗口尺寸。
-- UI-1：设计 token、应用导航/页面框架、首页；UI-2：探索页/海报墙/详情；UI-3：播放器控件；UI-4：本地媒体/历史/收藏；UI-5：Windows 实机和全量回归。
-- 用户明确要求由当前 Chat 直接接手 GitHub 工程开发，不切换 Work、不再要求复制提示词或先选择视觉概念。已采用此前双方确认的现代流媒体影院风格作为默认方向。
-- UI 改版使用独立开发分支与 Draft PR；从 HG-2B 代码基线派生，PR 合并顺序必须遵守 #31 → #32 → UI PR。未经用户明确授权不得合并。
-- 必须保持 Rust 播放内核、libmpv worker 所有权、Native session ID、Tauri IPC、Provider 数据契约、播放权限/仅浏览边界不变；不得把敏感媒体 URL、凭证或本地绝对路径暴露到 UI/历史。
-- 原生视频 HWND 的尺寸/定位、全屏与 catalog 显示切换是硬约束。UI 可重新组织 HTML 控件，但不得假设 HTML overlay 能覆盖原生 HWND，也不得在无专项验证时改变播放器窗口几何。
-- 玩家主窗口既有 66px header / 96px player footer 是硬约束；UI-1 只调整 catalog header 内部排版和 catalog 内容样式，不调整视频区域或播放器 footer。
+用户确认 UI-1 全部通过，但主观认为变化不大。根因与静态代码审查一致：UI-1 主要调整视觉 tokens 和现有组件皮肤，没有实质改变内容信息架构、导航组织、首页内容编排、探索海报墙和作品详情布局。
 
-### UI-1 当前实现与 GitHub 状态（2026-11-22 UTC）
+UI-2 必须从“换肤”转向真正的桌面流媒体产品体验，具体目标：
 
-- **开发分支**：`feat/ui-1-cinematic-discovery`，从 HG-2B PR #32 精确 HEAD `ac6614c94ef35095666054971a7c42c302982e2e` 创建。
-- **Draft PR #33**：[feat(ui-1): cinematic desktop shell and discovery home](https://github.com/Zhaokangbo/HongGuoRust/pull/33)，Open / Draft / 未合并，base `main`，当前 HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80`。该 PR 是累积 stacked diff（77 个文件），其中 UI-1 新增/修改的实际文件为 `src/main.tsx`、`src/catalog/CatalogView.tsx`、`src/catalog/DiscoveryHome.tsx`、`src/style.css`、`docs/acceptance/ui-1.md`；前置 HG2A/HG2B 代码随堆叠基线一并出现在相对 main 的 PR diff 中。
-- **UI-1 实际代码**：
-  - `src/main.tsx`：应用品牌区加入简洁的 PERSONAL MEDIA CENTER 标识；保留现有 header 行高与播放器结构。
-  - `src/catalog/DiscoveryHome.tsx`：首页文案调整为准确描述实际接入内容，不暗示虚构榜单或未授权内容。
-  - `src/catalog/CatalogView.tsx`：详情页保留“返回列表”操作；非详情页隐藏重复的“返回播放器”按钮，统一使用应用 header 的返回播放入口。
-  - `src/style.css`：新增 UI-1 设计 token 与现代影院风格覆盖；优化 catalog header、标题、tabs、来源工具、搜索框、焦点/悬停状态；真实海报卡片改为 2:3 竖版展示；强化首页 banner、真实内容焦点卡片、筛选和继续观看卡片；增加窄窗口布局与 focus-visible 状态。
-  - `docs/acceptance/ui-1.md`：新增 10 项 Windows 实机验收清单。
-- **最近提交**：`62b384861118d7450a0f829a1347683836a8600a`（品牌 header）、`2f2df6f9280648d8e1af35f0791c5302972b2293`（首页文案）、`1150de644993bf056726ecc246d9b45e1b007261`（视觉 token 与样式）、`916474d5ea25cbc8a009631f36d6818b53e20f66`（UI-1 验收文档）、`0d2d4104942bdc1240e9b68b2e4024a3d20caf4a`（去除重复返回入口）、`e3e26294feb92d5d130a9dddfa5f07aff1c20d80`（更新验收步骤，当前 HEAD）。
-- **当前 CI**：精确 HEAD `916474d5ea25cbc8a009631f36d6818b53e20f66` 的 Windows M1 run `45026280804` 与 Windows M2 run `45026280683` 在首次查询时均为 `in_progress`。按用户协作约定，不持续轮询；等待用户通知“编译完成”后再检查最终结果。当前不得宣称 CI 通过，也没有可供用户验收的 UI-1 Windows artifact。
-- **Windows 实机验收**：尚未开始；按 `docs/acceptance/ui-1.md` 逐项执行。UI-1 代码提交不代表 UI-1 视觉、键盘或播放器回归已通过。
-- **合并纪律**：#31、#32、#33 均保持 Draft/未合并；#32 的 HG-2B 实机验收仍有未完成项。必须先完成各自验收、按 #31 → #32 → #33 顺序处理，并取得用户明确合并授权。
+1. **全局内容导航**：在 catalog 内容区引入稳定的侧边栏；清晰分组为发现/探索、个人媒体（本地视频/观看历史/收藏）和动态 Provider 内容源。保留所有原有入口及状态语义。
+2. **沉浸式首页**：使用 Provider 实际返回的封面、标题、简介、类型和集数构建大幅 featured hero；继续观看改为视觉卡片；按真实类型分组横向内容轨道；不虚构热门榜单、评分或推荐分数。
+3. **探索海报墙**：强化搜索/来源/分类/结果数量工具栏；桌面宽屏增加海报密度，使用真实 2:3 海报、信息层级和 hover 操作；分页、加载更多、取消/刷新、来源选择保持原行为。
+4. **作品详情页**：使用同一真实封面构建沉浸式背景/海报布局；清楚展示来源、类型、简介、集数、观看进度、继续观看/下一集入口；剧集卡片展示真实可播放/仅浏览/上游不可播放状态。
+5. **个人媒体区**：本轮先保持原有本地/历史/收藏功能与数据行为，视觉统一可分阶段处理，不能为 UI 变更修改磁盘文件行为、播放列表语义或历史持久化。
 
-### 最新实机结果与下一步
+### 硬约束
 
-- HG-2B 已确认的用户实机结果仍是：列表真实封面通过；详情真实封面、简介、107 集列表与全局仅浏览提示/禁播状态已由用户截图确认。单集上游 `playable=false` 独立状态显示、失败回退、搜索刷新竞态及 M7–HG2A 完整回归仍未全部验收。
-- UI-1 当前只提交了前端展示层改动，没有修改 Rust/libmpv/IPC/Provider 或播放授权逻辑。
-- 等待用户报告 Windows M1/M2 构建完成；收到后核对精确 HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80` 的两条 workflow。若通过，再提供匹配 SHA 的 debug artifact / 部署步骤；若失败，读取对应 job 日志修复。
-- UI-1 实机验收重点：品牌 header/连接状态、全部导航 tab、首页搜索与来源/分类筛选、真实海报 2:3 展示、详情跳转、继续观看、窗口缩放/无横向溢出、键盘焦点，以及返回播放器后 HWND/96px footer/播放控制回归。
-- UI-1 验收通过后，再开始 UI-2（探索列表、海报墙与详情页）；随后 UI-3 播放器控件、UI-4 本地媒体/历史/收藏、UI-5 全量 Windows 回归。
-- 不因 UI 开发而误标 HG-2B 全量验收通过，也不得自动合并任何 Draft PR。
+- 不修改 Rust 播放内核、libmpv worker 所有权、Native session ID、Tauri IPC、Provider 数据契约和播放授权边界，除非后续任务明确要求且单独验收。
+- 不暴露签名媒体 URL、凭证、用户本地绝对路径；不制造海报、元数据、评分、热度、可播放状态。
+- `safeCoverUrl` 和现有 CoverImage 处理仍是唯一封面展示入口；图片加载失败时保留真实失败/占位状态，不通过假图掩盖问题。
+- Catalog 主内容可以改为侧边栏 + 内部滚动布局，但 app 根窗口的 66px header、原生视频 HWND 几何、播放器 footer 和全屏/显示切换必须保持兼容；catalog 模式当前会隐藏播放器 footer，不能误改正常播放器模式的 96px footer。
+- 所有原有 tab/来源切换、搜索、分页、取消、导入/清空 manifest 二次确认、详情加载竞态、播放进度、不可播放集禁用状态必须保留。
+- UI 改版继续使用独立分支与 Draft PR；UI-2 从 UI-1 精确 HEAD 派生，PR 目标仍为 `main`，作为累积 stacked diff。合并顺序 #31 → #32 → #33 → UI-2 PR。未经用户明确授权不得合并。
+- 每个有意义阶段提交 GitHub；CI 启动后不持续轮询，等待用户通知“编译完成”再检查。
+
+### UI-2 开发状态与下一步
+
+- UI-2 尚未开始修改代码。计划新建分支 `feat/ui-2-streaming-catalog`，基于 UI-1 HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80`。
+- 预计 UI-2 修改范围：`src/catalog/CatalogView.tsx`、`src/catalog/DiscoveryHome.tsx`、`src/catalog/ContinueWatchingShelf.tsx`、`src/style.css`；新增 `docs/acceptance/ui-2.md`，必要时增加纯函数测试。尽量不触碰 `src/main.tsx` 与 Rust。
+- 先实现侧边栏导航、沉浸式首页、真实数据横向内容轨道、探索海报墙和详情页布局，再跑前端 typecheck / 全套现有 npm tests / Windows M1 + M2 CI。
+- 用户负责 Windows 实机验收；只有最新精确 HEAD 的 CI 全绿后才提供匹配构建产物。
+- UI-2 验收后再进入 UI-3 播放器控制栏、UI-4 本地媒体/历史/收藏的视觉改造、UI-5 全量回归。
+- HG2B 的独立验收状态不得因 UI-1 验收通过而误标完成；PR #31/#32/#33 和后续 UI PR 均不得自动合并。
+
+### 跨对话接力约定
+
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-2 应从 `feat/ui-1-cinematic-discovery` 的 HEAD `e3e26294feb92d5d130a9dddfa5f07aff1c20d80` 接续；不要根据聊天摘要猜测代码状态。
