@@ -155,8 +155,9 @@
 - **最新精确 HEAD CI：全部通过**：
   - Windows M1 run `45030036582`：success。包含 `npm run build`、Rust fmt/test、`cargo tauri build --no-bundle`、live IPC 和正常进程退出验证。
   - Windows M2 playback run `45030036487`：success。包含 npm audit、`npm run build`、播放器 build/test、embedded-pixel 和 playing-window-close 验证。
-  - M1 artifact：`HongGuoRust-M4-windows-x64`，ID `14757667246`，SHA-256 `8c760d7a04b2092bc8d1beb6cbba1680db93b1532e683200cbd8ca1faeb72bd8`。
-  - M2 Debug artifact：`HongGuoRust-M2-debug-x64`，ID `14757477264`，SHA-256 `a52aa043b64789a2d382300a9cb81e490c5768e7fcd519460ca4abbb058f8474`。
+  - M1 artifact：`HongGuoRust-M4-windows-x64`，ID `14757667246`，SHA-256 `8c760d7a04b2092bc8d1beb6cbba1680db93b1532e683200cbd8ca1faeb72bd8`。这是更适合用户实机验收的完整 Windows validation kit，包含 `hongguorust.exe`、`get-mpv.ps1`、`run-windows.md` 等文件；已通过 GitHub Connector 下载并本地复核 SHA-256。
+  - M2 Debug artifact：`HongGuoRust-M2-debug-x64`，ID `14757477264`，SHA-256 `a52aa043b64789a2d382300a9cb81e490c5768e7fcd519460ca4abbb058f8474`。该 ZIP 仅包含 `hongguorust.exe`，不含运行时部署脚本；浏览器直接访问 Actions API 会返回 HTTP 401，必须通过认证下载。
+  - **用户实机验收首选 M1 完整 validation kit**：解压后在该目录运行 `.`get-mpv.ps1 -Destination .`，再运行 `.`hongguorust.exe`。需要 Edge WebView2 Runtime；`libmpv-2.dll` 必须与 EXE 同目录。若系统缺少 Vulkan loader，按包内 `run-windows.md` 指引处理。
 - **Windows 实机验收**：现在开始。只使用上述精确 HEAD 对应的 M2 Debug artifact，不得使用 UI-1 旧 artifact。按 `docs/acceptance/ui-2.md` 的 16 项检查；特别确认 sidebar、首页真实焦点和横向轨道、探索海报墙、详情页真实封面/剧集状态、播放续接、480×320 响应式、键盘操作及播放器 HWND/96px footer 没有回归。
 - 用户尚未确认 UI-2 验收；PR #34 必须保持 Draft，不得合并。
 
