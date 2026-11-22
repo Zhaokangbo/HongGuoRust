@@ -1,6 +1,7 @@
 //! Content-provider boundary for M6. No scraping and no third-party credentials.
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
+mod hongguo;
 mod local;
 mod manifest;
 pub mod progress;
@@ -54,6 +55,19 @@ pub enum MediaTarget {
 pub trait ContentProvider: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
+
+    /// Capabilities are provider-specific; authorization-gated sources must
+    /// never be advertised as playable before a verified contract exists.
+    fn supports_search(&self) -> bool {
+        true
+    }
+    fn supports_detail(&self) -> bool {
+        true
+    }
+    fn supports_play(&self) -> bool {
+        true
+    }
+
     fn search(&self, query: &str) -> Result<Vec<Series>, String>;
     fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String>;
     fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String>;
