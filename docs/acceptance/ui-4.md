@@ -40,7 +40,7 @@ UI-4 turns the existing local MP4, local playback history and favorites pages in
 - [ ] 15. Clear a history record only after confirmation. The file remains in My Videos and its favorite state is unchanged.
 - [ ] 16. Remove a local library item only after confirmation. The original file on disk remains untouched.
 - [ ] 17. Verify loading, retry, empty state, no-match state, manual refresh and disabled action states; local-operation failures show one actionable alert rather than duplicate player errors.
-- [ ] 18. Verify keyboard focus/Enter/Space, item-specific screen-reader labels for play/remove/clear actions, 480×320 and normal desktop layouts.
+- [ ] 18. Verify keyboard focus/Enter/Space, context-specific search labels for local/history/favorites, item-specific screen-reader labels for play/remove/clear actions, 480×320 and normal desktop layouts.
 - [ ] 19. Confirm no absolute local path, credential, signed URL or raw OS error details appear in the UI.
 - [ ] 20. Regress UI-3 Home/Explore/detail, player pause/seek/tracks/volume/speed/fullscreen and normal 66px header / 96px footer.
 - [ ] 21. Restart the app. Favorites and local history persist independently and Home remains the default page.
