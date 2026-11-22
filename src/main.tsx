@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getSnapshot, type PlayerSnapshot } from "./player/snapshot";
+import { resolvePlayerShortcut, type PlayerShortcut } from "./player/keyboardShortcuts";
 import { nextAtNaturalEof, type LocalPlaylist } from "./player/autoNext";
 import { CatalogView } from "./catalog/CatalogView";
 import type { SeriesDetail } from "./catalog/types";
@@ -31,6 +32,9 @@ function App() {
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const [rate, setRate] = useState(1);
   const [volume, setVolume] = useState(100);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+  const lastAudibleVolumeRef = useRef(100);
+  const shortcutFlightRef = useRef(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [playlist, setPlaylist] = useState<LocalPlaylist | null>(null);
@@ -76,6 +80,7 @@ function App() {
   useEffect(() => {
     setRate(1);
     setVolume(100);
+    lastAudibleVolumeRef.current = 100;
     setSeekPreview(null);
     setSeekText("0");
   }, [snapshot?.sessionId]);
@@ -100,21 +105,8 @@ function App() {
     if (ok) setFullscreen(target);
   }
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && fullscreen) {
-        event.preventDefault();
-        void toggleFullscreen(false);
-      } else if (event.key === "F11") {
-        event.preventDefault();
-        void toggleFullscreen(!fullscreen);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullscreen]);
-
   async function openCatalog() {
+    setShortcutHelpOpen(false);
     if (fullscreen && !(await command("set_fullscreen", { fullscreen: false }))) return;
     if (fullscreen) setFullscreen(false);
     if (await command("set_catalog_visible", { visible: true })) setCatalogOpen(true);
@@ -279,6 +271,69 @@ function App() {
     setSeekPreview(null);
   }
 
+  async function runShortcut(action: PlayerShortcut) {
+    if (action.type === "help") {
+      setShortcutHelpOpen(action.value);
+      return;
+    }
+    if (busy || shortcutFlightRef.current) return;
+    shortcutFlightRef.current = true;
+    try {
+      switch (action.type) {
+        case "pause":
+          await command("set_paused", { paused: snapshot?.state !== "Paused" });
+          break;
+        case "seek":
+          await applySeek(action.seconds);
+          break;
+        case "volume": {
+          const ok = await command("set_volume", { volume: action.value });
+          if (ok) {
+            if (action.value > 0) lastAudibleVolumeRef.current = action.value;
+            setVolume(action.value);
+          }
+          break;
+        }
+        case "fullscreen":
+          await toggleFullscreen(action.value);
+          break;
+      }
+    } finally {
+      shortcutFlightRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      const editable = target?.closest("input,textarea,select,[contenteditable='true'],[role='textbox'],[role='searchbox']");
+      const action = resolvePlayerShortcut({
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+        isComposing: event.isComposing,
+        defaultPrevented: event.defaultPrevented,
+        targetTag: target?.tagName,
+        targetRole: editable?.getAttribute("role"),
+        contentEditable: Boolean(editable),
+      }, {
+        catalogOpen, fullscreen, helpOpen: shortcutHelpOpen,
+        connected, controllable, positionSec: snapshot?.positionSec ?? null,
+        durationSec: snapshot?.durationSec ?? null,
+        volume, lastAudibleVolume: lastAudibleVolumeRef.current,
+      });
+      if (!action) return;
+      event.preventDefault();
+      void runShortcut(action);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [catalogOpen, fullscreen, shortcutHelpOpen, connected, controllable,
+      snapshot?.positionSec, snapshot?.durationSec, snapshot?.state, volume, busy]);
+
   return <main className={fullscreen ? "fullscreen" : catalogOpen ? "catalog-mode" : ""}>
     <header>
       <h1><i aria-hidden="true" />HongGuoRust</h1>
@@ -318,7 +373,8 @@ function App() {
         <span>{clock(snapshot?.durationSec)}</span>
       </div>
       <div className="player-transport">
-        <button disabled={!controllable}
+        <button disabled={!controllable} aria-keyshortcuts="Space K"
+          title="快捷键：空格 / K"
           onClick={() => void command("set_paused", { paused: snapshot?.state !== "Paused" })}>
           {snapshot?.state === "Paused" ? "继续" : "暂停"}
         </button>
@@ -376,16 +432,44 @@ function App() {
         </label>
         <label>音量
           <select aria-label="播放音量" value={volume} disabled={!controllable}
-            onChange={e => { const next = Number(e.target.value); setVolume(next); void command("set_volume", { volume: next }); }}>
+            onChange={e => {
+              const next = Number(e.target.value);
+              setVolume(next);
+              if (next > 0) lastAudibleVolumeRef.current = next;
+              void command("set_volume", { volume: next });
+            }}>
             {[0, 25, 50, 75, 100].map(value => <option value={value} key={value}>{value}%</option>)}
           </select>
         </label>
-        <button disabled={busy || !connected} title="F11 切换全屏，Esc 退出"
+        <button disabled={busy || !connected} aria-keyshortcuts="F11 F"
+          title="F 或 F11 切换全屏，Esc 退出"
           onClick={() => void toggleFullscreen(!fullscreen)}>全屏 F11</button>
+        <button type="button" className="player-help-trigger"
+          aria-expanded={shortcutHelpOpen} aria-controls="player-shortcut-help"
+          aria-keyshortcuts="Shift+Slash"
+          onClick={() => setShortcutHelpOpen(value => !value)}>快捷键 ?</button>
         <span className="player-status">{snapshot?.state ?? "—"}</span>
         <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
       </div>
     </footer>
+    {!catalogOpen && shortcutHelpOpen && <aside id="player-shortcut-help"
+      className="player-shortcut-help" role="dialog" aria-label="播放器快捷键说明" aria-modal="false">
+      <div className="shortcut-help-heading">
+        <strong>键盘快捷键</strong>
+        <button type="button" onClick={() => setShortcutHelpOpen(false)}>关闭 Esc</button>
+      </div>
+      <dl>
+        <div><dt>空格 / K</dt><dd>暂停或继续</dd></div>
+        <div><dt>← / →</dt><dd>后退 / 前进 5 秒</dd></div>
+        <div><dt>J / L</dt><dd>后退 / 前进 10 秒</dd></div>
+        <div><dt>↑ / ↓</dt><dd>音量 ±25%</dd></div>
+        <div><dt>M</dt><dd>静音 / 恢复音量</dd></div>
+        <div><dt>F / F11</dt><dd>全屏切换</dd></div>
+        <div><dt>Esc</dt><dd>关闭提示 / 退出全屏</dd></div>
+        <div><dt>?</dt><dd>显示 / 隐藏快捷键</dd></div>
+      </dl>
+      <p>输入框、搜索框和选集操作时不触发播放快捷键；Ctrl/Alt/系统组合键保留原有行为。</p>
+    </aside>}
   </main>;
 }
 
