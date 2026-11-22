@@ -411,23 +411,6 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
                   : "搜索、筛选并浏览已接入内容源返回的真实作品。"}</p>
         </div>}
       </div>
-    <div className="catalog-heading">
-      <div>
-        <p className="catalog-eyebrow">M10 · MEDIA EXPERIENCE</p>
-        <h2>{detail ? detail.series.title : mode === "home" ? "内容首页"
-          : mode === "favorites" ? "我的收藏" : mode === "history" ? "最近播放"
-          : mode === "local" ? "我的视频" : "探索内容"}</h2>
-        <p>{mode === "home" ? "从已接入的内容中发现作品，按真实来源与分类浏览，直接进入详情选集。"
-          : mode === "history"
-          ? "显示自有清单、演示剧集和本地 MP4 的最近播放记录；进度保存在本机。"
-          : mode === "favorites" ? "收藏你自己的本地视频，独立保存观看进度。"
-          : mode === "local" ? "管理你自己选择的本地 MP4，文件始终保留在原始位置。"
-          : "通过统一 Content Provider 检索演示与本机媒体；演示条目仅使用公开测试素材。"}</p>
-      </div>
-      {detail && <button className="catalog-ghost" disabled={working}
-        onClick={() => setDetail(null)}>← 返回列表</button>}
-    </div>
-
     {!detail && mode === "demo" && <div className="catalog-source-tools">
       <div className="catalog-source-current">
         <small>当前浏览来源</small>
@@ -606,7 +589,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
             <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
               <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
                 eager={index < 10} priority={index < 3} />
-              <span>{item.providerId === "manifest" ? "自有清单"
+              <span className="catalog-card-source">{item.providerId === "manifest" ? "自有清单"
                 : item.providerId === "local" ? "本地媒体"
                   : item.providerId === "hgcommunity" ? "社区 SDK · 实验" : "演示内容"}</span>
               <span className="catalog-card-hover">查看详情 <i aria-hidden="true">→</i></span>
