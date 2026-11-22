@@ -1,5 +1,6 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
+use super::health::{RuntimeHealth, RuntimeHealthMeter};
 use super::history::{finish, HistorySession};
 use super::preferences::{PlayerPreferences, PreferencesStore};
 use super::preview::{PreviewFrame, PreviewService};
@@ -65,6 +66,7 @@ pub struct PlayerService {
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
     preview: PreviewService,
+    health: Arc<Mutex<RuntimeHealthMeter>>,
 }
 
 impl PlayerService {
@@ -80,6 +82,8 @@ impl PlayerService {
         let worker_library = Arc::clone(&library);
         let worker_progress = Arc::clone(&provider_progress);
         let worker_preferences = Arc::clone(&preferences);
+        let health = Arc::new(Mutex::new(RuntimeHealthMeter::default()));
+        let worker_health = Arc::clone(&health);
         let worker = thread::Builder::new()
             .name("libmpv-player".into())
             .spawn(move || {
@@ -90,6 +94,7 @@ impl PlayerService {
                     worker_library,
                     worker_progress,
                     worker_preferences,
+                    worker_health,
                 )
             })?;
         Ok(Self {
@@ -99,11 +104,17 @@ impl PlayerService {
             library,
             provider_progress,
             preview: PreviewService::default(),
+            health,
         })
     }
 
     pub fn snapshot(&self) -> PlayerSnapshot {
         self.state.lock().unwrap().player.snapshot()
+    }
+
+    /// A read-only, URL-free diagnostic report. No native mpv calls or I/O.
+    pub fn runtime_health(&self) -> RuntimeHealth {
+        self.health.lock().unwrap().snapshot(Instant::now())
     }
 
     pub fn open(&self, path: PathBuf) -> Result<u64, String> {
@@ -328,16 +339,14 @@ fn stop_targets_active_session(requested: Option<u64>, current: Option<u64>) -> 
     requested.is_some() && requested == current
 }
 
-fn release(engine: &mut Option<Engine>) {
+fn release(engine: &mut Option<Engine>, health: &Mutex<RuntimeHealthMeter>) {
     if let Some(current) = engine.take() {
         let id = current.session;
         let started = Instant::now();
         drop(current);
-        info!(
-            session_id = id,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "libmpv released"
-        );
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        health.lock().unwrap().released(elapsed_ms);
+        info!(session_id = id, elapsed_ms, "libmpv released");
     }
 }
 
@@ -368,6 +377,7 @@ fn run(
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
     preferences: Arc<PreferencesStore>,
+    health: Arc<Mutex<RuntimeHealthMeter>>,
 ) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
@@ -404,7 +414,8 @@ fn run(
                 end_cache_interval(&mut cache_since, "replaced");
                 finish(&mut history, &library, false);
                 finish_provider(&mut provider_history, &provider_progress, false);
-                release(&mut engine);
+                release(&mut engine, &health);
+                health.lock().unwrap().open(id, accepted, Instant::now());
                 let settings = preferences.snapshot().unwrap_or_else(|error| {
                     tracing::warn!(error=%error, "invalid settings file; use runtime defaults");
                     PlayerPreferences::default()
@@ -428,7 +439,10 @@ fn run(
                             )
                         });
                     }
-                    Err(e) => failed(&state, id, e),
+                    Err(e) => {
+                        health.lock().unwrap().failed(id, Instant::now());
+                        failed(&state, id, e);
+                    }
                 }
             }
             Some(Command::Stop(id)) => {
@@ -442,7 +456,10 @@ fn run(
                 end_cache_interval(&mut cache_since, "stopped");
                 finish(&mut history, &library, false);
                 finish_provider(&mut provider_history, &provider_progress, false);
-                release(&mut engine);
+                release(&mut engine, &health);
+                if let Some(session_id) = id {
+                    health.lock().unwrap().stopped(session_id, Instant::now());
+                }
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
             }
@@ -556,6 +573,7 @@ fn run(
                 let ms = current.opened.elapsed().as_millis() as u64;
                 match event {
                     Ok(Some(Observation::Loaded)) => {
+                        health.lock().unwrap().loaded(id, Instant::now());
                         info!(session_id = id, elapsed_ms = ms, "file-loaded");
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             if let Some(sec) = active.resume_at.take() {
@@ -588,6 +606,7 @@ fn run(
                         }
                     }
                     Ok(Some(Observation::Restart)) => {
+                        health.lock().unwrap().restart(id, Instant::now());
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
                         state.lock().unwrap().player.mark_started(id);
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
@@ -599,6 +618,7 @@ fn run(
                         }
                     }
                     Ok(Some(Observation::CacheWaiting(waiting))) => {
+                        health.lock().unwrap().buffer(id, waiting, Instant::now());
                         if waiting {
                             if cache_since.is_none() {
                                 cache_since = Some((id, Instant::now()));
@@ -625,7 +645,8 @@ fn run(
                         end_cache_interval(&mut cache_since, "ended");
                         finish(&mut history, &library, true);
                         finish_provider(&mut provider_history, &provider_progress, true);
-                        release(&mut engine);
+                        health.lock().unwrap().ended(id, Instant::now());
+                        release(&mut engine, &health);
                         state
                             .lock()
                             .unwrap()
@@ -636,7 +657,8 @@ fn run(
                         end_cache_interval(&mut cache_since, "error");
                         finish(&mut history, &library, false);
                         finish_provider(&mut provider_history, &provider_progress, false);
-                        release(&mut engine);
+                        health.lock().unwrap().failed(id, Instant::now());
+                        release(&mut engine, &health);
                         failed(&state, id, e);
                     }
                     Ok(Some(Observation::Progress { position, duration })) => {
@@ -660,9 +682,10 @@ fn run(
     }
     let started = Instant::now();
     end_cache_interval(&mut cache_since, "closed");
+    health.lock().unwrap().closed(Instant::now());
     finish(&mut history, &library, false);
     finish_provider(&mut provider_history, &provider_progress, false);
-    release(&mut engine);
+    release(&mut engine, &health);
     info!(
         elapsed_ms = started.elapsed().as_millis() as u64,
         "player worker exited"
