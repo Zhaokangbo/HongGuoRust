@@ -98,6 +98,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
+            commands::get_runtime_health,
             commands::catalog_search,
             commands::catalog_sources,
             commands::catalog_search_page,
