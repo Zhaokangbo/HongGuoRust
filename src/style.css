@@ -83,6 +83,16 @@ main.fullscreen header, main.fullscreen footer { display: none; }
 .catalog-artwork > span, .catalog-detail-art > span, .discovery-hero-art > span {
   position: relative; z-index: 2; text-shadow: 0 1px 3px rgba(0,0,0,.9);
 }
+/* Opt-in community metadata only; distinguish absent URL from image load failures. */
+.catalog-artwork > .catalog-cover-diagnostic,
+.catalog-detail-art > .catalog-cover-diagnostic,
+.discovery-hero-art > .catalog-cover-diagnostic {
+  position: absolute; z-index: 3; top: 9px; left: 9px; right: 9px;
+  width: fit-content; max-width: calc(100% - 18px); padding: 4px 7px;
+  font: 11px/1.35 system-ui, sans-serif; letter-spacing: 0;
+  text-shadow: none; color: #e5fff5; background: rgba(13, 28, 24, .88);
+  border-radius: 5px; pointer-events: none;
+}
 .catalog-availability-info { border-left: 3px solid #8fd7c0; padding: 8px 12px; background: #1d302a; }
 .catalog-episodes button:disabled { opacity: .6; cursor: not-allowed; }
 
