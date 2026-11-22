@@ -24,12 +24,12 @@ HongGuoRust 是独立 Windows Rust/Tauri + libmpv 客户端，当前支持 demo�
 
 ## HG-1 已落地的架构边界
 
-- 新增 `src-tauri/src/catalog/hongguo.rs`：`ApprovedCatalogTransport` 抽象搜索、详情和按剧集 ID 解析播放地址；`HongGuoAuthorizedProvider` 实现现有 `ContentProvider` 接口。
-- 采用 **严格不注册** 的策略：当前生产 `CatalogService::new` 仍只注册 `demo/local/manifest`，不会出现假的“红果真实内容”入口、触发 API 网络请求或将它当成已经授权上线的内容源。静态合成测试只在 Rust 单测内调用。
+- 新增 `src-tauri/src/catalog/hongguo.rs`：`ApprovedCatalogTransport` 抽象搜索、详情和按剧集 ID 解析播放地址；`HongGuoAuthorizedProvider` 实现现有 `ContentProvider` 接口。另加 `HongGuoUnavailableProvider` 供生产端只显示明确的待授权入口，两种 Provider 不能同时被生产注册。
+- 采用 **注册不可播放占位来源，但不注册获授权 Transport** 的策略：当前生产 `CatalogService::new` 在 `demo/local/manifest` 外新增 `hongguo` 占位 Provider，名称为 **「红果接入（待授权）」**，其 `supportsSearch/Detail/Play` 均为 `false`、内容集合为空、解析播放请求必然拒绝。**`HongGuoAuthorizedProvider` 及其模拟 `ApprovedCatalogTransport` 仅用于 Rust 离线测试，不注册生产，不产生真实片源请求。**
 - 新增输入与输出校验：ID 限定 ASCII 字母数字/下划线/横线（避免路径、冒号命名空间冲突）；搜索字节长度上限；剧集数量上限 200、结果条数上限 50；剧集编号/标题/数量一致性、重复 ID 拒绝。
 - `allowed_media_url` 先沿用项目的 `public_https_url` 验证直接 HTTPS MP4，再校验完整主机名必须精确匹配合作方书面确认的媒体域名。不会接受用户可随意提供的 URL 作为集数 ID、HTTP、用户信息、内网 IP、伪域名和错误扩展名。
 - 错误对外只有预定义错误码/说明，不暴露上游异常文本、令牌、带签名的播放 URL 或本地用户路径。
-- **尚未实现 HTTP transport、真正登录、OAuth、票据交换、内容授权审核或使用真实红果内容。** 为避免安全错觉，未来网络实现必须另行覆盖 DNS 重绑定/重定向/私网 IP 防护、连接/读取超时、请求取消、凭证只放服务端和 token 轮换；本阶段没有假装已满足这些要求。
+- 新增 Provider 能力声明及 Rust `CatalogService::resolve_episode` 强制禁播门控：不能只靠前端禁用按钮保证权限。前端提供「红果接入」入口、待授权状态和安全空结果，不展示虚构真实作品。**尚未实现 HTTP transport、真正登录、OAuth、票据交换、内容授权审核或使用真实红果内容。** 为避免安全错觉，未来网络实现必须另行覆盖 DNS 重绑定/重定向/私网 IP 防护、连接/读取超时、请求取消、凭证只放服务端和 token 轮换；本阶段没有假装已满足这些要求。
 - `resolve_episode` 返回已有 `MediaTarget::Https`，最后仍交给现有 Rust `CatalogService` 和 `PlayerService/libmpv` 处理，Provider 无权直接控制 native 播放器。
 - 此实现只兼容直接 HTTPS MP4。如果未来授权源只提供 HLS/m3u8、DRM 或过期签名 URL，则必须作为新需求单独设计，不能将不同格式 URL 直接塞进当前 MP4 校验链路。
 
@@ -45,7 +45,7 @@ HongGuoRust 是独立 Windows Rust/Tauri + libmpv 客户端，当前支持 demo�
 
 ## 建议后续子阶段
 
-- **HG-1（本阶段）**：公开事实调研、接入条件清单、Rust Provider 安全适配骨架、合成 Mock 全链路单测，不注册真实红果源。
+- **HG-1（本阶段）**：公开事实调研、接入条件清单、Rust Provider 安全适配骨架、合成 Mock 全链路单测、仅注册默认禁用的红果入口，不注册真实红果内容服务。
 - **HG-2**：若合作/授权接口可用，创建具备明确许可的远端 `ApprovedCatalogTransport`，受控 HTTP 客户端及服务端凭证代理，完成真机数据检索/详情/选集的测试；若缺少授权，先建设与相同 contract 一致的本地 Mock/自有云内容源，但清晰标注“非红果真实内容”。
 - **HG-3**：在播放权和真实媒体目标格式确认后，安全接入 `MediaTarget`，处理 token 有效期、过期重试、域名重定向校验、禁止 DRM/付费墙绕过，完成合法剧目实际播放验收。
 - **HG-4**：整合真实可用剧目至首页、分类、历史续看、收藏与跨重启；补齐 Provider 作用域与版权来源标注。
@@ -56,7 +56,7 @@ HongGuoRust 是独立 Windows Rust/Tauri + libmpv 客户端，当前支持 demo�
 - [ ] 同一 HEAD Windows M1（Rust fmt/tests、Tauri 构建、TS/Node）通过；
 - [ ] 同一 HEAD Windows M2（真实原生播放/正常退出探针）通过；
 - [ ] Rust 模拟适配单测通过：合成作品搜索、详情选集排序、已知 ID 解析、非法 ID、恶意媒体 URL、不同域名/端口、异常数据拒绝；
-- [ ] 不增加正式红果内容源注册、不联网、不存储真实账号/token、不回归 demo/local/manifest 三个 Provider 和已有播放链路；
+- [ ] 只新增 `hongguo` **空占位来源**，生产不注册获授权的 Mock Transport，不联网、不存储真实账号/token、不展示真实剧集、不回归 demo/local/manifest 与播放链路；
 - [ ] 负责人 Windows 适配回归与产品流程验收完成，按后续 HG-1 对应验收项记录；
 - [ ] 前置 PR #20–#28 未合并前仍需原有独立门槛与明确授权。
 
