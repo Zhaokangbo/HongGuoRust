@@ -4,12 +4,25 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+if (!('HongGuoNativeClick' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class HongGuoNativeClick {
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+}
+'@
+}
 $exe = (Resolve-Path -LiteralPath $Executable).Path
 $manifest = Get-Content (Join-Path $PSScriptRoot '..\src-tauri\Cargo.toml') -Raw
 $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
 if (!$version) { throw 'Missing Cargo package version' }
 $connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
-$names = @('HongGuoRust', $connected, '播放器', $version)
+$home = -join ([char[]](0x9996, 0x9875))
+$names = @('HongGuoRust', $connected, $home, '播放器', $version)
 $diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
 $env:HONGGUORUST_LOG_DIR = $diag
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS --force-renderer-accessibility".Trim()
@@ -44,7 +57,17 @@ try {
         [System.Windows.Automation.AutomationElement]::NameProperty, '播放器')
     $playerButton = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $playerCondition)
     if (!$playerButton) { throw 'Missing player surface entry button' }
-    $playerButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if (!$playerButton.Current.IsEnabled) { throw 'Player surface entry button is disabled' }
+    $bounds = $playerButton.Current.BoundingRectangle
+    if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Player surface entry button has no visible bounds' }
+    if (![HongGuoNativeClick]::SetCursorPos(
+        [int]($bounds.Left + $bounds.Width / 2),
+        [int]($bounds.Top + $bounds.Height / 2))) {
+        throw 'Could not focus the player surface entry button'
+    }
+    [HongGuoNativeClick]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 80
+    [HongGuoNativeClick]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
 
     $idleCondition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, 'Idle')
@@ -61,8 +84,8 @@ try {
 
     $log = Join-Path $diag "player-$($process.Id).log"
     if (!(Select-String -Path $log -Pattern 'first snapshot IPC.*state=Idle' -Quiet)) { throw 'Missing Rust Idle IPC evidence' }
-    Write-Output "UIA rendered the Rust Idle snapshot after $($timer.ElapsedMilliseconds) ms"
-    Write-Output "PASS: desktop window shows connected, Idle and version $version"
+    Write-Output "UIA opened the player surface from Home after $($timer.ElapsedMilliseconds) ms"
+    Write-Output "PASS: desktop window exposes Home, connected, player Idle and version $version"
 
     # Capture this window's process tree before closing it. Other WebView2 clients
     # on the desktop may legitimately outlive our application.

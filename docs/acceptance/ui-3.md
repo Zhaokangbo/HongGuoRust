@@ -28,7 +28,7 @@ UI-3 replaces the green/sidebar-first presentation with a dark, cinematic stream
 - [ ] 4. Switch Home, Explore All, each registered Provider source, My Videos, Recent Plays and Favorites. The correct original view opens and active navigation is clear.
 - [ ] 5. Confirm the Hero uses a real returned cover, title, description, genre and episode count. If cover is absent or fails, the existing neutral fallback remains; no fabricated poster appears.
 - [ ] 6. Click the Hero CTA. The matching real detail opens; the Hero must not start playback.
-- [ ] 7. Confirm search, source filters, real genre filters, refresh, retry and load-more work; rapid source changes do not allow stale responses to overwrite current results.
+- [ ] 7. Confirm search, source filters, real genre filters, refresh, retry and load-more work; when no results match, search/source controls remain available and reset restores all sources. Rapid source changes must not allow stale responses to overwrite current results.
 - [ ] 8. Confirm Continue Watching appears only when real history exists and displays accurate progress; empty history does not create an empty shelf.
 - [ ] 9. Confirm genre shelves are horizontal, scrollable, poster-first and contain only records returned by the selected Provider.
 - [ ] 10. Hover a poster: it scales without clipping, shows its detail affordance and remains clickable. Tab/Shift+Tab/Enter/Space work.
