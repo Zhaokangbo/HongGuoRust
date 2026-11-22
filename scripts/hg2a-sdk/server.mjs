@@ -37,6 +37,62 @@ const series = raw => ({
   genre: safeText(raw.category || "短剧", 40),
   episodes: Math.min(200, Math.max(1, Number(raw.episode_count) || 1)),
 });
+
+/**
+ * The upstream SDK's search parser can omit cover_url even when the series
+ * details contain it. Recover only missing PUBLIC poster metadata through ONE
+ * upstream SDK batch call (max 10 IDs). Never request playback, devices, keys,
+ * or hidden login paths, and never mask successful search with a batch error.
+ */
+export async function enrichCatalogCovers(sdk, inputRows) {
+  const rows = Array.isArray(inputRows) ? inputRows : [];
+  const direct = rows.filter(row => publicCoverUrl(row?.cover_url)).length;
+  const candidates = [...new Set(rows
+    .filter(row => idPattern.test(row?.id || "") && !publicCoverUrl(row?.cover_url))
+    .map(row => row.id))].slice(0, 10);
+  let state = candidates.length ? "unavailable" : "not-needed";
+  let recovered = 0;
+  let resultRows = rows;
+
+  if (candidates.length && typeof sdk.getSeriesBatch === "function") {
+    try {
+      const details = await sdk.getSeriesBatch(candidates);
+      if (!Array.isArray(details)) throw new Error("invalid_batch_shape");
+      const requested = new Set(candidates);
+      const coverById = new Map();
+      for (const detail of details) {
+        const id = detail?.series?.id;
+        const cover = publicCoverUrl(detail?.series?.cover_url);
+        // A mismatched result must never mutate an unrelated search entry.
+        if (typeof id === "string" && requested.has(id) && cover) {
+          coverById.set(id, cover);
+        }
+      }
+      resultRows = rows.map(row => {
+        if (publicCoverUrl(row?.cover_url) || !coverById.has(row?.id)) return row;
+        recovered++;
+        return { ...row, cover_url: coverById.get(row.id) };
+      });
+      state = "ok";
+    } catch {
+      // Suppress upstream errors (possibly carrying URL signatures or device
+      // material). A failed optional metadata lookup must not fail search.
+      state = "failed";
+    }
+  }
+  return {
+    rows: resultRows,
+    diagnostics: {
+      results: rows.length,
+      direct,
+      recovered,
+      missing: resultRows.length - direct - recovered,
+      batchRequested: candidates.length,
+      batchState: state,
+    },
+  };
+}
+
 function reply(res, status, value) {
   let data = Buffer.from(JSON.stringify(value));
   if (data.length > 96 * 1024) {
@@ -64,7 +120,14 @@ async function route(sdk, url) {
     const page = query.trim()
       ? await sdk.search(query.trim(), { pageSize: 20, filters: ["content_type_short_play"] })
       : await sdk.discover({});
-    const items = (page.items || []).slice(0, 50).filter(x => idPattern.test(x.id || "")).map(series);
+    const rawItems = (Array.isArray(page?.items) ? page.items : []).slice(0, 50)
+      .filter(x => idPattern.test(x?.id || ""));
+    const { rows, diagnostics } = await enrichCatalogCovers(sdk, rawItems);
+    // Counts only: no source CDN URLs, signatures, titles, device IDs or tokens.
+    process.stdout.write("HG2B_COVER_DIAG results=" + diagnostics.results +
+      " direct=" + diagnostics.direct + " batch=" + diagnostics.recovered +
+      " missing=" + diagnostics.missing + " lookup=" + diagnostics.batchState + "\n");
+    const items = rows.map(series);
     return [200, { schemaVersion: 1, items }];
   }
   const parts = url.pathname.split("/");
