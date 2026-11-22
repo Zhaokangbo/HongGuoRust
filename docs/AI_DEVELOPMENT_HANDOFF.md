@@ -32,9 +32,9 @@
 | M10-C1 Provider 剧集断点、跨重启 | [PR #20](https://github.com/Zhaokangbo/HongGuoRust/pull/20), `feat/m10c1-provider-progress`, HEAD `8da84c56f5b0655623504462ebf836b28e7e062b` | Windows M1/M2 已通过；用户只明确反馈了部分旧验收项目 | **其余手动回归仍需明确确认**，保持 Draft |
 | M10-C2 首页继续观看、剧集进度与本地历史合并 | [PR #21](https://github.com/Zhaokangbo/HongGuoRust/pull/21), `feat/m10c2-history-home`, HEAD `096d73b4b12247343b9e4277ea5e360ad38f4e9a` | M1/M2 通过；Windows **第 1–8 项明确通过**，第 9–11 项未被逐项确认 | 先验收并合并 #20，补齐 #21 余下验收，重检最终 HEAD 后合并 |
 | M11-A 键盘快捷键/帮助 | [PR #22](https://github.com/Zhaokangbo/HongGuoRust/pull/22), `feat/m11a-player-shortcuts`, HEAD `ba4160dfd422d1f1124b42ec7cfb173c189029a9` | M1/M2 通过；**Windows 10/10 已由用户明确报告全通过** | 先完成并合并 #20、#21，再确认 stacked diff/CI，才合并 #22 |
-| M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | **同一最终 HEAD Windows M1/M2 全部成功**：M1 #44987943244、M2 #44987943231；调试 ZIP/EXE 哈希已验证；**Windows 12/12 实机仍待验收** | 测试真实 JPEG 缩略图、主播放器无 Seek/音画不中断、跨 session 隔离、弱网降级；#20–#22 先满足合并门槛 |
+| M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | **同一最终 HEAD Windows M1/M2 全部成功**：M1 #44987943244、M2 #44987943231；调试 ZIP/EXE 哈希已验证；**用户已明确报告 Windows 12/12 实机全部通过** | 测试真实 JPEG 缩略图、主播放器无 Seek/音画不中断、跨 session 隔离、弱网降级；#20–#22 先满足合并门槛 |
 
-**关于用户最近一句“全部测试通过”：**指紧接上一轮的 **M11-A 全部 10 项**。不能将该句话自动扩展为早前 #20/#21 所有尚未明确反馈的验收。
+**验收口径**：用户已分别明确反馈 M11-A 10/10 与 M11-B 12/12 通过；之前 #20/#21 尚待逐项反馈的条目不可推定通过。
 
 ## 4. M11-B 当前开发实现与风险
 
@@ -43,18 +43,18 @@
 - `service.rs` 在 Rust 内存保留活动 session->MediaSource；异步 `player_preview_frame` IPC 只向 UI 发送会话 ID、时间和 data:image/jpeg;base64，不暴露媒体 URL 或文件路径。
 - `src/player/thumbnailPreview.ts` 计算指针时间、桶和数据有效性；`src/main.tsx` 的进度条 hover 弹层；`src/style.css` 将缩略图限制在 HTML footer 中，避免被原生视频 HWND 遮盖。
 - `tests/thumbnail-preview.test.mjs` 已加入 `npm run build` 的 Node 测试链；Rust 新增缓存/时间和 base64 单元测试。
-- **重要未验证假设**：CI 所用的 Windows libmpv DLL 是否包含 image VO、能否完成输出 JPEG。不要在 Windows 真机真实看到图片之前声称完成；若不支持，应在日志和二进制证据基础上修复或改独立 FFmpeg 抽帧方案。
+- **已验证**：M11-B Windows 真机 12/12 通过（用户明确反馈），包括真实缩略图、主音画不受干扰及异常场景；未来更换 DLL 时仍需回归。
 - **注意**：本方案未加入新的 Cargo 依赖；新旧 Rust 源码的 fmt、编译或运行错误应优先用 M1/M2 CI 日志精确定位。可能出现 `libmpv2` 参数类型/Windows image VO 的实际兼容问题，须以 CI/实机为准。
 - 完整验收见 `docs/acceptance/m11-b.md`（**仅存在于尚未合并的 M11-B 分支**，查看时务必用对应分支）。
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **M11-B CI 已完成并通过**：PR #23 `6446271e17b6dc3d59a0a252bd0d65b84d07ad77`，M1 #44987943244 与 M2 #44987943231 都是 `completed/success`。无需再轮询这两个已完成的工作流。
-2. 从 M2 #44987943231 的 artifact `HongGuoRust-M2-debug-x64` (ID `14740791376`) 下载并核实 ZIP 已完成。本次对话已生成 `HongGuoRust-M11B-debug-x64.zip` 和 `HongGuoRust-M11B-deploy.ps1`，用户应从本次对话提供的 sandbox 链接保存。ZIP SHA-256：`566a913099d16cd8fbf2e3111d1b564a811c2830aa40e97d0289537d4718900d`；内含 `hongguorust.exe`（14,031,360 字节），EXE SHA-256：`689727e24f6bff56df04f0043b2335ec630ae196b7578cb710e97e8dafc5b6f7`。未来新对话中不可凭文件名虚构已挂载的 sandbox 路径，必要时从 artifact 重新下载并校验。
-3. 用户下一步在 Windows 用 M11-B 部署脚本装到 `%LOCALAPPDATA%\\HongGuoRust-M11B-Test`，复用 M11-A/M10-C2 已验证 DLL，不覆盖 `%LOCALAPPDATA%\\HongGuoRust` 历史数据。
-4. 用户按 [M11-B 验收清单](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m11b-local-thumbnail-preview/docs/acceptance/m11-b.md) 进行 **12 项真机验收**，重点记录 **图片是否真实生成**、能否预览多个时刻、断网时是否降级、快切集是否错图、是否影响主音频和 Seek。完成前不可将 M11-B 标为通过。
-5. 如果用户反馈 M11-B 真机失败：看具体日志，直接修改 GitHub #23 分支，等待用户通知新 CI 编译完成再查询。如果实机 12/12 通过，更新本交接文档和 PR 验收状态，再开始下一阶段。
-6. 合并顺序仍是 #20 -> #21 -> #22 -> #23；其中 #20 的部分验收和 #21 的第 9–11 项仍未逐项确认。**所有 PR 保持 Draft，用户未授权不合并**。
+1. **M11-B 已有 Windows M1/M2 同一 HEAD 通过，用户已明确反馈 12/12 真机验收通过。** PR #23 仍 Draft/未合并。严禁把此验收泛化为 #20/#21 尚待确认的独立项目。
+2. 下一阶段开发 **M11-C1：音轨/内嵌字幕轨发现与显式切换**，严格经原生播放器 worker 访问 libmpv。先确认源码后从 PR #23 的最新已验证 HEAD 派生 stacked 开发分支（不直接写 main）；建立 Draft PR 指向 main 触发 Windows M1/M2 CI。
+3. M11-C1 的最重要测试：同一 MP4 含多音轨/字幕的可控样本，枚举、切换、关闭字幕、切集隔离、无轨道退化、与暂停/缓冲和 M11-B 缩略图兼容。没有这样的视频不能将轨道选择实机验收标为通过。
+4. 如用户通知 CI 编译完成，**仅检查对应最终 SHA 的 M1/M2**；失败读取日志立即修复。成功后下载 CI M2 artifact，验证 ZIP/EXE 和生成独立部署脚本。
+5. 依赖 PR 合并严格遵循 #20 -> #21 -> #22 -> #23 -> 后续 PR；#20 若干手动项、#21 第 9–11 项仍需明确反馈。用户未明确授权前都保持 Draft。
+6. 每次阶段交接继续维护 main 下本文件与 AGENTS.md 入口；新会话仅从 GitHub 事实读取状态。
 
 ## 6. 构建/交付标准与协作手册
 
