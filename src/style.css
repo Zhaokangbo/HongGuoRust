@@ -2703,3 +2703,333 @@ main.catalog-mode .personal-library button:disabled { cursor: not-allowed; opaci
   main.catalog-mode .personal-media-card { transition: none; }
   main.catalog-mode .personal-media-card:hover { transform: none; }
 }
+
+
+/* UI-5 · detail-page discovery controls and grouped player transport.
+   Keep the native video HWND row and the 66px / 96px application geometry intact. */
+main.catalog-mode .ui5-catalog-detail .catalog-detail-body > .catalog-detail-description.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+main.catalog-mode .catalog-description-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin: 5px 0 0;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #bdbdbd;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+main.catalog-mode .catalog-description-toggle:hover:not(:disabled) { color: #fff; }
+main.catalog-mode .catalog-detail-watch-progress {
+  width: min(100%, 470px);
+  margin: 15px 0;
+  padding: 12px 14px;
+  border: 1px solid #303030;
+  border-radius: 6px;
+  background: rgba(18,18,18,.9);
+}
+main.catalog-mode .catalog-detail-watch-progress-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #eee;
+  font-size: 11px;
+}
+main.catalog-mode .catalog-detail-watch-progress-heading span {
+  color: #aaa;
+  font-size: 10px;
+}
+main.catalog-mode .catalog-detail-watch-progress-track {
+  height: 5px;
+  margin: 9px 0 7px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #343434;
+}
+main.catalog-mode .catalog-detail-watch-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #e50914;
+  transition: width .18s ease;
+}
+main.catalog-mode .catalog-detail-watch-progress > small {
+  color: #999;
+  font-size: 10px;
+}
+main.catalog-mode .catalog-episode-section { margin-top: 34px; }
+main.catalog-mode .catalog-episodes-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 14px !important;
+}
+main.catalog-mode .catalog-episodes-heading > div { min-width: 0; }
+main.catalog-mode .catalog-episodes-heading h3 {
+  margin: 0 !important;
+  color: #f4f4f4;
+  font-size: 21px !important;
+  line-height: 1.2;
+}
+main.catalog-mode .catalog-episodes-heading p {
+  margin: 6px 0 0;
+  color: #999;
+  font-size: 10px;
+  line-height: 1.5;
+}
+main.catalog-mode .catalog-episode-count {
+  flex: none;
+  color: #bbb;
+  font-size: 11px;
+  font-weight: 600;
+}
+main.catalog-mode .catalog-episode-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 190px) auto;
+  align-items: end;
+  gap: 10px;
+  margin: 14px 0 8px;
+  padding: 12px;
+  border: 1px solid #2c2c2c;
+  border-radius: 6px;
+  background: #111;
+}
+main.catalog-mode .catalog-episode-search,
+main.catalog-mode .catalog-episode-filter {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: #999;
+  font-size: 10px;
+}
+main.catalog-mode .catalog-episode-search input,
+main.catalog-mode .catalog-episode-filter select {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #383838;
+  border-radius: 4px;
+  outline: none;
+  background: #1b1b1b;
+  color: #eee;
+  font-size: 12px;
+}
+main.catalog-mode .catalog-episode-search input:focus,
+main.catalog-mode .catalog-episode-filter select:focus {
+  border-color: #e50914;
+  box-shadow: 0 0 0 2px rgba(229,9,20,.18);
+}
+main.catalog-mode .catalog-episode-order {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid #393939;
+  border-radius: 4px;
+  background: #202020;
+  color: #ddd;
+  font-size: 11px;
+  white-space: nowrap;
+}
+main.catalog-mode .catalog-episode-order[aria-pressed="true"] {
+  border-color: #e50914;
+  background: #281416;
+  color: #ffb7bc;
+}
+main.catalog-mode .catalog-episode-results {
+  margin: 8px 2px 12px;
+  color: #888;
+  font-size: 10px;
+}
+main.catalog-mode .catalog-episodes {
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 9px;
+}
+main.catalog-mode .catalog-episodes .catalog-episode-card {
+  min-height: 72px;
+  padding: 11px 12px;
+  border-color: #303030;
+  background: #171717;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+main.catalog-mode .catalog-episodes .catalog-episode-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: #666;
+  background: #222;
+}
+main.catalog-mode .catalog-episodes .catalog-episode-card.is-current {
+  border-color: #e50914;
+  box-shadow: inset 3px 0 #e50914;
+  background: #211517;
+}
+main.catalog-mode .catalog-episodes .catalog-episode-card.is-current strong { color: #ff5961; }
+main.catalog-mode .catalog-episodes .catalog-episode-card:focus-visible,
+main.catalog-mode .catalog-description-toggle:focus-visible,
+main.catalog-mode .catalog-episode-tools button:focus-visible {
+  outline: 2px solid #e50914;
+  outline-offset: 3px;
+}
+main.catalog-mode .catalog-episodes-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 76px;
+  padding: 16px;
+  border: 1px dashed #383838;
+  border-radius: 6px;
+  color: #999;
+  font-size: 12px;
+}
+main.catalog-mode .catalog-episodes-empty button {
+  padding: 6px 9px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #202020;
+  color: #eee;
+  font-size: 10px;
+}
+main:not(.catalog-mode) .player-controls {
+  overflow: hidden;
+  gap: 3px;
+}
+main:not(.catalog-mode) .player-actions button.player-action-secondary {
+  border-color: #383838;
+  background: #1b1b1b;
+  color: #ddd;
+}
+main:not(.catalog-mode) .player-actions button.player-action-secondary:hover:not(:disabled) {
+  border-color: #666;
+  background: #282828;
+}
+main:not(.catalog-mode) .player-actions button.player-action-primary {
+  border-color: #e50914;
+  background: #e50914;
+  color: #fff;
+}
+.player-transport {
+  gap: 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #555 transparent;
+}
+.player-transport:focus-visible {
+  outline: 1px solid #555;
+  outline-offset: -1px;
+}
+.player-transport-group {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  min-width: max-content;
+}
+.player-transport-group label {
+  gap: 5px;
+  color: #aaa;
+  font-size: 10px;
+}
+.player-transport-group input[type="number"],
+.player-transport-group select {
+  height: 26px;
+  min-width: 66px;
+  padding: 3px 6px;
+  font-size: 10px;
+}
+.player-transport-group select[aria-label="音轨"],
+.player-transport-group select[aria-label="字幕轨道"] {
+  max-width: 132px;
+  min-width: 82px;
+}
+.player-transport-group button {
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.player-transport-separator {
+  display: block;
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 10px;
+  background: #343434;
+}
+.player-transport-primary .player-control-primary {
+  min-width: 54px;
+  font-weight: 700;
+}
+main:not(.catalog-mode) .player-transport-group button:not(.player-control-primary) {
+  border: 1px solid #3a3a3a;
+  background: #1b1b1b;
+  color: #ddd;
+}
+main:not(.catalog-mode) .player-transport-group button:not(.player-control-primary):hover:not(:disabled) {
+  border-color: #666;
+  background: #292929;
+  color: #fff;
+}
+main:not(.catalog-mode) .player-transport-group button.player-control-primary {
+  border: 1px solid #e50914;
+  background: #e50914;
+  color: #fff;
+}
+main:not(.catalog-mode) .player-transport-group button.player-mute-toggle[aria-pressed="true"] {
+  border-color: #7a3439;
+  background: #291416;
+  color: #ffb7bc;
+}
+.player-transport-group .episode-context {
+  max-width: 170px;
+  overflow: hidden;
+  color: #ddd;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-transport-utility { margin-left: auto; }
+.player-transport-utility .player-status {
+  margin-left: 0;
+  padding-left: 8px;
+  border-left: 1px solid #383838;
+}
+.player-transport-group button:focus-visible,
+.player-transport-group select:focus-visible,
+.player-transport-group input:focus-visible {
+  outline: 2px solid #e50914;
+  outline-offset: 2px;
+}
+@media (max-width: 900px) {
+  main.catalog-mode .catalog-episode-tools {
+    grid-template-columns: minmax(140px, 1fr) minmax(120px, 160px);
+  }
+  main.catalog-mode .catalog-episode-order { grid-column: 1 / -1; justify-self: start; }
+  .player-transport-separator { margin-inline: 7px; }
+  .player-transport-group { gap: 5px; }
+}
+@media (max-width: 620px) {
+  main.catalog-mode .catalog-episode-tools { grid-template-columns: 1fr; }
+  main.catalog-mode .catalog-episode-order { grid-column: auto; justify-self: stretch; }
+  main.catalog-mode .catalog-episodes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  main.catalog-mode .catalog-episodes .catalog-episode-card { grid-template-columns: 28px minmax(0, 1fr); }
+  .player-actions input[type="url"] { width: min(23vw, 180px); }
+  .player-actions button { padding-inline: 6px; font-size: 10px; }
+  .player-transport-group select[aria-label="音轨"],
+  .player-transport-group select[aria-label="字幕轨道"] { max-width: 112px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  main.catalog-mode .catalog-detail-watch-progress-track > span,
+  main.catalog-mode .catalog-episodes .catalog-episode-card { transition: none; }
+  main.catalog-mode .catalog-episodes .catalog-episode-card:hover:not(:disabled) { transform: none; }
+}
