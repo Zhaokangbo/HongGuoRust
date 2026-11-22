@@ -6,4 +6,5 @@ pub mod provider_history;
 pub mod service;
 pub mod source;
 pub mod state;
+pub mod tracks;
 pub mod window;
