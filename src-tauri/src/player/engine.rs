@@ -265,7 +265,9 @@ impl Engine {
         } else if kind == TrackKind::Audio {
             return Err("音频轨必须选择有效轨道".into());
         }
-        let id_text = track_id.map(|id| id.to_string()).unwrap_or_else(|| "no".into());
+        let id_text = track_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "no".into());
         self.mpv
             .command("set", &[kind.mpv_property(), id_text.as_str()])
             .map_err(|_| "libmpv 拒绝切换轨道".to_owned())?;
