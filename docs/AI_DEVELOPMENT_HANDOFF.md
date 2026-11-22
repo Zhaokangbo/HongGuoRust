@@ -36,9 +36,10 @@
 | M11-C1 音轨/内嵌字幕选择 | [PR #24](https://github.com/Zhaokangbo/HongGuoRust/pull/24), `feat/m11c1-track-selection`, HEAD `f1e281c8f53b25d185efb6a0b28896159689b1ad` | 前一代码 SHA `8f62012fe938188358fb6704f9aff65695bc3de1` 的 M1/M2 均成功，后续仅调整 FFmpeg 测试脚本路径；**用户明确报告 M11-C1 Windows 12/12 全部通过** | 仍 Draft/未合并：前置 #20–#23 尚需各自验收/用户合并授权 |
 | M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `816721a89848f275159b6c1a70306c3b3e8af63e` | **同一 HEAD Windows M1 #44992071107、M2 #44992071153 completed/success，用户明确反馈 Windows 12/12 实机验收全部通过** | 仍 Draft/未合并；需等 #20–#24 的独立验收与合并授权 |
 | M12-A 生命周期诊断/资源基线 | [PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26), `feat/m12a-runtime-diagnostics`, HEAD `91a4f488a41391a06bb6e6190149b0e00b534f07` | **同一 SHA 的 Windows M1 #44996601517 / M2 #44996601528 全绿，用户明确反馈 Windows 10/10 实机验收全部通过** | 仍 Draft/未合并，独立的前置 #20–#25 验收与合并授权要求有效 |
-| M12-B 长运行/资源趋势/弱网恢复测试 | [PR #27](https://github.com/Zhaokangbo/HongGuoRust/pull/27), `feat/m12b-long-run-stress`, HEAD `a8357f11c670205362ed44293eb85d3388aa51ab` | **当前最终 HEAD Windows M1 #44998408125 / M2 #44998408101 均 completed/success；调试 ZIP/EXE SHA-256 已实际验证**；Windows 10/10 真机验收（含 2×30 分钟与弱网）**待进行** | 先完成 Windows 独立安装和采样器 1 分钟烟测，然后做两次 ≥30 分钟同负载实测及弱网/快速切集/退出测试，不能将 CI 当压力测试通过 |
+| M12-B 长运行/资源趋势/弱网恢复测试 | [PR #27](https://github.com/Zhaokangbo/HongGuoRust/pull/27), `feat/m12b-long-run-stress`, HEAD `a8357f11c670205362ed44293eb85d3388aa51ab` | **同一 HEAD M1 #44998408125/M2 #44998408101 全绿，用户明确报告 Windows 10/10 真机实测全部通过**（包含长运行/弱网/快速切集测试）；已记录到 PR #27 | 仍 Draft/未合并；前置 #20–#26 验收与明确合并授权独立有效 |
+| M12-C 异常媒体恢复/原生错误脱敏 | [Draft PR #28](https://github.com/Zhaokangbo/HongGuoRust/pull/28), `feat/m12c-failure-recovery`, HEAD `8067f881a12f624413eedd8895b851d1bb05a551` | 已实现 Rust 原生错误消息脱敏、状态机回归、独立的 7 类异常 MP4 素材/只读校验与 Node 测试；[M1 #44999689761](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44999689761) / [M2 #44999689707](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44999689707) 首次查看均 in_progress，**CI 尚未确认通过，Windows 10/10 尚未验收** | 等用户通知编译完成后查看准确 HEAD CI；全绿再打包 Debug ZIP、安排异常媒体真机验收 |
 
-**验收口径**：用户已明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12、M11-C2 12/12、M12-A 10/10 全部 Windows 实机通过；此前 #20/#21 尚未逐项确认的项目不可推定通过。
+**验收口径**：用户明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12、M11-C2 12/12、M12-A 10/10、M12-B 10/10 均已在 Windows 实机通过。此前 #20/#21 尚未逐项确认的项目不能推定通过。
 
 ## 4. M11-B 当前开发实现与风险
 
@@ -53,12 +54,13 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **当前阶段 M12-B**，新建 [Draft PR #27](https://github.com/Zhaokangbo/HongGuoRust/pull/27)，开发分支 `feat/m12b-long-run-stress`，准确 SHA `a8357f11c670205362ed44293eb85d3388aa51ab`。从 PR #26 的已通过同一 SHA CI、用户明确 10/10 验收的基线 `91a4f488a41391a06bb6e6190149b0e00b534f07` 派生。**#20–#27 PR 都保持 Draft/未合并**，只因 Windows CI 需要所以指向 main，不是合并授权。
-2. **M12-B 开发成果**：`scripts/measure-m12b-stress.ps1` 是 Windows 1–120 分钟只读采样器：PID+StartTime 双条件避免多进程/PID 重用混淆，进程 CPU 时间/整机 CPU%/Private MiB/工作集 MiB/Handles/Threads。默认控制台输出，只有用户明确 `-CsvPath` 时写新 CSV，不覆盖旧文件/不删除媒体/不更改 Windows 网络设置。
-3. `scripts/m12b-trend.mjs` + `scripts/analyze-m12b-resources.mjs` 使用 Node 22+/24 对固定数字 CSV 做离线严格解析；剔除预热样本（默认 120 秒），提供前后窗口中位数、delta、OLS slope/hour、max、CPU 平均值，不生成未经验证的内存泄漏结论。新增 `tests/m12b-trend.test.mjs` 并在 `npm run build` 中执行。真实 2×30 分钟采样、弱网恢复等**仍待 Windows owner 验收，不能当作通过**。
-4. **同一最终 SHA CI 已全绿**：`a8357f11c670205362ed44293eb85d3388aa51ab` 的 [M1 #44998408125](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44998408125) 与 [M2 #44998408101](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44998408101) 均 completed/success。M2 artifact `HongGuoRust-M2-debug-x64` ID `14744509167`，下载为 `HongGuoRust-M12B-debug-x64.zip`（4,487,372 bytes, SHA-256 `7c66df926deef1750c89811674301741a9181029d2d69efe45ce35c0208350df`），仅含根目录 `hongguorust.exe`（14,248,960 bytes, SHA-256 `bbeb5045835dd1172c8a8d32b1e7b64e7a0043f0327c0bc963a832f43864d211`）。本次会话生成 `HongGuoRust-M12B-deploy.ps1`，优先使用 M12-A 已验收 DLL，安装到 `%LOCALAPPDATA%\\HongGuoRust-M12B-Test`；不清除持久用户数据。下一对话引用 sandbox 路径前必须在该容器重新验证。
-5. **M12-B Windows 10 项真机验收仍待反馈**：`docs/acceptance/m12-b.md` 包含 1 分钟采样器/离线分析烟测、两组同负载 ≥30 分钟长运行、内存/句柄趋势对照、快速切集/Stop/Seek、受控合法 HTTPS 弱网缓冲/恢复、Close 无残留进程和 M7–M12-A 回归。新增脚本下载自 [measure-m12b-stress.ps1](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m12b-long-run-stress/scripts/measure-m12b-stress.ps1)、[analyze-m12b-resources.mjs](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m12b-long-run-stress/scripts/analyze-m12b-resources.mjs) 和其依赖 `m12b-trend.mjs`。PowerShell 在 GitHub M1/M2 下未被真实长运行，不能凭 CI 判定采样脚本及 2×30 分钟成功；不能把内存增长等同内存泄漏。若缺少真实弱网测试，保持待验，只有可复现证据才修改播放器。
-6. **合并顺序严格 #20 → #21 → #22 → #23 → #24 → #25 → #26 → #27**，前置 #20/#21 的独立验收还缺少明确确认。所有合并需用户单独明确授权。Issue #7 公开发布合规门槛继续有效；开发交接结束后更新 main 本文件。
+1. **当前阶段 M12-C**：[Draft PR #28](https://github.com/Zhaokangbo/HongGuoRust/pull/28)，分支 `feat/m12c-failure-recovery`，准确 HEAD `8067f881a12f624413eedd8895b851d1bb05a551`。从 **M12-B PR #27** 已通过 M1/M2 且用户明确反馈 Windows 10/10 真机全部通过的 HEAD `a8357f11c670205362ed44293eb85d3388aa51ab` 派生。此前 #20–#27 仍然 Draft/未合并。
+2. M12-C 安全修复：`src-tauri/src/player/engine.rs` 的 `native_error` 不再直接透传 libmpv `Error::Display` 或未经验证的 Debug 错误文本；只允许简单有界 `Raw(整数)` 错误码，其他为 `mpv_native_error`，用户消息固定且不包含文件路径、URL signed query、远端响应体。保留 `Raw(-13)` 泛化加载失败提示，**不得解释成 HTTP 403**。已加 Rust 字符串脱敏测试。
+3. M12-C 会话回归：`src-tauri/src/player/state.rs` 测试损坏媒体的 `Error` 是终态，不会误触发 `Ended`，下一健康会话恢复 `Playing` 时不继承旧错误或晚到事件。
+4. `scripts/create-m12c-fault-fixtures.ps1` 用本机 FFmpeg 默认 `D:\\26-008\\26-008\\voip4\\run\\run_windows\\bin\\ffmpeg.exe` 在随机新临时目录生成 7 类独立合成素材：正常 MP4、空 MP4、随机字节、HTML 伪装、截断头部、截断尾部、错误扩展名，不覆盖既有路径。配套 `scripts/verify-m12c-fixtures.mjs`、`scripts/m12c-fixture-policy.mjs`、`tests/m12c-fault-fixtures.test.mjs` 在本地验证白名单名称、文件大小、内容/截断、manifest、SHA-256；Node 测试已加入 `npm run build`。需要在 Windows 真机实际执行生成器。
+5. **M12-C 最新 HEAD CI 已触发，结果未确认**：[M1 #44999689761](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44999689761) 与 [M2 #44999689707](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44999689707)，首次均 in_progress。**不要持续轮询，等用户说“编译完成”后才检查 PR #28 最终 HEAD 工作流**。失败取 job 日志直接修复；全绿后下载对应 M2 调试 Artifact、验证 ZIP/EXE SHA-256、制作 Windows 独立部署脚本。
+6. [M12-C Windows 10 项验收文档](https://github.com/Zhaokangbo/HongGuoRust/blob/feat/m12c-failure-recovery/docs/acceptance/m12-c.md)：正常/损坏/伪装/截断媒体、文件被移动与恢复、错误不触发自动连播、旧会话隔离、普通日志脱敏、M7–M12-B 回归。**M12-C 还未实机验证。** Windows 同机用户自己测试，不能用 CI 判断具体故障已恢复。显式 `HONGGUORUST_MPV_DEBUG=1` 会写含潜在原始 URL 的私人日志，不属于普通脱敏范围，禁止未经审查上传。
+7. 合并顺序必须 #20→#21→#22→#23→#24→#25→#26→#27→#28；#20/#21 还有独立验收未确认。所有 PR 保持 Draft，不得未经用户明确合并授权擅自合并；Issue #7 第三方许可/公开分发仍是阻断项。每个开发回合结束同步维护 main 上的本交接文件。
 
 ## 6. 构建/交付标准与协作手册
 
@@ -81,4 +83,4 @@
 
 - 仓库主文档：`README.md`、`docs/roadmap.md`。
 - 既有验收：`docs/acceptance/m10-c1.md`、`m10-c2.md`、`m11-a.md`、`m11-b.md`（**部分只在对应功能分支**）。
-- 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)、[#26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)、[#27](https://github.com/Zhaokangbo/HongGuoRust/pull/27)。
+- 相关 PR：[#20](https://github.com/Zhaokangbo/HongGuoRust/pull/20)、[#21](https://github.com/Zhaokangbo/HongGuoRust/pull/21)、[#22](https://github.com/Zhaokangbo/HongGuoRust/pull/22)、[#23](https://github.com/Zhaokangbo/HongGuoRust/pull/23)、[#24](https://github.com/Zhaokangbo/HongGuoRust/pull/24)、[#25](https://github.com/Zhaokangbo/HongGuoRust/pull/25)、[#26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)、[#27](https://github.com/Zhaokangbo/HongGuoRust/pull/27)、[#28](https://github.com/Zhaokangbo/HongGuoRust/pull/28)。
