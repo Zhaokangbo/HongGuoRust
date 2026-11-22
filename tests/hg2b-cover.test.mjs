@@ -23,6 +23,7 @@ const rejected = [
   "https://cdn.example.com/a.jpg#fragment",
   "https://foo..example.com/image.png",
   "https://cdn.example.com/cover.webp\nHeader: injected",
+  "https://cdn.example.com/cover.webp\\nHeader: escaped",
   "https://example.com/" + "x".repeat(2100),
 ];
 
