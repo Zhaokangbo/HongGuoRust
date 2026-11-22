@@ -25,15 +25,16 @@ if ($AllowedMediaHosts -and
 }
 $node = (Get-Command node.exe -ErrorAction Stop).Source
 $tokenBytes = New-Object byte[] 32
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($tokenBytes)
-$token = [Convert]::ToHexString($tokenBytes).ToLowerInvariant()
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try { $rng.GetBytes($tokenBytes) } finally { $rng.Dispose() }
+$token = -join ($tokenBytes | ForEach-Object { $_.ToString('x2') })
 $env:HONGGUORUST_HG2A_EXPERIMENT = '1'
 $env:HONGGUORUST_HG2A_TOKEN = $token
 $env:HONGGUORUST_HG2A_MEDIA_HOSTS = $AllowedMediaHosts
 $serverProcess = $null
 $appProcess = $null
 try {
-  $serverProcess = Start-Process -FilePath $node -ArgumentList @($server) -PassThru -NoNewWindow
+  $serverProcess = Start-Process -FilePath $node -ArgumentList ('"' + $server + '"') -PassThru -NoNewWindow
   Start-Sleep -Milliseconds 700
   if ($serverProcess.HasExited) {
     throw 'Community sidecar exited during startup; check SDK installation and port 19091'
