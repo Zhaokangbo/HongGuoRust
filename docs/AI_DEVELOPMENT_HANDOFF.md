@@ -35,7 +35,7 @@
 | M11-B 进度条悬停缩略图 | [PR #23](https://github.com/Zhaokangbo/HongGuoRust/pull/23), `feat/m11b-local-thumbnail-preview`, HEAD `6446271e17b6dc3d59a0a252bd0d65b84d07ad77` | **同一最终 HEAD Windows M1/M2 全部成功**：M1 #44987943244、M2 #44987943231；调试 ZIP/EXE 哈希已验证；**用户已明确报告 Windows 12/12 实机全部通过** | 测试真实 JPEG 缩略图、主播放器无 Seek/音画不中断、跨 session 隔离、弱网降级；#20–#22 先满足合并门槛 |
 | M11-C1 音轨/内嵌字幕选择 | [PR #24](https://github.com/Zhaokangbo/HongGuoRust/pull/24), `feat/m11c1-track-selection`, HEAD `f1e281c8f53b25d185efb6a0b28896159689b1ad` | 前一代码 SHA `8f62012fe938188358fb6704f9aff65695bc3de1` 的 M1/M2 均成功，后续仅调整 FFmpeg 测试脚本路径；**用户明确报告 M11-C1 Windows 12/12 全部通过** | 仍 Draft/未合并：前置 #20–#23 尚需各自验收/用户合并授权 |
 | M11-C2 音量/倍速/自动连播设置持久化 | [PR #25](https://github.com/Zhaokangbo/HongGuoRust/pull/25), `feat/m11c2-persistent-player-preferences`, HEAD `816721a89848f275159b6c1a70306c3b3e8af63e` | **同一 HEAD Windows M1 #44992071107、M2 #44992071153 completed/success，用户明确反馈 Windows 12/12 实机验收全部通过** | 仍 Draft/未合并；需等 #20–#24 的独立验收与合并授权 |
-| M12-A 生命周期诊断/资源基线 | [PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26), `feat/m12a-runtime-diagnostics`, HEAD `dd0bbed5a9e77b7c8d79f729420d4f650684f014` | **已提交源码/测试/脚本与验收文档**，Windows M1 #44996388828、M2 #44996388612 已启动（最近 in_progress，尚未完成验证）；Windows 10 项实机未验收 | 用户通知 CI 完成后检查最新 HEAD、修复或打包；然后进行诊断/资源趋势基线验收 |
+| M12-A 生命周期诊断/资源基线 | [PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26), `feat/m12a-runtime-diagnostics`, HEAD `91a4f488a41391a06bb6e6190149b0e00b534f07` | 旧 HEAD `dd0bbed5a9e77b7c8d79f729420d4f650684f014` 的 Windows M1 #44996388828/M2 #44996388612 均在 `cargo fmt --check` 失败（`health.rs` 5 处差异）；**已按 CI 格式输出修复并提交新 HEAD**，新 CI 尚待核对；Windows 10 项实机验收待进行 | 等用户通知新一轮编译完成，再检查最新 SHA；全绿后下载调试 ZIP、部署并实机验收 |
 
 **验收口径**：用户已分别明确反馈 M11-A 10/10、M11-B 12/12、M11-C1 12/12、M11-C2 12/12 全部通过；之前 #20/#21 尚未逐项确认的条目不可推定通过。
 
@@ -52,11 +52,11 @@
 
 ## 5. 当前下一步操作（每次开始应重新核对）
 
-1. **当前开发为 M12-A**：[Draft PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)，`feat/m12a-runtime-diagnostics`，确切提交 `dd0bbed5a9e77b7c8d79f729420d4f650684f014`，从 M11-C2 PR #25 通过 CI + 用户已明确通过 Windows 12/12 的基线 `816721a89848f275159b6c1a70306c3b3e8af63e` 派生。之前 #20–#25 均 Draft/未合并。
+1. **当前开发为 M12-A**：[Draft PR #26](https://github.com/Zhaokangbo/HongGuoRust/pull/26)，`feat/m12a-runtime-diagnostics`，最新 HEAD `91a4f488a41391a06bb6e6190149b0e00b534f07`。从 M11-C2 PR #25 已经通过 M1/M2 和 Windows 12/12 的提交 `816721a89848f275159b6c1a70306c3b3e8af63e` 派生。之前 #20–#25 均 Draft/未合并。
 2. M12-A Rust 新增 `src-tauri/src/player/health.rs` 的内存态运行统计（会话打开、加载、playback-restart、自然结束/失败/Stop、缓冲次数/累计/当前时长、libmpv 释放次数及耗时）；`PlayerService` worker 生命周期事件更新。只读 `get_runtime_health` IPC 不读取/返回媒体 URL、路径、文件名、凭证或错误文字。
 3. 新增前端 `src/player/runtimeHealth.ts` 和控制栏的「运行诊断 / 刷新 / 复制诊断」按钮；仅手动刷新，无自动高频采样。Play-restart 是 libmpv 启动信号，**并非视频首帧真实呈现延迟**。Rust/Node 自动化涵盖指标去重、跨 session 隔离、序列化隐私及 IPC 边界。
 4. 新增只读 Windows 资源采样 `scripts/measure-m12a-process.ps1`：默认 30 次每 2 秒，采样 PID/CPU 时间/工作集/私有内存/句柄/线程；默认仅输出控制台，`-CsvPath` 才主动写 CSV。**单次采样不证明零泄漏**；M12-B 后续进行长运行及阈值测试。
-5. **M12-A 最新已确认 Windows CI 为 in_progress**：[M1 #44996388828](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44996388828)、[M2 #44996388612](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44996388612)，与 SHA `dd0bbed5a9e77b7c8d79f729420d4f650684f014` 对应。**不要持续轮询；等用户下次说“编译完成”再检查**。失败取 job 日志直接修复；成功后下载同一 SHA 的 M2 Debug Artifact，验证 ZIP/EXE SHA-256，创建 Windows 独立部署脚本。
+5. **M12-A 首轮 CI 失败**：旧 SHA `dd0bbed5a9e77b7c8d79f729420d4f650684f014` 对应 [M1 #44996388828](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44996388828) 和 [M2 #44996388612](https://github.com/Zhaokangbo/HongGuoRust/actions/runs/44996388612)，均在 Rust 格式检查失败（`src-tauri/src/player/health.rs` 5 个差异段）；已根据完整 CI 输出精确修复并提交 `91a4f488a41391a06bb6e6190149b0e00b534f07`。**新一轮工作流结果尚未确认；不要持续轮询，等用户下次说“编译完成”才检查**。通过后取最终 SHA 对应 M2 调试 ZIP、验证 SHA-256 和部署脚本；如仍失败需查看新 job 日志。
 6. `docs/acceptance/m12-a.md` 是本阶段 **10 项 Windows 实机验收**，重点检查弱网缓冲统计、Stop/EOF/错误、libmpv 释放时长、复制输出隐私以及资源采样；用户尚未进行实机验收。PR 顺序仍为 **#20 -> #21 -> #22 -> #23 -> #24 -> #25 -> #26**，前置 #20/#21 的独立门槛和用户明确合并授权仍缺，所有 PR 保持 Draft、未经授权不合并。开发回合结束同步维护 main 的本交接文件。
 
 ## 6. 构建/交付标准与协作手册
