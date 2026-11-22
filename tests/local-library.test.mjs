@@ -39,6 +39,10 @@ test("search matches title or filename and reports status-filter count separatel
   assert.equal(result.total, 5);
   assert.equal(result.matched, 4);
   assert.deepEqual(result.visible.map(item => item.id), [2, 1]);
+
+  const titleResult = browseLocalMedia(records, "local", "  第10集  ", "added");
+  assert.equal(titleResult.matched, 5);
+  assert.deepEqual(titleResult.visible.map(item => item.id), [1]);
 });
 
 test("title sorting uses Chinese natural order and progress sorting puts completed first", () => {
