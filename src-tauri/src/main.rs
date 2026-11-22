@@ -8,7 +8,7 @@ mod player;
 use catalog::progress::ProviderProgressStore;
 use catalog::{CatalogService, OwnedManifestStore};
 use local_library::LocalLibrary;
-use player::{service::PlayerService, window};
+use player::{preferences::PreferencesStore, service::PlayerService, window};
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -41,10 +41,12 @@ fn main() {
     let manifest = Arc::new(OwnedManifestStore::new());
     let catalog = CatalogService::new(Arc::clone(&library), Arc::clone(&manifest));
     let progress = Arc::new(ProviderProgressStore::new());
+    let preferences = Arc::new(PreferencesStore::new());
     tauri::Builder::default()
         .manage(catalog)
         .manage(library)
         .manage(progress)
+        .manage(preferences)
         .manage(manifest)
         .manage(window::Picker::default())
         .setup(|app| {
@@ -55,7 +57,8 @@ fn main() {
             app.manage(VideoHost(host));
             let library = Arc::clone(app.state::<Arc<LocalLibrary>>().inner());
             let progress = Arc::clone(app.state::<Arc<ProviderProgressStore>>().inner());
-            app.manage(PlayerService::new(host, library, progress)?);
+            let preferences = Arc::clone(app.state::<Arc<PreferencesStore>>().inner());
+            app.manage(PlayerService::new(host, library, progress, preferences)?);
             tracing::info!("native host and service ready");
             Ok(())
         })
@@ -121,6 +124,8 @@ fn main() {
             commands::player_select_track,
             commands::set_rate,
             commands::set_volume,
+            commands::get_player_preferences,
+            commands::set_player_auto_next,
             commands::open_https,
             commands::get_fullscreen,
             commands::set_fullscreen
