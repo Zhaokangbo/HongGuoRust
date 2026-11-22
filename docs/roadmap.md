@@ -279,5 +279,5 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - UI-1：桌面壳与发现首页，Draft PR #33，累积依赖 HG-2A/HG-2B。
 - UI-2：目录信息架构、详情和发现页改造，Draft PR #34。
 - UI-3：browse-first Netflix 风格首页，Draft PR #36；Windows M1/M2 精确 HEAD 双绿，用户已确认 Windows 实机验收通过。
-- UI-4：本地媒体、历史和收藏的统一个人媒体中心；当前开发分支 feat/ui-4-personal-library，基于 UI-3 精确 HEAD 派生。保持磁盘文件、历史、收藏与播放列表语义不变。
+- UI-4：本地媒体、历史和收藏的统一个人媒体中心；Draft PR #37，分支 feat/ui-4-personal-library，当前 HEAD 77f049c0d0ecba5e728d7d1b32a9bb51800d741a。基于已验收 UI-3 精确 HEAD 派生；保持磁盘文件、历史、收藏与播放列表语义不变。追加修复了本地库重复错误提示、限制原生错误细节显示并补充逐项无障碍标签。
 - UI-5：详情页与播放器控制栏深度体验优化，待 UI-4 验收后再立项。
