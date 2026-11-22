@@ -61,7 +61,8 @@ function App() {
   const lastAudibleVolumeRef = useRef(100);
   const shortcutFlightRef = useRef(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(true);
+  const catalogVisibilityAppliedRef = useRef(false);
   const [playlist, setPlaylist] = useState<LocalPlaylist | null>(null);
   // Separate from M8's local-file auto-next queue; Provider series are manual only.
   const [episodeQueue, setEpisodeQueue] = useState<EpisodeQueue | null>(null);
@@ -347,6 +348,13 @@ function App() {
   }, [playlist, snapshot, autoNext, busy, connectionError]);
 
   const connected = snapshot !== null && !connectionError;
+  // Start in the browse surface and hide the native video HWND after IPC is ready.
+  useEffect(() => {
+    if (!connected || catalogVisibilityAppliedRef.current) return;
+    catalogVisibilityAppliedRef.current = true;
+    void window.__TAURI__?.core.invoke("set_catalog_visible", { visible: true })
+      .catch(reason => setCommandError("首页初始化失败：" + String(reason)));
+  }, [connected]);
   const active = snapshot?.state === "Playing" || snapshot?.state === "Paused" || snapshot?.state === "Buffering";
   const controllable = connected && active && !busy;
   const error = connectionError || commandError || snapshot?.error?.message;
@@ -534,7 +542,7 @@ function App() {
       <div className="catalog-header-actions">
         <button className="catalog-toggle" disabled={!connected || busy}
           onClick={() => { if (catalogOpen) void backToPlayer(); else void openCatalog(); }}>
-          {catalogOpen ? "返回播放" : "内容剧库"}
+          {catalogOpen ? (active ? "返回播放" : "播放器") : "内容首页"}
         </button>
         <span className={connected ? "connection online" : "connection"} role="status">
           {connected ? "已连接" : connectionError ? "连接失败" : "连接中"}

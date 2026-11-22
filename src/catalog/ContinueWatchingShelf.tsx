@@ -66,6 +66,8 @@ export function ContinueWatchingShelf({
     }
   }
 
+  if (includeLocal && !loading && items.length === 0 && !error) return null;
+
   return <section className="recent-activity" aria-label={includeLocal ? "继续观看" : "剧集观看历史"}>
     <div className="recent-heading">
       <h3>{includeLocal ? "继续观看" : "剧集观看历史"}</h3>

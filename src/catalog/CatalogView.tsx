@@ -392,7 +392,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       </div>
     </aside>
 
-    <div className="catalog-main">
+    <div className={"catalog-main" + (!detail && mode === "home" ? " catalog-main-home" : "")}>
       <div className={"catalog-heading" + (detail ? " catalog-heading-detail" : "")}>
         {detail ? <div className="catalog-breadcrumb">
           <button type="button" className="catalog-back-link" disabled={working}
