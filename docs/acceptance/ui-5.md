@@ -23,6 +23,7 @@ UI-5 improves the two highest-frequency surfaces after UI-4:
 - `tests/detail-episodes.test.mjs`: title and exact number search, whitespace normalization, watched/incomplete/unavailable filters, ascending/descending order, no mutation, series-scoped progress and summary counts.
 - `tests/player-volume.test.mjs`: mute, restore last audible volume and safe bounds/fallback.
 - Both test suites are part of `npm run build`; existing player shortcut, thumbnail, track, preference and runtime-health suites remain in the same build chain.
+- Isolated Node 22.16 execution of the two new pure-logic suites: **8/8 tests passed**. This validates the copied pure helpers/tests only; it is not a full repository `npm run build`, TypeScript typecheck or Windows CI result.
 - Windows M1/M2: pending exact final UI-5 HEAD; wait for the owner’s “编译完成” notice before checking Actions. Do not poll while the owner is building.
 
 ## Windows manual acceptance (20 checks)
