@@ -100,7 +100,7 @@
 
 **新对话可直接发送下面这段话：**
 
-> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先读取 main 上的 `AGENTS.md` 和 `docs/AI_DEVELOPMENT_HANDOFF.md`，再通过 GitHub 核实当前所有相关 PR 的状态/HEAD、Windows Actions 和实际代码，不要把交接文档中的旧 SHA 当作当前事实。HG-2B PR #32 当前记录的基线是 `feat/hg2b-real-covers-and-episode-status` / `ac6614c94ef35095666054971a7c42c302982e2e`；2026-11-22 我已在 Windows 实机确认详情真实封面、简介、107 集列表和全局仅浏览/不解析播放保护通过，但单集上游 `playable=false` 的独立状态显示、封面失败回退、搜索竞态及 M7–HG2A 回归仍未全部验收。下一步按交接文档进入 UI-1：先使用 Product Design 完成三套视觉方向并让我选择，再创建独立 Draft PR；选择方向前不要大规模改 UI。必须保持 Rust/libmpv worker、native session ID、Tauri IPC、Provider 数据契约、媒体域名白名单和原生视频 HWND 几何不变。由你直接维护 GitHub 代码和 PR，我负责 Windows 实机验收；我说“编译完成”后再查看 CI；没有我的明确授权不要合并。**每一项实质代码进展、验收结论或里程碑，都要及时提交 GitHub 并同步更新 main 上的交接文档**，不要等到会话结束才补记。
+> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。请先读取 main 上的 `AGENTS.md` 和 `docs/AI_DEVELOPMENT_HANDOFF.md`，再通过 GitHub 核实实际 PR、branch、HEAD、Windows Actions 和代码，不要把交接文档里的旧 SHA 当成当前事实。当前重点是 **UI-3 Netflix 风格首页重构**：Draft PR #36，分支 `feat/ui-3-netflix-home`，当前记录 HEAD `7de8574ddd4b89ada26bf5489ce38f59e9e412b8`；PR #36 是基于 UI-2 PR #34 的累积 stacked diff，PR #35 是同一 UI-3 分支的重复 PR，已关闭且未合并。UI-3 已实现启动默认进入内容首页、首次挂载隐藏原生视频 HWND、横向内容导航、真实海报 Hero、继续观看/类型横向轨道，以及黑/灰/红的全局视觉（播放器 66px header / 96px footer 几何不变）。当前 UI-3 的 Windows M1 run `45036493727` 和 Windows M2 playback run `45036493718` 在首次核对时均为 in_progress；不要持续轮询，等我说“编译完成”后再查一次最终结果并准备 Windows Debug/validation kit。UI-3 的 18 项 Windows 实机验收尚未完成；UI-2 PR #34 的实机验收也不要擅自标记通过。依赖顺序为 #31 → #32 → #33 → #34 → #36；所有 PR 保持 Draft/未合并，除非我明确授权。必须保留 Rust/libmpv worker、native session ID、Tauri IPC、Provider 数据契约、封面安全入口、媒体权限和 HWND 几何。由你直接维护 GitHub 代码、Draft PR、CI 修复和 Windows 调试包，我负责 Windows 实机验收。**每个开发阶段都要提交 GitHub 并及时更新 main 上的交接文档**，确保新会话可以无缝接手。
 
 **交接文件更新纪律：**每个阶段至少维护：当前阶段、PR/branch/HEAD、构建状态+artifact ID、已经明确通过的验收条目、尚待验证的条目、遇到的问题/修复、下一步动作。**禁止把未运行/未通过状态写成通过。**优先将本文件更新到 main，确保下一段对话不会从旧功能分支获取过期状态；如果 main 提交权限不可用，才更新工作分支并明确告知用户路径。
 
@@ -128,7 +128,7 @@
 - UI-2 PR #34：Open / Draft / 未合并，base `main`，分支 `feat/ui-2-streaming-catalog`，最新 HEAD `78eee73d5a3d84e4f26d76ca23905439b860c600`。
 - UI-1 精确 HEAD 的 Windows M1 run `45026280804` 与 Windows M2 playback run `45026280683` 均 completed / success。M2 Debug artifact：`HongGuoRust-M2-debug-x64`，artifact ID `14756091026`，SHA-256 `0a9cde3cb2dd1e9ced4cb906ac4341d7da57ef8d67d44ed2c3e54ecaea0ab38d`。
 - 用户已明确确认 UI-1 的 Windows 实机验收全部通过（10 项）；但用户反馈视觉变化不明显，认为 UI-1 更接近主题换肤而非完整产品改版。UI-1 可作为稳定样式基础，不代表整体 UI/UX 改版已完成。
-- PR #31、#32、#33、#34 均保持 Open / Draft / 未合并；不得擅自合并。合并依赖顺序为 #31 → #32 → #33 → #34。
+- PR #31、#32、#33、#34、#36 均保持 Open / Draft / 未合并；PR #35 是 UI-3 同分支重复 PR，已关闭且未合并。不得擅自合并。当前依赖顺序为 #31 → #32 → #33 → #34 → #36。
 
 ### UI-1 已完成并验收
 
@@ -161,6 +161,31 @@
 - **Windows 实机验收**：现在开始。只使用上述精确 HEAD 对应的 M2 Debug artifact，不得使用 UI-1 旧 artifact。按 `docs/acceptance/ui-2.md` 的 16 项检查；特别确认 sidebar、首页真实焦点和横向轨道、探索海报墙、详情页真实封面/剧集状态、播放续接、480×320 响应式、键盘操作及播放器 HWND/96px footer 没有回归。
 - 用户尚未确认 UI-2 验收；PR #34 必须保持 Draft，不得合并。
 
+
+### UI-3 Netflix 风格首页重构已提交，等待 CI 与 Windows 实机验收
+
+用户明确选择了 Netflix 首页参考图，并要求不再以空播放器作为启动入口。UI-3 已从 UI-2 PR #34 的精确 HEAD 派生，按用户要求由 Chat 端直接维护 GitHub 代码，不依赖 Work 原型流程。
+
+- **分支**：`feat/ui-3-netflix-home`。
+- **主 Draft PR #36**：[feat(ui-3): Netflix-inspired browse-first desktop experience](https://github.com/Zhaokangbo/HongGuoRust/pull/36)，base `main`，Open / Draft / 未合并；当前 HEAD `7de8574ddd4b89ada26bf5489ce38f59e9e412b8`。
+- **重复 PR 处理**：PR #35 原先以 UI-2 分支为 base，且与 #36 指向同一 UI-3 head；为避免两个活动 PR 混淆，#35 已关闭并标注由 #36 取代，未合并。今后只跟进 #36。
+- **依赖链**：#31 → #32 → #33 → #34 → #36。#31–#34 仍为 Draft/未合并；不得合并或擅自调整依赖。
+- **代码提交**：
+  - `e282c4a77eac03e06da127e364120faf995f0a0c`：UI-3 首轮首页/导航/样式/验收文档实现。
+  - `7de8574ddd4b89ada26bf5489ce38f59e9e412b8`：启动时尽早调用既有 `set_catalog_visible(true)`，避免先呈现空播放器或 native video HWND 遮挡内容首页。
+- **实际改动**：
+  - `src/main.tsx`：`catalogOpen` 默认 true；应用首次挂载时通过既有 Tauri IPC 隐藏 native video HWND；用户主动播放后仍走原有 Rust/libmpv 路径，返回播放器行为不变。
+  - `src/catalog/CatalogView.tsx`：将 UI-2 侧边栏改为 Netflix 风格横向导航，保留首页、探索、我的视频、最近播放、收藏和动态 Provider 来源。
+  - `src/catalog/DiscoveryHome.tsx`：Hero 优先；Hero 使用当前 Provider 真实作品的封面/标题/简介/类型/集数，点击只进入详情，不擅自播放；搜索、来源和真实类型筛选移至 Hero 之后；继续观看和真实类型海报轨道横向排列。
+  - `src/catalog/ContinueWatchingShelf.tsx`：首页没有真实观看历史时不显示空的“继续观看”区块。
+  - `src/style.css`：全局黑/炭灰/红色视觉系统；统一首页、探索、详情、本地媒体、历史、收藏与播放器控制的颜色；播放器 66px header / 96px footer 几何不变。
+  - `docs/acceptance/ui-3.md`：18 项 Windows 实机验收清单。
+- **数据与工程边界**：没有修改 Rust、libmpv worker、native session ID、Tauri IPC 契约、Provider 数据契约、媒体授权或 HWND 几何；封面仍走 `CoverImage` / `safeCoverUrl`；不生成虚假海报、评分、热度或可播放状态。
+- **CI 首次核对**：精确 HEAD `7de8574ddd4b89ada26bf5489ce38f59e9e412b8` 的 Windows M2 playback run `45036493718`、Windows M1 run `45036493727` 均为 `in_progress`。此状态只记录首次核对结果，不得写成通过；遵循用户要求，不持续轮询。
+- **Artifact**：当前 UI-3 精确 HEAD 的 Windows Debug/validation artifact 尚未确认；待用户通知“编译完成”后，检查两条 workflow 的最终状态与 artifact ID，再准备实机包。
+- **Windows 实机验收**：尚未开始，18 项均待用户验收。UI-2 PR #34 的 16 项验收也不能因 UI-1 通过而推定通过。
+- **下一步**：等待用户说“编译完成” → 一次性核对 #36 精确 HEAD 的 M1/M2 最终 CI → 若通过则准备 Windows 调试/validation kit 和 SHA-256 → 用户按 `docs/acceptance/ui-3.md` 验收 → 每次验收结论同步更新 main handoff。PR #36 保持 Draft，不合并。
+
 ### UI-2 设计目标与数据边界
 
 1. **全局内容导航**：侧边栏分组为发现/探索、个人媒体（本地视频/观看历史/收藏）和动态 Provider 来源；保留原有入口及状态语义。
@@ -182,12 +207,12 @@
 
 ### 后续路线
 
-- UI-2：当前 Draft PR #34；CI 全绿，等待用户 Windows 实机验收。
-- UI-3：播放器控制栏与交互优化，先审查 native HWND / 96px footer 约束再动代码。
-- UI-4：本地媒体、历史、收藏的海报化和统一视觉。
-- UI-5：全局视觉统一、性能与 Windows 全量回归。
-- HG2B 的独立验收状态不得因 UI-1 通过而误标完成；PR #31/#32/#33/#34 均不得自动合并。
+- UI-2：Draft PR #34；精确 HEAD CI 已全绿，Windows 实机验收仍待用户明确确认。
+- UI-3：当前 Draft PR #36；Netflix 风格 browse-first 首页已提交，等待精确 HEAD CI 最终结果和 18 项 Windows 实机验收。
+- UI-4：本地媒体、历史、收藏进一步海报化/统一交互；需保留现有磁盘与观看记录语义。
+- UI-5：详情页与播放器控制栏的深度体验优化、性能与 Windows 全量回归。
+- HG2B 的独立验收状态不得因 UI-1 通过而误标完成；PR #31/#32/#33/#34/#36 均不得自动合并。
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-2 接续分支为 `feat/ui-2-streaming-catalog`，最新 HEAD `78eee73d5a3d84e4f26d76ca23905439b860c600`；不要根据聊天摘要猜测代码状态。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-3 接续分支为 `feat/ui-3-netflix-home`，Draft PR #36，HEAD `7de8574ddd4b89ada26bf5489ce38f59e9e412b8`；UI-2 基线为 PR #34 / `78eee73d5a3d84e4f26d76ca23905439b860c600`。PR #35 已关闭为重复项；不要根据聊天摘要猜测代码状态。
