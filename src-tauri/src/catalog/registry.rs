@@ -176,11 +176,10 @@ impl CatalogService {
         self.detail_inner(id, Some(guard.context()))
     }
 
-    /// Existing M6 IPC still searches only the built-in demo source.
+    /// Legacy IPC follows the same default source as the desktop registry.
+    /// Test registries without a community provider continue to default to demo.
     pub fn search(&self, query: Option<&str>) -> Result<Vec<Series>, String> {
-        Ok(self
-            .search_page(query, Some("demo"), 0, MAX_PAGE_SIZE)?
-            .items)
+        Ok(self.search_page(query, None, 0, MAX_PAGE_SIZE)?.items)
     }
 
     /// Search is deterministic by provider registration order and provider item order.

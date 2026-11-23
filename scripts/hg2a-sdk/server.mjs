@@ -616,31 +616,44 @@ export function createCommunityGateway({
   });
 }
 async function main() {
-  if (process.env.HONGGUORUST_HG2A_EXPERIMENT !== "1") throw Error("Explicit opt-in required");
-  const token = process.env.HONGGUORUST_HG2A_TOKEN || "";
-  if (!/^[a-f0-9]{48,128}$/i.test(token)) throw Error("Random HG2A local token required");
+  const managed = process.env.HONGGUORUST_HG3_MANAGED === "1";
+  const legacyOptIn = process.env.HONGGUORUST_HG2A_EXPERIMENT === "1";
+  if (!managed && !legacyOptIn) throw Error("Managed or explicit legacy startup required");
+
+  // The managed desktop path creates a one-launch capability token here and
+  // hands it to Rust only through the child's private stdout startup pipe.
+  const token = managed ? randomBytes(32).toString("hex")
+    : process.env.HONGGUORUST_HG2A_TOKEN || "";
+  if (!/^[a-f0-9]{48,128}$/i.test(token)) throw Error("Strong local session token required");
+
   const { createClient, memoryProfileStore } = await import("openhongguo");
   const sdk = await createClient({
     profile: memoryProfileStore(), retryAttempts: 0, deviceResets: 0, timeoutMs: 8000,
   });
   const server = createCommunityGateway({ sdk, token });
   server.on("error", (error) => {
-    // Port conflicts can happen after the PowerShell preflight check.
-    // Do not show a stack trace or silently reuse an earlier session/token.
-    process.stderr.write(error?.code === "EADDRINUSE"
-      ? "HG2A_PORT_IN_USE: 127.0.0.1:19091 is already occupied. Inspect the listener PID.\n"
-      : "HG2A_LISTEN_FAILED: local SDK bridge could not bind.\n");
-    process.exitCode = 1;
+    // Never reuse an unknown listener or expose a previous process token.
+    if (managed) {
+      process.stderr.write(error?.code === "EADDRINUSE"
+        ? "HG3_STARTUP_ERROR: local bridge port 19091 is already occupied.\n"
+        : "HG3_STARTUP_ERROR: local bridge could not bind.\n");
+    } else {
+      process.stderr.write(error?.code === "EADDRINUSE"
+        ? "HG2A_PORT_IN_USE: 127.0.0.1:19091 is already occupied. Inspect the listener PID.\n"
+        : "HG2A_LISTEN_FAILED: local SDK bridge could not bind.\n");
+    }
+    process.exit(1);
   });
   server.listen(PORT, "127.0.0.1", () => {
-    process.stdout.write("Nonofficial HG2A SDK bridge listening at 127.0.0.1:" + PORT + "\n");
+    if (managed) process.stdout.write("HG3_READY:" + token + "\n");
+    else process.stdout.write("Nonofficial HG2A SDK bridge listening at 127.0.0.1:" + PORT + "\n");
   });
 }
 // Resolve both paths with the host OS path implementation: Windows Node uses \\,
 // while argv may contain /; the original mixed-separator comparison silently skipped main().
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)).toLowerCase() === resolve(process.argv[1]).toLowerCase()) {
   main().catch(() => {
-    process.stderr.write("HG2A startup failed; check opt-in, SDK install and local token\n");
+    process.stderr.write("HG3_STARTUP_ERROR: SDK initialization failed.\n");
     process.exitCode = 1;
   });
 }
