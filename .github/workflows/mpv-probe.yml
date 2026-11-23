@@ -1,7 +1,7 @@
 name: Windows M2 playback
 on:
   push:
-    branches: [main, feat/hg3a-managed-redfruit-default]
+    branches: [main]
   pull_request:
     branches: [main, feat/ui-5-detail-player-experience]
   workflow_dispatch:

@@ -652,7 +652,10 @@ async function main() {
 // while argv may contain /; the original mixed-separator comparison silently skipped main().
 if (process.argv[1] && resolve(fileURLToPath(import.meta.url)).toLowerCase() === resolve(process.argv[1]).toLowerCase()) {
   main().catch(() => {
-    process.stderr.write("HG3_STARTUP_ERROR: SDK initialization failed.\n");
+    const message = process.env.HONGGUORUST_HG3_MANAGED === "1"
+      ? "HG3_STARTUP_ERROR: SDK initialization failed.\n"
+      : "HG2A startup failed; check opt-in, SDK install and local token\n";
+    process.stderr.write(message);
     process.exitCode = 1;
   });
 }
