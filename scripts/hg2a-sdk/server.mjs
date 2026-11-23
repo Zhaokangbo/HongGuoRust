@@ -644,7 +644,7 @@ async function main() {
     process.exit(1);
   });
   server.listen(PORT, "127.0.0.1", () => {
-    if (managed) process.stdout.write("HG3_READY:" + token + "\n");
+    if (managed) process.stdout.write("\nHG3_READY:" + token + "\n");
     else process.stdout.write("Nonofficial HG2A SDK bridge listening at 127.0.0.1:" + PORT + "\n");
   });
 }

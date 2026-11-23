@@ -13,6 +13,18 @@ use std::{
 
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Do not flash a console window when a GUI-launched Windows app probes or
+/// starts its bundled Node runtime.
+#[cfg(windows)]
+fn hide_console(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_console(_command: &mut Command) {}
+
 pub struct CommunitySidecar {
     child: Mutex<Option<Child>>,
     token: Option<String>,
@@ -57,7 +69,8 @@ impl CommunitySidecar {
         let sdk_dir = find_sdk_dir().ok_or("sdk_assets_missing")?;
         let node = find_node(&sdk_dir).ok_or("node_runtime_missing")?;
         let server = sdk_dir.join("server.mjs");
-        let mut child = Command::new(&node)
+        let mut command = Command::new(&node);
+        command
             .arg(&server)
             .current_dir(&sdk_dir)
             .env("HONGGUORUST_HG3_MANAGED", "1")
@@ -66,9 +79,9 @@ impl CommunitySidecar {
             .env_remove("HONGGUORUST_HG2A_MEDIA_HOSTS")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|_| "node_spawn_failed")?;
+            .stderr(Stdio::piped());
+        hide_console(&mut command);
+        let mut child = command.spawn().map_err(|_| "node_spawn_failed")?;
 
         let Some(stdout) = child.stdout.take() else {
             stop_child(&mut child);
@@ -203,7 +216,10 @@ fn find_sdk_dir() -> Option<PathBuf> {
 }
 
 fn node_version_supported(program: &Path) -> bool {
-    let Ok(output) = Command::new(program).arg("--version").output() else {
+    let mut command = Command::new(program);
+    command.arg("--version");
+    hide_console(&mut command);
+    let Ok(output) = command.output() else {
         return false;
     };
     if !output.status.success() {
