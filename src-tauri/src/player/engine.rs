@@ -7,6 +7,8 @@ use libmpv2::{events::Event, mpv_end_file_reason, Mpv};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+const LOCAL_VIDEO_EXTS: &[&str] = &["mp4", "mkv", "mov", "m4v", "webm", "avi", "flv", "ts"];
+
 pub fn local_mp4(path: &Path) -> Result<&str, String> {
     let name = path.to_str().ok_or("The path is not valid Unicode")?;
     if !path.is_absolute() || name.starts_with(r"\\") || !path.is_file() {
@@ -19,6 +21,36 @@ pub fn local_mp4(path: &Path) -> Result<&str, String> {
         return Err("Select an MP4 file".into());
     }
     Ok(name)
+}
+
+/// Validates a local video file opened directly via file picker or Windows "Open with".
+pub fn local_video(path: &Path) -> Result<&str, String> {
+    let name = path.to_str().ok_or("文件路径包含无法识别的字符")?;
+    if !path.is_absolute() || name.starts_with(r"\\") || !path.is_file() {
+        return Err("请选择本机磁盘上存在的视频文件".into());
+    }
+    let supported = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            LOCAL_VIDEO_EXTS
+                .iter()
+                .any(|allowed| ext.eq_ignore_ascii_case(allowed))
+        });
+    if !supported {
+        return Err("暂不支持该视频文件格式".into());
+    }
+    Ok(name)
+}
+
+fn is_mov_container(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("mp4")
+                || ext.eq_ignore_ascii_case("mov")
+                || ext.eq_ignore_ascii_case("m4v")
+        })
 }
 
 pub enum Observation {
@@ -125,19 +157,27 @@ impl Engine {
         opened: Instant,
         preferences: PlayerPreferences,
     ) -> Result<Self, Failure> {
-        let name = match source {
-            MediaSource::Local(path) => {
-                local_mp4(path)
+        let (name, auth_header, mov_only) = match source {
+            MediaSource::Local(path) => (
+                local_video(path)
                     .map(str::to_owned)
                     .map_err(|message| Failure {
                         stage: "validate",
-                        code: "invalid_local_mp4".into(),
+                        code: "invalid_local_video".into(),
                         message,
-                    })?
-            }
-            MediaSource::Https(url) => url.clone(),
+                    })?,
+                None,
+                is_mov_container(path),
+            ),
+            MediaSource::Https(url) => (url.clone(), None, false),
+            MediaSource::WebDav { url, auth_header } => (url.clone(), auth_header.clone(), false),
         };
         let local = matches!(source, MediaSource::Local(_));
+        let proxy = if local {
+            None
+        } else {
+            crate::catalog::http_client::system_http_proxy(&name)
+        };
         let diagnostic = optional_mpv_diagnostic_path(session);
         let mpv = Mpv::with_initializer(|init| {
             if let Some(path) = diagnostic.as_deref() {
@@ -149,8 +189,18 @@ impl Engine {
             init.set_option("ytdl", false)?;
             init.set_option("demuxer", "lavf")?;
             if local {
-                init.set_option("demuxer-lavf-format", "mov")?;
+                if mov_only {
+                    init.set_option("demuxer-lavf-format", "mov")?;
+                }
                 init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
+            } else {
+                if let Some(proxy_url) = proxy.as_deref() {
+                    let _ = init.set_option("http-proxy", proxy_url);
+                }
+                if let Some(auth) = auth_header.as_deref() {
+                    let header = format!("Authorization: {auth}");
+                    init.set_option("http-header-fields", header.as_str())?;
+                }
             }
             init.set_option("sub-auto", "no")?;
             init.set_option("audio-file-auto", "no")?;

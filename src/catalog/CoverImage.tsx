@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { safeCoverUrl } from "./coverUrl";
+import {
+  getCachedPosterFrame, requestLocalPosterFrame, requestSeriesPosterFrame,
+} from "./posterCache";
 
 interface Props {
   url?: string | null;
-  /** Show a non-sensitive diagnostic only for the opt-in community source. */
+  /** When url is absent, extract & cache a real video frame for this series. */
+  seriesId?: string;
+  /** When url is absent, extract & cache a real video frame for this local library ID. */
+  localId?: number;
+  /** Kept for compatibility with existing callers; silent fallback in production UI. */
   diagnostic?: boolean;
   /** Visible first-screen images should not wait for WebView's lazy-load heuristic. */
   eager?: boolean;
@@ -11,38 +18,56 @@ interface Props {
   priority?: boolean;
 }
 
-/** Public remote cover with a gradient fallback. Never print signed CDN URLs.
- * A slow image stays in flight: the timeout is observational, not a retry.
- */
-export function CoverImage({ url, diagnostic = false, eager = false, priority = false }: Props) {
+/** Public remote cover or cached real video frame fallback. Never print signed CDN URLs. */
+export function CoverImage({
+  url, seriesId, localId, eager = false, priority = false,
+}: Props) {
+  const remoteSrc = safeCoverUrl(url);
   const [failed, setFailed] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState<string | null>(null);
-  const [slow, setSlow] = useState<string | null>(null);
-  const src = safeCoverUrl(url);
+  const cacheKey = localId !== undefined ? `local:${localId}` : seriesId ? `series:${seriesId}` : null;
+  const [extracted, setExtracted] = useState<string | null>(() =>
+    !remoteSrc && cacheKey ? (getCachedPosterFrame(cacheKey) ?? null) : null,
+  );
 
   useEffect(() => {
-    if (!diagnostic || !src || src === failed || src === loaded) return;
-    const timer = window.setTimeout(() => setSlow(src), 8000);
-    return () => window.clearTimeout(timer);
-  }, [diagnostic, src, failed, loaded]);
+    if (remoteSrc && remoteSrc !== failed) return;
+    if (localId === undefined && !seriesId) {
+      setExtracted(null);
+      return;
+    }
+    const key = localId !== undefined ? `local:${localId}` : `series:${seriesId}`;
+    const cached = getCachedPosterFrame(key);
+    if (cached !== undefined) {
+      setExtracted(cached);
+      return;
+    }
+    let alive = true;
+    const promise = localId !== undefined
+      ? requestLocalPosterFrame(localId)
+      : requestSeriesPosterFrame(seriesId!);
+    void promise.then(frame => {
+      if (alive) setExtracted(frame);
+    });
+    return () => { alive = false; };
+  }, [remoteSrc, failed, localId, seriesId]);
 
-  if (!src || src === failed) {
-    if (!diagnostic) return null;
-    return <span className="catalog-cover-diagnostic" aria-label="封面状态">
-      {src ? "封面图片加载失败" : "SDK 未获取到封面"}
-    </span>;
-  }
+  const src = remoteSrc && remoteSrc !== failed ? remoteSrc : extracted;
+  if (!src) return null;
 
-  return <>
-    <img key={src} className="catalog-cover-image" src={src} alt=""
+  return (
+    <img
+      key={src}
+      className="nf-cover-image"
+      src={src}
+      alt=""
       loading={eager ? "eager" : "lazy"}
       fetchPriority={priority ? "high" : "auto"}
-      decoding="async" referrerPolicy="no-referrer"
-      onLoad={() => setLoaded(src)}
-      onError={() => setFailed(src)} />
-    {diagnostic && slow === src && loaded !== src && <span
-      className="catalog-cover-diagnostic" aria-label="封面状态">
-      封面请求超过 8 秒
-    </span>}
-  </>;
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (src === remoteSrc) setFailed(src);
+        else setExtracted(null);
+      }}
+    />
+  );
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getRecentCatalogEpisodes, listLocalMedia } from "./api";
 import { formatEpisodePosition } from "./progress";
 import { combineRecentActivity, watchedPercent, type RecentActivityItem } from "./recentActivity";
+import { isVisibleProvider } from "./discovery";
 import type { LocalMedia, RecentCatalogEpisode } from "./types";
 import { CoverImage } from "./CoverImage";
 
@@ -11,7 +12,7 @@ interface Props {
   busy: boolean;
   refreshKey?: number;
   onPlayProvider: (seriesId: string, episodeId: string) => Promise<boolean>;
-  onPlayLocal: (id: number) => Promise<boolean>;
+  onPlayLocal: (id: number, title?: string) => Promise<boolean>;
 }
 
 export function ContinueWatchingShelf({
@@ -23,6 +24,7 @@ export function ContinueWatchingShelf({
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const transitionRef = useRef(false);
+  const railRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -30,17 +32,22 @@ export function ContinueWatchingShelf({
     setError("");
     setProviders([]);
     setLocals([]);
-    // The two independent histories must not mask each other's errors or data.
     void Promise.allSettled([
       getRecentCatalogEpisodes(24),
       includeLocal ? listLocalMedia() : Promise.resolve([] as LocalMedia[]),
     ]).then(([providerResult, localResult]) => {
       if (!current) return;
       const failures: string[] = [];
-      if (providerResult.status === "fulfilled") setProviders(providerResult.value);
-      else failures.push("剧集观看历史读取失败：" + String(providerResult.reason));
-      if (localResult.status === "fulfilled") setLocals(localResult.value);
-      else failures.push("本地观看历史读取失败：" + String(localResult.reason));
+      if (providerResult.status === "fulfilled") {
+        setProviders(providerResult.value.filter(entry => isVisibleProvider(entry.series.providerId)));
+      } else {
+        failures.push("剧集观看历史读取失败");
+      }
+      if (localResult.status === "fulfilled") {
+        setLocals(localResult.value);
+      } else {
+        failures.push("本地观看历史读取失败");
+      }
       setError(failures.join("；"));
     }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
@@ -56,8 +63,8 @@ export function ContinueWatchingShelf({
     try {
       const ok = item.kind === "provider"
         ? await onPlayProvider(item.value.series.id, item.value.episode.id)
-        : await onPlayLocal(item.value.id);
-      if (!ok) setError("未能打开该媒体，请刷新或进入详情重试。");
+        : await onPlayLocal(item.value.id, item.value.title);
+      if (!ok) setError("暂时无法播放该视频，请检查文件或来源。");
     } catch (reason) {
       setError(String(reason));
     } finally {
@@ -66,62 +73,91 @@ export function ContinueWatchingShelf({
     }
   }
 
+  function scrollRail(direction: -1 | 1) {
+    const el = railRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * Math.max(360, el.clientWidth * 0.78), behavior: "smooth" });
+  }
+
   if (includeLocal && !loading && items.length === 0 && !error) return null;
 
-  return <section className="recent-activity" aria-label={includeLocal ? "继续观看" : "剧集观看历史"}>
-    <div className="recent-heading">
-      <h3>{includeLocal ? "继续观看" : "剧集观看历史"}</h3>
-      <span>{includeLocal ? "本地 MP4 与合法内容源的最近播放" : "来自演示与自有清单的有效剧集"}</span>
-    </div>
-    {error && <p className="catalog-progress-error" role="alert">{error}</p>}
-    {loading ? <p className="recent-empty" role="status">正在读取观看历史…</p>
-      : items.length === 0 ? <p className="recent-empty">
-        {includeLocal ? "还没有观看记录。播放任意已接入作品后会显示在这里。"
-          : "还没有可用的剧集观看记录。被清空、替换或删除的清单不会显示旧进度。"}
-      </p> : <div className="recent-grid">
-        {items.map(item => {
-          const provider = item.kind === "provider";
-          const title = provider ? item.value.series.title : item.value.title;
-          const subtitle = provider
-            ? "第 " + item.value.episode.number + " 集 · " + item.value.episode.title
-            : "本地视频";
-          const position = provider ? item.value.progress.positionSec : item.value.positionSec;
-          const duration = provider ? item.value.progress.durationSec : item.value.durationSec;
-          const completed = provider ? item.value.progress.completed : item.value.completed;
-          const unavailable = !provider && !item.value.available;
-          const percent = watchedPercent(position, duration, completed);
-          return <article key={item.key} className="recent-card">
-            <div className="recent-card-art" aria-hidden="true">
-              {provider
-                ? <CoverImage url={item.value.series.coverUrl} eager />
-                : <span className="recent-card-local-art">MP4</span>}
-              <span className="recent-card-kind">{provider
-                ? item.value.series.providerId === "hgcommunity" ? "社区内容"
-                  : item.value.series.providerId === "manifest" ? "自有清单" : "在线目录"
-                : "本地视频"}</span>
-            </div>
-            <div className="recent-card-copy">
-              <small>{provider ? "继续观看" : "本地媒体"}</small>
-              <strong title={title}>{title}</strong>
-              <span>{subtitle}</span>
-              <span>{completed ? "已看完" : "上次看到 " + formatEpisodePosition(position)}
-                {duration !== null ? " / " + formatEpisodePosition(duration) : ""}</span>
-              <time dateTime={new Date(item.lastPlayedMs).toISOString()}>
-                {new Date(item.lastPlayedMs).toLocaleString("zh-CN")}
-              </time>
-              {percent !== null && <div className="recent-progress" role="progressbar"
-                aria-label={title + "观看进度"} aria-valuemin={0} aria-valuemax={100}
-                aria-valuenow={percent}>
-                <div style={{ width: percent + "%" }} />
-              </div>}
-              {unavailable && <span className="recent-unavailable" role="status">本地文件已移动或不可用</span>}
-            </div>
-            <button type="button" disabled={working || busy || unavailable}
-              onClick={() => void play(item)}>
-              {unavailable ? "无法播放" : completed ? "重看" : "继续观看"}
-            </button>
-          </article>;
-        })}
-      </div>}
-  </section>;
+  return (
+    <section className="nf-rail-section" aria-label={includeLocal ? "继续观看" : "剧集观看历史"}>
+      <div className="nf-rail-header">
+        <h3>{includeLocal ? "继续观看" : "剧集观看历史"}</h3>
+        {items.length > 3 && (
+          <div className="nf-rail-arrows">
+            <button type="button" aria-label="向左滚动" onClick={() => scrollRail(-1)}>‹</button>
+            <button type="button" aria-label="向右滚动" onClick={() => scrollRail(1)}>›</button>
+          </div>
+        )}
+      </div>
+
+      {error && <p className="nf-inline-error" role="alert">{error}</p>}
+
+      {loading ? (
+        <div className="nf-rail-skeleton" role="status" aria-label="正在读取观看历史">
+          <span /><span /><span /><span />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="nf-empty-hint">暂无剧集观看记录。</p>
+      ) : (
+        <div className="nf-continue-rail" ref={railRef}>
+          {items.map(item => {
+            const isProvider = item.kind === "provider";
+            const title = isProvider ? item.value.series.title : item.value.title;
+            const subtitle = isProvider
+              ? `第 ${item.value.episode.number} 集 · ${item.value.episode.title}`
+              : "本地视频";
+            const position = isProvider ? item.value.progress.positionSec : item.value.positionSec;
+            const duration = isProvider ? item.value.progress.durationSec : item.value.durationSec;
+            const completed = isProvider ? item.value.progress.completed : item.value.completed;
+            const unavailable = !isProvider && !item.value.available;
+            const percent = watchedPercent(position, duration, completed);
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={"nf-continue-card" + (unavailable ? " is-unavailable" : "")}
+                disabled={working || busy || unavailable}
+                onClick={() => void play(item)}
+              >
+                <span className="nf-continue-thumb">
+                  <span className="nf-continue-local-bg" aria-hidden="true">
+                    {!isProvider && <i>MP4</i>}
+                  </span>
+                  {isProvider ? (
+                    <CoverImage url={item.value.series.coverUrl} seriesId={item.value.series.id} eager />
+                  ) : (
+                    <CoverImage localId={item.value.id} eager />
+                  )}
+                  <span className="nf-continue-thumb-shade" aria-hidden="true" />
+                  <span className="nf-continue-play-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+                  </span>
+                  {percent !== null && (
+                    <span className="nf-card-progress" role="progressbar"
+                      aria-label={`${title} 观看进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+                      <i style={{ width: `${percent}%` }} />
+                    </span>
+                  )}
+                </span>
+                <span className="nf-continue-meta">
+                  <strong title={title}>{title}</strong>
+                  <small>
+                    {unavailable
+                      ? "文件不可用"
+                      : completed
+                        ? `${subtitle} · 已看完`
+                        : `${subtitle} · ${formatEpisodePosition(position)}`}
+                  </small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }

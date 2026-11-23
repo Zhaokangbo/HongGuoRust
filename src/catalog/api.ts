@@ -1,4 +1,7 @@
-import type { CatalogProvider, CatalogSearchPage, LocalMedia, ProviderEpisodeProgress, RecentCatalogEpisode, Series, SeriesDetail } from "./types";
+import type {
+  CatalogProvider, CatalogSearchPage, FavoriteSeries, LocalMedia, ManifestSubscriptionInfo,
+  ProviderEpisodeProgress, RecentCatalogEpisode, Series, SeriesDetail, WebDavStatus,
+} from "./types";
 
 export interface CatalogRequestOptions {
   signal?: AbortSignal;
@@ -74,7 +77,9 @@ export function catalogErrorMessage(reason: unknown): string {
   if (value.includes("hgcommunity_timeout")) return "社区 SDK 请求超时，请检查网络，不要反复刷新";
   if (value.includes("series_not_found:")) return "该内容已不存在，请刷新列表";
   if (value.includes("invalid_query:")) return "搜索内容过长，请缩短关键词";
-  if (value.includes("manifest_")) return value.replace(/^.*?(manifest_[a-z]+:)/, "清单错误：");
+  if (value.includes("manifest_")) return value.replace(/^.*?(manifest_[a-z]+:)/, "").trim();
+  if (value.includes("webdav_")) return value.replace(/^.*?(webdav_[a-z_]+:)/, "").trim();
+  if (value.includes("http_")) return value.replace(/^.*?(http_[a-z_]+:)/, "").trim();
   return value;
 }
 
@@ -88,6 +93,44 @@ export function importOwnedManifest(): Promise<number | null> {
 
 export function clearOwnedManifest(): Promise<void> {
   return desktopInvoke<void>("catalog_clear_manifest");
+}
+
+export function subscribeRemoteManifest(url: string): Promise<number> {
+  return desktopInvoke<number>("catalog_subscribe_manifest", { url });
+}
+
+export function refreshRemoteManifest(): Promise<number> {
+  return desktopInvoke<number>("catalog_refresh_manifest");
+}
+
+export function getManifestSubscriptionInfo(): Promise<ManifestSubscriptionInfo> {
+  return desktopInvoke<ManifestSubscriptionInfo>("catalog_manifest_info");
+}
+
+export function getWebDavStatus(): Promise<WebDavStatus> {
+  return desktopInvoke<WebDavStatus>("webdav_get_status");
+}
+
+export function configureWebDav(
+  name: string, baseUrl: string, username: string, password: string,
+): Promise<WebDavStatus> {
+  return desktopInvoke<WebDavStatus>("webdav_configure", { name, baseUrl, username, password });
+}
+
+export function syncWebDav(): Promise<WebDavStatus> {
+  return desktopInvoke<WebDavStatus>("webdav_sync");
+}
+
+export function clearWebDav(): Promise<void> {
+  return desktopInvoke<void>("webdav_clear");
+}
+
+export function listFavoriteSeries(): Promise<FavoriteSeries[]> {
+  return desktopInvoke<FavoriteSeries[]>("catalog_favorites_list");
+}
+
+export function setFavoriteSeries(seriesId: string, favorite: boolean): Promise<FavoriteSeries[]> {
+  return desktopInvoke<FavoriteSeries[]>("catalog_favorite_set", { seriesId, favorite });
 }
 
 export function listCatalogSources(): Promise<CatalogProvider[]> {

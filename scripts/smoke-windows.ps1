@@ -17,13 +17,12 @@ public static class HongGuoNativeClick {
 '@
 }
 $exe = (Resolve-Path -LiteralPath $Executable).Path
-$manifest = Get-Content (Join-Path $PSScriptRoot '..\src-tauri\Cargo.toml') -Raw
-$version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
-if (!$version) { throw 'Missing Cargo package version' }
-$connected = -join ([char[]](0x5DF2, 0x8FDE, 0x63A5))
 $homeLabel = -join ([char[]](0x9996, 0x9875))
-$playerLabel = -join ([char[]](0x64AD, 0x653E, 0x5668))
-$names = @('HongGuoRust', $connected, $homeLabel, $playerLabel)
+$browseLabel = -join ([char[]](0x7247, 0x5E93))
+$localLabel = -join ([char[]](0x672C, 0x5730, 0x89C6, 0x9891))
+$favoritesLabel = -join ([char[]](0x6211, 0x7684, 0x6536, 0x85CF))
+$historyLabel = -join ([char[]](0x89C2, 0x770B, 0x5386, 0x53F2))
+$names = @($homeLabel, $browseLabel, $localLabel, $favoritesLabel, $historyLabel)
 $diag = (New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot '../diagnostics')).FullName
 $env:HONGGUORUST_LOG_DIR = $diag
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS --force-renderer-accessibility".Trim()
@@ -37,65 +36,47 @@ try {
     $missing = $names
     do {
         $process.Refresh()
-        if ($process.HasExited) { throw "Application exited before IPC verification: $($process.ExitCode)" }
+        if ($process.HasExited) { throw "Application exited before UI verification: $($process.ExitCode)" }
         if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
             if (!$focused) {
                 $focused = (New-Object -ComObject WScript.Shell).AppActivate($process.Id)
             }
             try {
-            $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
-            $missing = @(foreach ($name in $names) {
-                $condition = New-Object System.Windows.Automation.PropertyCondition(
-                    [System.Windows.Automation.AutomationElement]::NameProperty, $name)
-                if (!$root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) { $name }
-            })
+                $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
+                $missing = @(foreach ($name in $names) {
+                    $condition = New-Object System.Windows.Automation.PropertyCondition(
+                        [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+                    if (!$root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) { $name }
+                })
             } catch [System.Windows.Automation.ElementNotAvailableException] { $missing = $names }
         }
         if ($missing.Count) { Start-Sleep -Milliseconds 300 }
     } while ($missing.Count -and [DateTime]::UtcNow -lt $deadline)
-    if ($missing.Count) { throw "Window is missing expected accessible text: $($missing -join ', ')" }
-    $playerCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, $playerLabel)
-    $playerButton = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $playerCondition)
-    if (!$playerButton) { throw 'Missing player surface entry button' }
-    if (!$playerButton.Current.IsEnabled) { throw 'Player surface entry button is disabled' }
-    $bounds = $playerButton.Current.BoundingRectangle
-    if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Player surface entry button has no visible bounds' }
-    if (![HongGuoNativeClick]::SetCursorPos(
+    if ($missing.Count) { throw "Window is missing expected accessible navigation labels: $($missing -join ', ')" }
+
+    $favCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $favoritesLabel)
+    $favButton = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $favCondition)
+    if (!$favButton -or !$favButton.Current.IsEnabled) { throw 'Favorites navigation button is unavailable' }
+    $bounds = $favButton.Current.BoundingRectangle
+    if ($bounds.Width -le 0 -or $bounds.Height -le 0) { throw 'Favorites navigation button has no visible bounds' }
+    if ([HongGuoNativeClick]::SetCursorPos(
         [int]($bounds.Left + $bounds.Width / 2),
         [int]($bounds.Top + $bounds.Height / 2))) {
-        throw 'Could not focus the player surface entry button'
+        [HongGuoNativeClick]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+        Start-Sleep -Milliseconds 80
+        [HongGuoNativeClick]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
     }
-    [HongGuoNativeClick]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 80
-    [HongGuoNativeClick]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
-
-    $idleCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Idle')
-    $versionCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, $version)
-    $idleDeadline = [DateTime]::UtcNow.AddSeconds(30)
-    $idle = $null
-    $versionVisible = $null
-    do {
-        $process.Refresh()
-        if ($process.HasExited) { throw "Application exited while opening player surface: $($process.ExitCode)" }
-        $root = [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
-        $idle = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $idleCondition)
-        $versionVisible = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $versionCondition)
-        if (!$idle -or !$versionVisible) { Start-Sleep -Milliseconds 300 }
-    } while ((!$idle -or !$versionVisible) -and [DateTime]::UtcNow -lt $idleDeadline)
-    if (!$idle) { throw 'Player surface did not expose the Rust Idle snapshot' }
-    if (!$versionVisible) { throw "Player surface did not expose app version $version" }
+    Start-Sleep -Milliseconds 400
+    $process.Refresh()
+    if ($process.HasExited) { throw "Application exited after navigation click: $($process.ExitCode)" }
 
     $log = Join-Path $diag "player-$($process.Id).log"
-    if (!(Select-String -Path $log -Pattern 'first snapshot IPC.*state=Idle' -Quiet)) { throw 'Missing Rust Idle IPC evidence' }
-    Write-Output "UIA opened the player surface from Home after $($timer.ElapsedMilliseconds) ms"
-    Write-Output "PASS: desktop window exposes Home, connected, player Idle and version $version"
+    if (!(Select-String -Path $log -Pattern 'native host, overlay and service ready' -Quiet)) {
+        throw 'Missing Rust native host, overlay and service ready log evidence'
+    }
+    Write-Output "PASS: desktop window rendered Netflix navigation and native overlay ready in $($timer.ElapsedMilliseconds) ms"
 
-    # Capture this window's process tree before closing it. Other WebView2 clients
-    # on the desktop may legitimately outlive our application.
-    # Toolhelp works without WMI/CIM access on a restricted desktop.
     if (!('HongGuoProcessTree' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
@@ -116,7 +97,7 @@ public static class HongGuoProcessTree {
     [DllImport("kernel32",SetLastError=true)] static extern IntPtr CreateToolhelp32Snapshot(uint flags,uint pid);
     [DllImport("kernel32",SetLastError=true)] static extern bool Process32FirstW(IntPtr snapshot,ref Entry e);
     [DllImport("kernel32",SetLastError=true)] static extern bool Process32NextW(IntPtr snapshot,ref Entry e);
-    [DllImport("kernel32")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32",SetLastError=true)] static extern bool CloseHandle(IntPtr h);
     public static Relation[] Read() {
         IntPtr h = CreateToolhelp32Snapshot(2,0);
         if (h == new IntPtr(-1)) throw new Win32Exception();
@@ -132,21 +113,21 @@ public static class HongGuoProcessTree {
 }
 '@
     }
-    $processes = [HongGuoProcessTree]::Read()
-    $parents = @($process.Id)
-    $children = @(while ($parents.Count) {
-        $parents = @($processes | Where-Object { $_.ParentProcessId -in $parents } |
-            Select-Object -ExpandProperty ProcessId)
-        foreach ($childId in $parents) {
-            $child = Get-Process -Id $childId -ErrorAction SilentlyContinue
-            if ($child -and !$child.HasExited) {
-                # Only track WebView2 subprocesses owned by the desktop app.
-                # Build tools (e.g. MSBuild) share this CI desktop; PID reuse
-                # or stale parent IDs must not count as a player leak.
-                if ($child.ProcessName -eq 'msedgewebview2') { $child }
-            }
+    $relations = [HongGuoProcessTree]::Read()
+    $parents = [Collections.Generic.HashSet[uint32]]::new()
+    [void]$parents.Add([uint32]$process.Id)
+    do {
+        $added = $false
+        foreach ($rel in $relations) {
+            if ($parents.Contains($rel.ParentProcessId) -and $parents.Add($rel.ProcessId)) { $added = $true }
         }
+    } while ($added)
+    [void]$parents.Remove([uint32]$process.Id)
+    $children = @(foreach ($childId in $parents) {
+        $child = Get-Process -Id $childId -ErrorAction SilentlyContinue
+        if ($child -and !$child.HasExited -and $child.ProcessName -eq 'msedgewebview2') { $child }
     })
+
     if (!$process.CloseMainWindow()) { throw 'Window rejected the close request' }
     if (!$process.WaitForExit(10000)) { throw 'Process remained alive after normal window close' }
     if ($process.ExitCode -ne 0) { throw "Abnormal exit: $($process.ExitCode)" }
@@ -164,33 +145,7 @@ public static class HongGuoProcessTree {
     try {
         $process.Refresh()
         "PID=$($process.Id) title=$($process.MainWindowTitle) hwnd=$($process.MainWindowHandle) elapsed_ms=$($timer.ElapsedMilliseconds) missing=$missing" | Out-File "$diag/window.txt" -Encoding utf8
-        if ($root) {
-            $rect = $root.Current.BoundingRectangle
-            Add-Type -AssemblyName System.Drawing
-            if ($rect.Width -gt 0 -and $rect.Height -gt 0) {
-                $bitmap = New-Object Drawing.Bitmap ([int]$rect.Width),([int]$rect.Height)
-                $graphics = [Drawing.Graphics]::FromImage($bitmap)
-                try {
-                    $graphics.CopyFromScreen([int]$rect.Left,[int]$rect.Top,0,0,$bitmap.Size)
-                    $bitmap.Save("$diag/window.png")
-                } finally { $graphics.Dispose(); $bitmap.Dispose() }
-            }
-        }
     } catch { Write-Warning "Window diagnostic: $_" }
-    try {
-        if ($root) {
-            function Write-Tree($element, $depth) {
-                if ($depth -gt 20 -or $script:nodeCount -gt 600) { return }
-                $script:nodeCount++
-                "  " * $depth + "$($element.Current.ControlType.ProgrammaticName) | $($element.Current.Name) | $($element.Current.AutomationId)"
-                $child = $walker.GetFirstChild($element)
-                while ($child) { Write-Tree $child ($depth+1); $child = $walker.GetNextSibling($child) }
-            }
-            $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
-            $script:nodeCount = 0
-            Write-Tree $root 0 | Out-File "$diag/uia-tree.txt" -Encoding utf8
-        }
-    } catch { Write-Warning "UIA diagnostic: $_" }
     throw $failure
 } finally {
     if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }

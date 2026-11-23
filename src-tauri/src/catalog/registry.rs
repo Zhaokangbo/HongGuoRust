@@ -5,6 +5,7 @@ use super::hongguo::HongGuoUnavailableProvider;
 use super::local::LocalLibraryProvider;
 use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
+use super::webdav::{WebDavProvider, WebDavStore};
 use super::{ContentProvider, LocalDemoProvider, MediaTarget, Series, SeriesDetail};
 use crate::local_library::LocalLibrary;
 use serde::Serialize;
@@ -85,13 +86,33 @@ impl Default for CatalogService {
 }
 
 impl CatalogService {
+    #[allow(dead_code)]
     pub fn new(library: Arc<LocalLibrary>, manifest: Arc<OwnedManifestStore>) -> Self {
+        Self::build(library, manifest, None)
+    }
+
+    pub fn with_webdav(
+        library: Arc<LocalLibrary>,
+        manifest: Arc<OwnedManifestStore>,
+        webdav: Arc<WebDavStore>,
+    ) -> Self {
+        Self::build(library, manifest, Some(webdav))
+    }
+
+    fn build(
+        library: Arc<LocalLibrary>,
+        manifest: Arc<OwnedManifestStore>,
+        webdav: Option<Arc<WebDavStore>>,
+    ) -> Self {
         let mut providers: Vec<Box<dyn ContentProvider>> = vec![
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
             Box::new(OwnedManifestProvider::new(manifest)),
             Box::new(HongGuoUnavailableProvider),
         ];
+        if let Some(webdav) = webdav {
+            providers.push(Box::new(WebDavProvider::new(webdav)));
+        }
         // The unofficial community SDK is opt-in and debug-build only. Its
         // failure must never replace or unlock the real HongGuo placeholder.
         if let Some(experimental) = HgCommunityProvider::from_env() {
@@ -293,6 +314,17 @@ impl CatalogService {
                     return Err("invalid_media_target: Local media does not match provider".into());
                 }
                 Ok(MediaTarget::LocalLibrary(id))
+            }
+            MediaTarget::WebDav { url, auth_header } => {
+                if source != "webdav" {
+                    return Err(
+                        "invalid_media_target: WebDAV target does not match provider".into(),
+                    );
+                }
+                crate::player::source::webdav_media_url(&url).map(|validated| MediaTarget::WebDav {
+                    url: validated,
+                    auth_header,
+                })
             }
         }
     }

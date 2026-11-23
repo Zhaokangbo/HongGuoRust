@@ -1,86 +1,125 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  catalogErrorMessage, clearOwnedManifest, getCatalogSeries, getCatalogEpisodeProgress, importOwnedManifest,
-  isCatalogCancellation, listCatalogSources, searchCatalogPage,
+  addLocalMedia, catalogErrorMessage, clearOwnedManifest, getCatalogEpisodeProgress,
+  getCatalogSeries, importOwnedManifest, isCatalogCancellation, listCatalogSources,
+  listFavoriteSeries, searchCatalogPage, setFavoriteSeries,
 } from "./api";
-import type { CatalogProvider, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
-import { latestEpisodeProgress, formatEpisodePosition } from "./progress";
+import type { CatalogProvider, FavoriteSeries, ProviderEpisodeProgress, Series, SeriesDetail } from "./types";
+import { formatEpisodePosition, latestEpisodeProgress } from "./progress";
 import { watchedEpisodeCount } from "./recentActivity";
 import { ContinueWatchingShelf } from "./ContinueWatchingShelf";
 import { LocalLibraryView } from "./LocalLibraryView";
 import { DiscoveryHome } from "./DiscoveryHome";
 import { CoverImage } from "./CoverImage";
-import { filterEpisodes, summarizeEpisodes, type EpisodeOrder, type EpisodeStatusFilter } from "./detailEpisodes";
+import { SourceManagerModal } from "./SourceManagerModal";
+import { FavoritesView } from "./FavoritesView";
+import { visibleCatalogProviders, visibleCatalogSeries } from "./discovery";
+import {
+  filterEpisodes, summarizeEpisodes, type EpisodeOrder, type EpisodeStatusFilter,
+} from "./detailEpisodes";
 
 interface Props {
-  onBack: () => Promise<void>;
   onPlay: (seriesId: string, episodeId: string, detail: SeriesDetail) => Promise<boolean>;
-  onPlayLocal: (id: number, orderedIds: number[], origin: string) => Promise<boolean>;
+  onPlayLocal: (id: number, orderedIds: number[], origin: string, titles?: Record<string, string>) => Promise<boolean>;
+  onOpenLocalFile: () => Promise<void>;
   playerError: string;
+  onClearPlayerError: () => void;
+  refreshSignal: number;
 }
 
-export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props) {
-  const [mode, setMode] = useState<"home" | "demo" | "local" | "history" | "favorites">("home");
+type NavMode = "home" | "browse" | "local" | "favorites" | "history";
+
+export function CatalogView({
+  onPlay, onPlayLocal, onOpenLocalFile, playerError, onClearPlayerError, refreshSignal,
+}: Props) {
+  const [mode, setMode] = useState<NavMode>("home");
+  const [scrolled, setScrolled] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [genreFilter, setGenreFilter] = useState("all");
-  const [sourceId, setSourceId] = useState("demo");
+  const [sourceId, setSourceId] = useState("all");
   const [sources, setSources] = useState<CatalogProvider[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Browse grid state
   const [items, setItems] = useState<Series[]>([]);
-  const [total, setTotal] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const requestVersion = useRef(0);
-  const searchController = useRef<AbortController | null>(null);
-  const pageController = useRef<AbortController | null>(null);
-  const detailController = useRef<AbortController | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Detail state
   const [detail, setDetail] = useState<SeriesDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [episodeProgress, setEpisodeProgress] = useState<ProviderEpisodeProgress[]>([]);
   const [progressLoading, setProgressLoading] = useState(false);
   const [episodeQuery, setEpisodeQuery] = useState("");
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeStatusFilter>("all");
   const [episodeOrder, setEpisodeOrder] = useState<EpisodeOrder>("ascending");
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const recentPlayRef = useRef(false);
-  const [progressError, setProgressError] = useState("");
-  const [loading, setLoading] = useState(true);
+
+  // Misc state
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
   const [working, setWorking] = useState(false);
   const [manifestBusy, setManifestBusy] = useState(false);
-  const [manifestInfo, setManifestInfo] = useState("");
   const [confirmManifestClear, setConfirmManifestClear] = useState(false);
+  const [sourceModalOpen, setSourceModalOpen] = useState(false);
+  const [sourceModalTab, setSourceModalTab] = useState<"webdav" | "remote">("webdav");
+  const [favorites, setFavorites] = useState<FavoriteSeries[]>([]);
 
-  // Leaving the unified catalog must invalidate any still-loading detail.
-  useEffect(() => {
-    if (mode !== "demo") {
-      detailController.current?.abort();
-      detailController.current = null;
-      setDetail(null);
-      setDetailLoading(false);
-      setWorking(false);
-    }
-  }, [mode]);
+  const favoriteIds = useMemo(() => new Set(favorites.map(item => item.id)), [favorites]);
 
-  // The search effect separately cleans its own request on dependency change.
-  useEffect(() => () => {
-    pageController.current?.abort();
-    detailController.current?.abort();
-  }, []);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const requestVersion = useRef(0);
+  const searchController = useRef<AbortController | null>(null);
+  const pageController = useRef<AbortController | null>(null);
+  const detailController = useRef<AbortController | null>(null);
+  const recentPlayRef = useRef(false);
+
+  const combinedRefresh = refreshKey + refreshSignal;
+  const realSources = useMemo(() => visibleCatalogProviders(sources), [sources]);
 
   useEffect(() => {
     let alive = true;
     void listCatalogSources().then(result => {
       if (alive) setSources(result);
-    }).catch(reason => {
-      if (alive) setError(String(reason));
-    });
+    }).catch(() => {});
+    void listFavoriteSeries().then(result => {
+      if (alive) setFavorites(result);
+    }).catch(() => {});
     return () => { alive = false; };
+  }, [combinedRefresh]);
+
+  async function toggleFavoriteSeries(seriesId: string) {
+    const next = !favoriteIds.has(seriesId);
+    try {
+      const updated = await setFavoriteSeries(seriesId, next);
+      setFavorites(updated);
+      setToast(next ? "已加入我的收藏" : "已从收藏移除");
+    } catch (reason) {
+      setError(catalogErrorMessage(reason));
+    }
+  }
+
+  useEffect(() => () => {
+    searchController.current?.abort();
+    pageController.current?.abort();
+    detailController.current?.abort();
   }, []);
 
+  // Auto-hide toast notice
   useEffect(() => {
-    if (mode !== "demo") {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 3800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  // Browse query effect
+  useEffect(() => {
+    if (mode !== "browse") {
       searchController.current?.abort();
       return;
     }
@@ -88,19 +127,14 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     const controller = new AbortController();
     searchController.current = controller;
     pageController.current?.abort();
-    detailController.current?.abort();
     setLoadingMore(false);
-    setDetailLoading(false);
     setLoading(true);
     setError("");
-    setDetail(null);
     setItems([]);
-    setTotal(0);
     setNextOffset(null);
-    void searchCatalogPage(search, sourceId, 0, 24, { signal: controller.signal }).then(page => {
+    void searchCatalogPage(search, sourceId, 0, 36, { signal: controller.signal }).then(page => {
       if (version !== requestVersion.current || controller.signal.aborted) return;
-      setItems(page.items);
-      setTotal(page.total);
+      setItems(visibleCatalogSeries(page.items));
       setNextOffset(page.nextOffset);
     }).catch(reason => {
       if (version === requestVersion.current && !isCatalogCancellation(reason)) {
@@ -114,56 +148,48 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       controller.abort();
       if (version === requestVersion.current) requestVersion.current++;
     };
-  }, [mode, search, sourceId, refreshKey]);
+  }, [mode, search, sourceId, combinedRefresh]);
 
-  // Provider history is read-only here. Keep stale responses from attaching to a new detail.
+  // Episode progress for current detail
   useEffect(() => {
     let active = true;
     setEpisodeProgress([]);
-    setProgressError("");
     setProgressLoading(Boolean(detail));
     if (detail) {
       void getCatalogEpisodeProgress(detail.series.id).then(records => {
         if (active) setEpisodeProgress(records);
-      }).catch(reason => {
-        if (active) setProgressError(String(reason));
-      }).finally(() => {
+      }).catch(() => {}).finally(() => {
         if (active) setProgressLoading(false);
       });
     }
     return () => { active = false; };
-  }, [detail, refreshKey]);
+  }, [detail, combinedRefresh]);
 
-  async function loadMore() {
-    if (nextOffset === null || loadingMore || loading || working) return;
-    const version = requestVersion.current;
-    const controller = new AbortController();
-    pageController.current = controller;
-    setLoadingMore(true);
-    setError("");
-    try {
-      const page = await searchCatalogPage(search, sourceId, nextOffset, 24, {
-        signal: controller.signal,
-      });
-      if (version !== requestVersion.current || controller.signal.aborted) return;
-      setItems(previous => [...previous, ...page.items]);
-      setTotal(page.total);
-      setNextOffset(page.nextOffset);
-    } catch (reason) {
-      if (version === requestVersion.current && !isCatalogCancellation(reason)) {
-        setError(catalogErrorMessage(reason));
-      }
-    } finally {
-      if (pageController.current === controller) pageController.current = null;
-      if (version === requestVersion.current) setLoadingMore(false);
-    }
+  function onScroll() {
+    const top = scrollRef.current?.scrollTop ?? 0;
+    setScrolled(top > 28);
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setGenreFilter("all");
+  function navigateTo(next: NavMode) {
+    detailController.current?.abort();
+    detailController.current = null;
     setDetail(null);
+    setDetailLoading(false);
+    setMode(next);
+    setError("");
+    setMenuOpen(false);
+    onClearPlayerError();
+    scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDetail(null);
+    setGenreFilter("all");
+    setSourceId("all");
     setSearch(input.trim());
+    setMode("browse");
+    setMenuOpen(false);
   }
 
   async function showDetail(id: string) {
@@ -171,8 +197,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     const controller = new AbortController();
     detailController.current = controller;
     setError("");
+    onClearPlayerError();
     setWorking(true);
     setDetailLoading(true);
+    setMenuOpen(false);
     try {
       const result = await getCatalogSeries(id, { signal: controller.signal });
       if (!controller.signal.aborted) {
@@ -181,6 +209,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         setEpisodeOrder("ascending");
         setDescriptionExpanded(false);
         setDetail(result);
+        scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
       }
     } catch (reason) {
       if (!isCatalogCancellation(reason)) setError(catalogErrorMessage(reason));
@@ -193,58 +222,93 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
-  function cancelPending() {
-    if (!(loading || loadingMore || detailLoading)) return;
-    requestVersion.current++;
-    searchController.current?.abort();
-    pageController.current?.abort();
-    detailController.current?.abort();
-    setLoading(false);
-    setLoadingMore(false);
-    setDetailLoading(false);
-    setWorking(false);
-    setError("已取消内容源请求，点击“刷新内容”可重新加载");
-  }
-
-  function refreshCatalog() {
-    setRefreshKey(previous => previous + 1);
-  }
-
-  function openExplorer(fromSource: string, fromQuery: string) {
-    setSourceId(fromSource);
-    setInput(fromQuery);
-    setSearch(fromQuery);
-    setGenreFilter("all");
+  async function quickPlaySeries(series: Series) {
+    if (working) return;
+    setWorking(true);
     setError("");
-    setDetail(null);
-    setMode("demo");
+    onClearPlayerError();
+    try {
+      const [current, progress] = await Promise.all([
+        getCatalogSeries(series.id),
+        getCatalogEpisodeProgress(series.id).catch(() => [] as ProviderEpisodeProgress[]),
+      ]);
+      const sorted = [...current.episodes].sort((a, b) => a.number - b.number);
+      const last = latestEpisodeProgress(sorted, progress);
+      const lastEp = last ? sorted.find(e => e.id === last.episodeId) : undefined;
+      let target = lastEp && !last?.completed && lastEp.playable !== false ? lastEp : undefined;
+      if (!target && lastEp && last?.completed) {
+        const nextIdx = sorted.findIndex(e => e.id === lastEp.id) + 1;
+        if (sorted[nextIdx] && sorted[nextIdx].playable !== false) target = sorted[nextIdx];
+      }
+      if (!target) {
+        target = sorted.find(e => e.playable !== false);
+      }
+      if (target) {
+        await onPlay(current.series.id, target.id, current);
+      } else {
+        setDetail(current);
+      }
+    } catch (reason) {
+      setError(catalogErrorMessage(reason));
+    } finally {
+      setWorking(false);
+    }
   }
 
-  function selectSource(id: string) {
-    setMode("demo");
-    setSourceId(id);
-    setInput("");
-    setSearch("");
-    setGenreFilter("all");
+  async function loadMore() {
+    if (nextOffset === null || loadingMore || loading || working) return;
+    const version = requestVersion.current;
+    const controller = new AbortController();
+    pageController.current = controller;
+    setLoadingMore(true);
     setError("");
-    setConfirmManifestClear(false);
-    setManifestInfo("");
+    try {
+      const page = await searchCatalogPage(search, sourceId, nextOffset, 36, {
+        signal: controller.signal,
+      });
+      if (version !== requestVersion.current || controller.signal.aborted) return;
+      setItems(previous => [...previous, ...visibleCatalogSeries(page.items)]);
+      setNextOffset(page.nextOffset);
+    } catch (reason) {
+      if (version === requestVersion.current && !isCatalogCancellation(reason)) {
+        setError(catalogErrorMessage(reason));
+      }
+    } finally {
+      if (pageController.current === controller) pageController.current = null;
+      if (version === requestVersion.current) setLoadingMore(false);
+    }
   }
 
-  async function importManifest() {
+  async function handleAddLocal() {
+    if (working) return;
+    setMenuOpen(false);
+    setWorking(true);
+    setError("");
+    try {
+      const added = await addLocalMedia();
+      if (added) {
+        setToast(`已添加「${added.title}」到本地片库`);
+        setRefreshKey(v => v + 1);
+      }
+    } catch {
+      setError("添加本地视频失败，请确认文件为 MP4 格式。");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function handleImportManifest() {
     if (manifestBusy) return;
+    setMenuOpen(false);
     setManifestBusy(true);
     setError("");
-    setManifestInfo("");
     try {
       const count = await importOwnedManifest();
-      if (count === null) return;
-      setSourceId("manifest");
-      setInput("");
-      setSearch("");
-      setConfirmManifestClear(false);
-      setManifestInfo(`已导入 ${count} 部作品。清单保存在本机应用数据目录。`);
-      refreshCatalog();
+      if (count !== null) {
+        setConfirmManifestClear(false);
+        setToast(`成功导入 ${count} 部剧集`);
+        setRefreshKey(v => v + 1);
+      }
     } catch (reason) {
       setError(catalogErrorMessage(reason));
     } finally {
@@ -252,7 +316,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
-  async function clearManifest() {
+  async function handleClearManifest() {
     if (!confirmManifestClear) {
       setConfirmManifestClear(true);
       return;
@@ -261,9 +325,10 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     setError("");
     try {
       await clearOwnedManifest();
-      setManifestInfo("已清空自有媒体清单（不会删除原始 JSON 或视频文件）。");
       setConfirmManifestClear(false);
-      refreshCatalog();
+      setMenuOpen(false);
+      setToast("已清空导入的剧集清单");
+      setRefreshKey(v => v + 1);
     } catch (reason) {
       setError(catalogErrorMessage(reason));
     } finally {
@@ -271,11 +336,8 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
-  async function play(seriesId: string, episodeId: string) {
-    if (!detail || detail.series.id !== seriesId) {
-      setError("选集数据已失效，请重新进入详情");
-      return;
-    }
+  async function playEpisode(seriesId: string, episodeId: string) {
+    if (!detail || detail.series.id !== seriesId) return;
     setWorking(true);
     try {
       await onPlay(seriesId, episodeId, detail);
@@ -290,11 +352,9 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     setWorking(true);
     setError("");
     try {
-      // Refresh detail before playing so deleted/replaced episodes never use stale metadata.
       const current = await getCatalogSeries(seriesId);
-      if (current.series.id !== seriesId ||
-          !current.episodes.some(item => item.id === episodeId)) {
-        throw new Error("此剧集已失效，请刷新内容后重试");
+      if (current.series.id !== seriesId || !current.episodes.some(item => item.id === episodeId)) {
+        throw new Error("该剧集已变更，请重新进入详情");
       }
       return await onPlay(seriesId, episodeId, current);
     } catch (reason) {
@@ -306,13 +366,14 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
-  async function playRecentLocal(id: number): Promise<boolean> {
+  async function playRecentLocal(id: number, title?: string): Promise<boolean> {
     if (recentPlayRef.current || working) return false;
     recentPlayRef.current = true;
     setWorking(true);
     setError("");
     try {
-      return await onPlayLocal(id, [id], "最近播放");
+      const titles = title ? { [String(id)]: title } : undefined;
+      return await onPlayLocal(id, [id], "继续观看", titles);
     } catch (reason) {
       setError(String(reason));
       return false;
@@ -322,374 +383,568 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
     }
   }
 
+  // Detail derived state
+  const sortedEpisodes = detail ? [...detail.episodes].sort((a, b) => a.number - b.number) : [];
   const lastProgress = detail ? latestEpisodeProgress(detail.episodes, episodeProgress) : null;
   const lastEpisode = lastProgress && detail?.episodes.find(item => item.id === lastProgress.episodeId);
-  const sortedEpisodes = detail ? [...detail.episodes].sort((a, b) => a.number - b.number) : [];
   const nextEpisode = lastEpisode && lastProgress?.completed
-    ? sortedEpisodes[sortedEpisodes.findIndex(item => item.id === lastEpisode.id) + 1] : undefined;
-  const playedEpisodes = detail
-    ? watchedEpisodeCount(detail.episodes.map(item => item.id), episodeProgress) : 0;
+    ? sortedEpisodes[sortedEpisodes.findIndex(item => item.id === lastEpisode.id) + 1]
+    : undefined;
+  const firstEpisode = sortedEpisodes[0];
+  const playedEpisodes = detail ? watchedEpisodeCount(detail.episodes.map(e => e.id), episodeProgress) : 0;
   const episodeRows = detail
     ? filterEpisodes(detail.episodes, episodeProgress, detail.series.id, episodeQuery, episodeFilter, episodeOrder)
     : [];
   const episodeSummary = detail
-    ? summarizeEpisodes(detail.episodes, episodeProgress, detail.series.id) : null;
+    ? summarizeEpisodes(detail.episodes, episodeProgress, detail.series.id)
+    : null;
   const descriptionCanExpand = Boolean(detail && detail.series.description.trim().length > 180);
-  const communityPlayEnabled = detail?.series.providerId !== "hgcommunity" ||
-    sources.some(provider => provider.id === "hgcommunity" && provider.supportsPlay);
-  const firstEpisode = sortedEpisodes[0];
-  const explorerGenres = Array.from(new Set(items.map(item => item.genre.trim()).filter(Boolean)))
+  const providerCanPlay = detail
+    ? (sources.find(p => p.id === detail.series.providerId)?.supportsPlay ?? true)
+    : false;
+
+  const browseGenres = Array.from(new Set(items.map(i => i.genre.trim()).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, "zh-CN"));
-  const visibleItems = genreFilter === "all" ? items : items.filter(item => item.genre.trim() === genreFilter);
-  const sourceLabel = sources.find(source => source.id === sourceId)?.name ??
-    (sourceId === "all" ? "全部内容源" : sourceId === "demo" ? "演示内容" :
-      sourceId === "hongguo" ? "红果接入" : sourceId === "hgcommunity" ? "社区接口实验" :
-        sourceId === "manifest" ? "自有媒体清单" : sourceId);
-  const sidebarSources = sources.length ? sources.filter(source => source.id !== "local") : [
-    { id: "demo", name: "演示内容", supportsSearch: true, supportsDetail: true, supportsPlay: true },
-    { id: "hongguo", name: "红果接入", supportsSearch: false, supportsDetail: false, supportsPlay: false },
-  ];
+  const visibleBrowseItems = genreFilter === "all"
+    ? items
+    : items.filter(i => i.genre.trim() === genreFilter);
 
-  return <section className="catalog-view catalog-layout" aria-label="内容剧库">
-    <aside className="catalog-sidebar" aria-label="剧库导航">
-      <div className="catalog-sidebar-brand">
-        <span className="catalog-sidebar-mark" aria-hidden="true">H</span>
-        <span><strong>内容空间</strong><small>PERSONAL LIBRARY</small></span>
-      </div>
+  const hasHeroOverlap = (mode === "home" && !detail) || Boolean(detail);
 
-      <nav className="catalog-sidebar-group" aria-label="发现">
-        <span className="catalog-sidebar-label">发现</span>
-        <button type="button" className="catalog-side-link"
-          aria-label="首页" aria-current={mode === "home" ? "page" : undefined}
-          onClick={() => { setMode("home"); setError(""); setDetail(null); }}>
-          <span className="catalog-side-icon" aria-hidden="true">⌂</span><span>首页</span>
-        </button>
-        <button type="button" className="catalog-side-link"
-          aria-label="探索全部内容" aria-current={mode === "demo" && sourceId === "all" ? "page" : undefined}
-          onClick={() => selectSource("all")}>
-          <span className="catalog-side-icon" aria-hidden="true">⌕</span><span>探索全部</span>
-        </button>
-      </nav>
-
-      <nav className="catalog-sidebar-group" aria-label="我的媒体">
-        <span className="catalog-sidebar-label">我的媒体</span>
-        <button type="button" className="catalog-side-link"
-          aria-label="我的视频" aria-current={mode === "local" ? "page" : undefined}
-          onClick={() => { setMode("local"); setError(""); }}>
-          <span className="catalog-side-icon" aria-hidden="true">▣</span><span>我的视频</span>
-        </button>
-        <button type="button" className="catalog-side-link"
-          aria-label="最近播放" aria-current={mode === "history" ? "page" : undefined}
-          onClick={() => { setMode("history"); setError(""); }}>
-          <span className="catalog-side-icon" aria-hidden="true">◷</span><span>最近播放</span>
-        </button>
-        <button type="button" className="catalog-side-link"
-          aria-label="我的收藏" aria-current={mode === "favorites" ? "page" : undefined}
-          onClick={() => { setMode("favorites"); setError(""); }}>
-          <span className="catalog-side-icon" aria-hidden="true">☆</span><span>我的收藏</span>
-        </button>
-      </nav>
-
-      <nav className="catalog-sidebar-group catalog-sidebar-sources" aria-label="内容来源">
-        <span className="catalog-sidebar-label">内容来源</span>
-        {sidebarSources.map(provider => <button type="button" key={provider.id}
-          className="catalog-side-link catalog-side-source"
-          aria-label={provider.name}
-          aria-current={mode === "demo" && sourceId === provider.id ? "page" : undefined}
-          onClick={() => selectSource(provider.id)}>
-          <span className="catalog-side-source-dot" aria-hidden="true" />
-          <span>{provider.name}</span>
-          {provider.id === "hgcommunity" && <small>实验</small>}
-        </button>)}
-      </nav>
-
-      <div className="catalog-sidebar-footer">
-        <span className="catalog-sidebar-status-dot" aria-hidden="true" />
-        <span><strong>本机媒体中心</strong><small>内容与观看记录保存在本机</small></span>
-      </div>
-    </aside>
-
-    <div className={"catalog-main" + (!detail && mode === "home" ? " catalog-main-home" : "")}>
-      <div className={"catalog-heading" + (detail ? " catalog-heading-detail" : "")}>
-        {detail ? <div className="catalog-breadcrumb">
-          <button type="button" className="catalog-back-link" disabled={working}
-            onClick={() => setDetail(null)}>← 返回内容</button>
-          <span>作品详情</span>
-        </div> : <div>
-          <p className="catalog-eyebrow">HONGGUORUST · MEDIA CENTER</p>
-          <h2>{mode === "home" ? "首页" : mode === "favorites" ? "我的收藏"
-            : mode === "history" ? "最近播放" : mode === "local" ? "我的视频"
-              : sourceId === "all" ? "探索全部内容" : sourceLabel}</h2>
-          <p>{mode === "home" ? "从你的内容来源中发现作品，继续上次观看，或浏览完整片库。"
-            : mode === "history"
-              ? "查看本机保存的观看记录与播放进度。"
-              : mode === "favorites" ? "集中管理你收藏的本地视频。"
-                : mode === "local" ? "管理你主动添加的本地 MP4 文件。"
-                  : "搜索、筛选并浏览已接入内容源返回的真实作品。"}</p>
-        </div>}
-      </div>
-    {!detail && mode === "demo" && <div className="catalog-source-tools">
-      <div className="catalog-source-current">
-        <small>当前浏览来源</small>
-        <strong>{sourceLabel}</strong>
-      </div>
-      <div className="catalog-source-actions">
-        <button type="button" className="catalog-ghost"
-          disabled={working || loadingMore} onClick={refreshCatalog}>刷新内容</button>
-        <button type="button" className="catalog-ghost"
-          disabled={!(loading || loadingMore || detailLoading)} onClick={cancelPending}>取消请求</button>
-        {(sourceId === "manifest" || sourceId === "all") && <>
-          <button type="button" className="catalog-ghost"
-            disabled={manifestBusy || working} onClick={() => void importManifest()}>
-            {manifestBusy ? "处理中..." : "导入 JSON 清单"}
+  return (
+    <div className="nf-shell">
+      {/* Netflix Floating Top Navbar */}
+      <header className={"nf-navbar" + (scrolled || !hasHeroOverlap ? " is-solid" : "")}>
+        <div className="nf-nav-left">
+          <button
+            type="button"
+            className="nf-brand"
+            onClick={() => navigateTo("home")}
+            aria-label="HongGuo 首页"
+          >
+            HONGGUO
           </button>
-          <button type="button" className="catalog-ghost"
-            disabled={manifestBusy || working} onClick={() => void clearManifest()}>
-            {confirmManifestClear ? "再次点击确认清空" : "清空自有清单"}
-          </button>
-        </>}
-      </div>
-      {!loading && <span className="catalog-source-count" role="status">共 {total} 部作品</span>}
-    </div>}
-
-    {!detail && mode === "demo" && sourceId === "hgcommunity" && <div className="catalog-manifest-info" role="status">
-      <strong>HG-2A · 非官方社区接口实验（需本机主动启用）</strong>
-      <p>真实数据通过本机 openhongguo 社区 SDK 获取，非红果官方服务。
-        接口可能失效或限流；受保护媒体不在实验模式中解密。
-        若接口失败将保留错误提示，不自动伪造剧集或回退演示资源。</p>
-    </div>}
-    {!detail && mode === "demo" && sourceId === "hongguo" && <div className="catalog-manifest-info" role="status">
-      <strong>HG-1 · 红果接入准备中（尚未授权）</strong>
-      <p>已在 Rust 中注册独立的 HongGuo Provider，但目前没有可确认授权的红果剧集接口或播放权限。
-        此处不会显示虚构的真实作品，也不会自动抓取平台内容。后续接入需先确认接口访问、剧集分发及 Windows 播放授权。</p>
-    </div>}
-
-    {!detail && mode === "demo" && sourceId !== "hongguo" && <form className="catalog-search" onSubmit={submit}>
-      <span className="catalog-search-icon" aria-hidden="true">⌕</span>
-      <input type="search" value={input} onChange={event => setInput(event.target.value)}
-        placeholder="搜索作品名称、类型或关键词" aria-label="搜索内容" maxLength={128} />
-      <button type="submit">搜索</button>
-    </form>}
-    {!detail && mode === "demo" && items.length > 0 && <div className="catalog-explorer-filters">
-      <span>类型筛选</span>
-      <div className="catalog-explorer-chips">
-        <button type="button" aria-pressed={genreFilter === "all"}
-          className={genreFilter === "all" ? "active" : ""}
-          onClick={() => setGenreFilter("all")}>全部类型</button>
-        {explorerGenres.map(name => <button type="button" key={name}
-          aria-pressed={genreFilter === name}
-          className={genreFilter === name ? "active" : ""}
-          onClick={() => setGenreFilter(name)}>{name}</button>)}
-      </div>
-      <small>显示 {visibleItems.length} / {total} 部</small>
-    </div>}
-
-    {manifestInfo && <p className="catalog-manifest-info" role="status">{manifestInfo}</p>}
-    {error && <div className="catalog-request-error" role="alert">
-      <span>{error}</span>
-      <button type="button" className="catalog-ghost"
-        onClick={refreshCatalog}>重试加载</button>
-    </div>}
-    {playerError && <p role="alert" className="catalog-error">{playerError}</p>}
-
-    {mode === "local" || mode === "favorites"
-      ? <LocalLibraryView key={mode} favoritesOnly={mode === "favorites"}
-          onPlay={onPlayLocal} />
-      : mode === "history" ? <>
-          <ContinueWatchingShelf includeLocal={false} limit={24} busy={working} refreshKey={refreshKey}
-            onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
-          <h3 className="discovery-section-title">本地媒体观看历史</h3>
-          <LocalLibraryView key={mode} historyOnly onPlay={onPlayLocal} />
-        </>
-      : detail ? <div className="catalog-detail ui5-catalog-detail">
-      <div className={"catalog-detail-backdrop artwork-" + detail.series.artwork} aria-hidden="true">
-        <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} eager priority />
-      </div>
-      <div className="catalog-detail-layout">
-        <div className={"catalog-detail-poster artwork-" + detail.series.artwork} aria-hidden="true">
-          <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} eager />
-          <span>{detail.series.providerId === "manifest" ? "自有清单"
-            : detail.series.providerId === "local" ? "本地媒体"
-              : detail.series.providerId === "hgcommunity" ? "社区 SDK · 实验" : "演示内容"}</span>
-        </div>
-        <div className="catalog-detail-body">
-          <div className="catalog-detail-kicker">
-            <span>{sources.find(source => source.id === detail.series.providerId)?.name ?? "已接入内容"}</span>
-            <span>{detail.series.genre}</span>
-            <span>{detail.series.badge}</span>
-          </div>
-          <h1>{detail.series.title}</h1>
-          <p className={"catalog-detail-description" + (descriptionCanExpand && !descriptionExpanded ? " is-clamped" : "")}>
-            {detail.series.description || "暂无作品简介"}
-          </p>
-          {descriptionCanExpand && <button type="button" className="catalog-description-toggle"
-            aria-expanded={descriptionExpanded}
-            onClick={() => setDescriptionExpanded(value => !value)}>
-            {descriptionExpanded ? "收起简介" : "展开完整简介"}
-          </button>}
-          <div className="catalog-detail-facts">
-            <span>{detail.episodes.length} 集</span>
-            {detail.series.providerId !== "local" && <span>已观看 {playedEpisodes} 集</span>}
-            <span>{communityPlayEnabled ? "可查看剧集状态" : "仅浏览模式"}</span>
-          </div>
-          {detail.series.providerId !== "local" && episodeSummary && <div className="catalog-detail-watch-progress">
-            <div className="catalog-detail-watch-progress-heading">
-              <strong>剧集观看进度</strong>
-              <span>{progressLoading ? "正在读取…" : progressError ? "暂不可用" : "已完播 " + episodeSummary.completed + " / " + episodeSummary.total + " 集"}</span>
-            </div>
-            <div className="catalog-detail-watch-progress-track" role="progressbar"
-              aria-label="作品已完播剧集比例" aria-valuemin={0} aria-valuemax={100}
-              aria-valuenow={progressError ? 0 : episodeSummary.percent}>
-              <span style={{ width: (progressError ? 0 : episodeSummary.percent) + "%" }} />
-            </div>
-            <small>{episodeSummary.inProgress} 集观看中 · {episodeSummary.unavailable} 集上游不可播放</small>
-          </div>}
-          {!lastEpisode && firstEpisode && <button type="button" className="catalog-primary-action"
-            disabled={working || !communityPlayEnabled || firstEpisode.playable === false}
-            onClick={() => void play(detail.series.id, firstEpisode.id)}>
-            {firstEpisode.playable === false ? "首集暂不可播放"
-              : !communityPlayEnabled ? "仅可浏览 · 暂不支持播放"
-                : "从第 " + firstEpisode.number + " 集开始"}
-          </button>}
-          {detail.series.providerId === "hgcommunity" && !communityPlayEnabled &&
-            <p className="catalog-availability-info" role="status">
-              当前为真实剧集目录浏览模式。尚未配置允许的媒体域名，不会尝试解析或播放视频。
-            </p>}
-          {progressError && <p className="catalog-progress-error" role="alert">
-            观看历史读取失败，原有记录不会被自动覆盖：{progressError}
-          </p>}
-          {lastEpisode && lastProgress && <div className="catalog-resume" role="status">
-            <div>
-              <strong>上次观看：第 {lastEpisode.number} 集 · {lastEpisode.title}</strong>
-              <span>{lastProgress.completed
-                ? "本集已观看完毕"
-                : "播放进度 " + formatEpisodePosition(lastProgress.positionSec) +
-                  (lastProgress.durationSec ? " / " + formatEpisodePosition(lastProgress.durationSec) : "")}
-              </span>
-            </div>
-            <button type="button" disabled={working || !communityPlayEnabled || lastEpisode.playable === false}
-              onClick={() => void play(detail.series.id, lastEpisode.id)}>
-              {lastProgress.completed ? "重看本集" : "继续观看"}
+          <nav className="nf-nav-links" aria-label="主导航">
+            <button type="button" className={!detail && mode === "home" ? "is-active" : ""}
+              onClick={() => navigateTo("home")}>首页</button>
+            <button type="button" className={!detail && mode === "browse" ? "is-active" : ""}
+              onClick={() => { setSourceId("all"); setGenreFilter("all"); setSearch(""); setInput(""); navigateTo("browse"); }}>
+              片库
             </button>
-          </div>}
-          {nextEpisode && <button type="button" className="catalog-next-episode"
-            disabled={working || !communityPlayEnabled || nextEpisode.playable === false}
-            onClick={() => void play(detail.series.id, nextEpisode.id)}>
-            上次观看的剧集已完播 · 播放下一集（第 {nextEpisode.number} 集）
-          </button>}
-          <section className="catalog-episode-section" aria-labelledby="catalog-episodes-title">
-            <div className="catalog-episodes-heading">
-              <div>
-                <h3 id="catalog-episodes-title">剧集列表</h3>
-                <p>{detail.series.providerId !== "local" && (progressLoading
-                  ? "正在读取观看记录" : progressError ? "观看历史暂不可用"
-                    : "已观看 " + playedEpisodes + " 集")}
-                  {detail.series.providerId !== "local" ? " · " : ""}
-                  {communityPlayEnabled ? "可用剧集点击播放后可切换上一集/下一集" : "当前仅浏览，不开放播放"}</p>
+            <button type="button" className={!detail && mode === "local" ? "is-active" : ""}
+              onClick={() => navigateTo("local")}>本地视频</button>
+            <button type="button" className={!detail && mode === "favorites" ? "is-active" : ""}
+              onClick={() => navigateTo("favorites")}>我的收藏</button>
+            <button type="button" className={!detail && mode === "history" ? "is-active" : ""}
+              onClick={() => navigateTo("history")}>观看历史</button>
+          </nav>
+        </div>
+
+        <div className="nf-nav-right">
+          <form
+            className={"nf-nav-search" + (searchOpen || input ? " is-open" : "")}
+            onSubmit={submitSearch}
+          >
+            <button
+              type="button"
+              className="nf-nav-icon-btn"
+              aria-label="搜索剧集"
+              onClick={() => {
+                setSearchOpen(v => !v);
+                setTimeout(() => searchInputRef.current?.focus(), 60);
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2.1" />
+                <path d="m20 20-3.8-3.8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+              </svg>
+            </button>
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={input}
+              maxLength={128}
+              placeholder="搜索剧名、题材…"
+              aria-label="搜索剧集"
+              onChange={e => setInput(e.target.value)}
+              onBlur={() => { if (!input.trim()) setSearchOpen(false); }}
+            />
+          </form>
+
+          <button
+            type="button"
+            className="nf-nav-action-btn"
+            disabled={working}
+            onClick={() => void onOpenLocalFile()}
+            title="选择电脑上的 MP4 文件立即播放"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+            打开视频
+          </button>
+
+          <div className="nf-nav-menu-anchor">
+            <button
+              type="button"
+              className={"nf-nav-icon-btn" + (menuOpen ? " is-active" : "")}
+              aria-label="添加与管理媒体"
+              aria-expanded={menuOpen}
+              title="添加与管理媒体"
+              onClick={() => { setMenuOpen(v => !v); setConfirmManifestClear(false); }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="nf-dropdown" role="menu">
+                <button type="button" role="menuitem" disabled={working}
+                  onClick={() => { setMenuOpen(false); setSourceModalTab("webdav"); setSourceModalOpen(true); }}>
+                  接入 WebDAV（Alist / NAS）
+                </button>
+                <button type="button" role="menuitem" disabled={working}
+                  onClick={() => { setMenuOpen(false); setSourceModalTab("remote"); setSourceModalOpen(true); }}>
+                  远程订阅清单 (HTTPS JSON)
+                </button>
+                <div className="nf-dropdown-sep" />
+                <button type="button" role="menuitem" disabled={working}
+                  onClick={() => { setMenuOpen(false); void onOpenLocalFile(); }}>
+                  直接播放本地 MP4
+                </button>
+                <button type="button" role="menuitem" disabled={working}
+                  onClick={() => void handleAddLocal()}>
+                  添加 MP4 到本地片库
+                </button>
+                <button type="button" role="menuitem" disabled={manifestBusy}
+                  onClick={() => void handleImportManifest()}>
+                  {manifestBusy ? "导入中…" : "导入本地清单 (.json)"}
+                </button>
+                <button type="button" role="menuitem" className="is-danger" disabled={manifestBusy}
+                  onClick={() => void handleClearManifest()}>
+                  {confirmManifestClear ? "再次点击确认清空清单" : "清空已导入清单"}
+                </button>
               </div>
-              <strong className="catalog-episode-count">{episodeRows.length} / {detail.episodes.length} 集</strong>
-            </div>
-            <div className="catalog-episode-tools" role="search" aria-label="剧集搜索与筛选">
-              <label className="catalog-episode-search">
-                <span>搜索剧集</span>
-                <input type="search" aria-label="搜索剧集集数或标题" placeholder="输入集数或标题"
-                  value={episodeQuery} onChange={event => setEpisodeQuery(event.target.value)} />
-              </label>
-              <label className="catalog-episode-filter">
-                <span>观看状态</span>
-                <select aria-label="按观看状态筛选剧集" value={episodeFilter}
-                  onChange={event => setEpisodeFilter(event.target.value as EpisodeStatusFilter)}>
-                  <option value="all">全部剧集</option>
-                  <option value="incomplete">未完播</option>
-                  <option value="completed">已看完</option>
-                  <option value="unavailable">上游不可播放</option>
-                </select>
-              </label>
-              <button type="button" className="catalog-episode-order"
-                aria-label={episodeOrder === "ascending" ? "当前按集数正序，切换为倒序" : "当前按集数倒序，切换为正序"}
-                aria-pressed={episodeOrder === "descending"}
-                onClick={() => setEpisodeOrder(value => value === "ascending" ? "descending" : "ascending")}>
-                {episodeOrder === "ascending" ? "集数正序 ↑" : "集数倒序 ↓"}
-              </button>
-            </div>
-            <p className="catalog-episode-results" role="status" aria-live="polite">
-              {episodeQuery.trim() || episodeFilter !== "all"
-                ? "筛选结果 " + episodeRows.length + " / " + detail.episodes.length + " 集"
-                : "共 " + detail.episodes.length + " 集"}
-              {episodeOrder === "descending" ? " · 从新到旧" : " · 从旧到新"}
-            </p>
-            {episodeRows.length > 0 ? <div className="catalog-episodes">
-              {episodeRows.map(row => {
-                const { episode, progress: saved, percent } = row;
-                const resumeTarget = lastEpisode?.id === episode.id;
-                const status = episode.playable === false ? "上游标记不可播放"
-                  : !communityPlayEnabled ? "仅可浏览"
-                    : saved?.completed ? "已看完"
-                      : saved ? "观看中 · " + formatEpisodePosition(saved.positionSec)
-                        : episode.runtimeLabel;
-                return <button key={episode.id} type="button"
-                  className={"catalog-episode-card" + (episode.playable === false ? " is-unavailable" : "") +
-                    (saved?.completed ? " is-complete" : "") + (resumeTarget ? " is-resume-target" : "")}
-                  aria-label={"第 " + episode.number + " 集，" + episode.title + "，" + (resumeTarget ? "上次观看集，" : "") + status}
-                  disabled={working || !communityPlayEnabled || episode.playable === false}
-                  title={episode.playable === false ? "上游标记该集不可播放" : !communityPlayEnabled ? "当前仅可浏览" : undefined}
-                  onClick={() => void play(detail.series.id, episode.id)}>
-                  <strong>{episode.number.toString().padStart(2, "0")}</strong>
-                  <span>{episode.title}</span>
-                  <small>{status}</small>
-                  {percent !== null && <span className="catalog-episode-progress" role="progressbar"
-                    aria-label={"第 " + episode.number + " 集观看进度"} aria-valuemin={0} aria-valuemax={100}
-                    aria-valuenow={percent}><i style={{ width: percent + "%" }} /></span>}
-                </button>;
-              })}
-            </div> : <div className="catalog-episodes-empty" role="status">
-              {detail.episodes.length === 0 ? "该作品暂未提供剧集。" : "没有符合条件的剧集，请调整搜索或筛选条件。"}
-              {(episodeQuery || episodeFilter !== "all") && <button type="button"
-                onClick={() => { setEpisodeQuery(""); setEpisodeFilter("all"); }}>
-                清除筛选
-              </button>}
-            </div>}
-          </section>
+            )}
+          </div>
         </div>
+      </header>
+
+      {/* Scrollable Main Canvas */}
+      <div className="nf-viewport" ref={scrollRef} onScroll={onScroll}
+        onClick={() => { if (menuOpen) setMenuOpen(false); }}>
+
+        {toast && <div className="nf-toast" role="status">{toast}</div>}
+
+        {(error || playerError) && (
+          <div className="nf-global-alert" role="alert">
+            <span>{error || playerError}</span>
+            <button type="button" onClick={() => { setError(""); onClearPlayerError(); }}>关闭</button>
+          </div>
+        )}
+
+        {detailLoading && !detail && (
+          <div className="nf-page-loading" role="status">
+            <span className="nf-red-loader" />
+          </div>
+        )}
+
+        {/* Netflix Series Detail View */}
+        {detail ? (
+          <article className="nf-detail">
+            <div className="nf-detail-hero">
+              <div className={"nf-detail-backdrop artwork-" + detail.series.artwork} aria-hidden="true">
+                <CoverImage url={detail.series.coverUrl} seriesId={detail.series.id} eager priority />
+              </div>
+              <div className="nf-detail-vignette" aria-hidden="true" />
+              <div className="nf-detail-hero-content">
+                <button type="button" className="nf-back-pill" disabled={working}
+                  onClick={() => setDetail(null)}>
+                  ← 返回
+                </button>
+                <div className="nf-detail-columns">
+                  <div className={"nf-detail-poster artwork-" + detail.series.artwork} aria-hidden="true">
+                    <span className="nf-poster-fallback-title">{detail.series.title}</span>
+                    <CoverImage url={detail.series.coverUrl} seriesId={detail.series.id} eager />
+                  </div>
+                  <div className="nf-detail-info">
+                    <div className="nf-detail-tags">
+                      {detail.series.genre && <span>{detail.series.genre}</span>}
+                      <span>共 {detail.episodes.length} 集</span>
+                      {detail.series.providerId !== "local" && playedEpisodes > 0 && (
+                        <span>已看 {playedEpisodes} 集</span>
+                      )}
+                      {detail.series.badge && <span>{detail.series.badge}</span>}
+                    </div>
+                    <h1>{detail.series.title}</h1>
+                    <p className={"nf-detail-desc" + (descriptionCanExpand && !descriptionExpanded ? " is-clamped" : "")}>
+                      {detail.series.description || "暂无简介"}
+                    </p>
+                    {descriptionCanExpand && (
+                      <button type="button" className="nf-link-btn"
+                        aria-expanded={descriptionExpanded}
+                        onClick={() => setDescriptionExpanded(v => !v)}>
+                        {descriptionExpanded ? "收起简介" : "展开完整简介"}
+                      </button>
+                    )}
+
+                    <div className="nf-detail-cta-row">
+                      {lastEpisode && lastProgress ? (
+                        <button
+                          type="button"
+                          className="nf-btn-play"
+                          disabled={working || !providerCanPlay || lastEpisode.playable === false}
+                          onClick={() => void playEpisode(detail.series.id, lastEpisode.id)}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor" /></svg>
+                          {lastProgress.completed
+                            ? `重看第 ${lastEpisode.number} 集`
+                            : `继续观看 · 第 ${lastEpisode.number} 集 (${formatEpisodePosition(lastProgress.positionSec)})`}
+                        </button>
+                      ) : firstEpisode ? (
+                        <button
+                          type="button"
+                          className="nf-btn-play"
+                          disabled={working || !providerCanPlay || firstEpisode.playable === false}
+                          onClick={() => void playEpisode(detail.series.id, firstEpisode.id)}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor" /></svg>
+                          {!providerCanPlay ? "仅浏览目录"
+                            : firstEpisode.playable === false ? "首集暂不可播"
+                              : `开始观看 · 第 ${firstEpisode.number} 集`}
+                        </button>
+                      ) : null}
+
+                      {nextEpisode && nextEpisode.playable !== false && providerCanPlay && (
+                        <button
+                          type="button"
+                          className="nf-btn-secondary"
+                          disabled={working}
+                          onClick={() => void playEpisode(detail.series.id, nextEpisode.id)}
+                        >
+                          播放下一集（第 {nextEpisode.number} 集）
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className={"nf-btn-secondary nf-btn-fav" + (favoriteIds.has(detail.series.id) ? " is-favorited" : "")}
+                        disabled={working}
+                        aria-pressed={favoriteIds.has(detail.series.id)}
+                        onClick={() => void toggleFavoriteSeries(detail.series.id)}
+                      >
+                        {favoriteIds.has(detail.series.id) ? "★ 已收藏" : "☆ 加入收藏"}
+                      </button>
+                    </div>
+
+                    {detail.series.providerId !== "local" && episodeSummary && episodeSummary.total > 0 && (
+                      <div className="nf-detail-progress-bar">
+                        <div className="nf-detail-progress-head">
+                          <span>观看进度</span>
+                          <strong>
+                            {progressLoading ? "同步中…" : `已看完 ${episodeSummary.completed} / ${episodeSummary.total} 集`}
+                          </strong>
+                        </div>
+                        <div className="nf-progress-track" role="progressbar"
+                          aria-valuemin={0} aria-valuemax={100} aria-valuenow={episodeSummary.percent}>
+                          <span style={{ width: `${episodeSummary.percent}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Episodes Grid Section */}
+            <section className="nf-episodes-section" aria-labelledby="nf-episodes-heading">
+              <div className="nf-episodes-toolbar">
+                <div className="nf-episodes-title-group">
+                  <h2 id="nf-episodes-heading">剧集</h2>
+                  <span>{episodeRows.length} / {detail.episodes.length} 集</span>
+                </div>
+                <div className="nf-episodes-controls">
+                  <input
+                    type="search"
+                    className="nf-input-dark"
+                    aria-label="搜索剧集集数或标题"
+                    placeholder="搜索集数或标题…"
+                    value={episodeQuery}
+                    onChange={e => setEpisodeQuery(e.target.value)}
+                  />
+                  <select
+                    className="nf-select-dark"
+                    aria-label="按观看状态筛选剧集"
+                    value={episodeFilter}
+                    onChange={e => setEpisodeFilter(e.target.value as EpisodeStatusFilter)}
+                  >
+                    <option value="all">全部剧集</option>
+                    <option value="incomplete">未完播</option>
+                    <option value="completed">已看完</option>
+                    <option value="unavailable">暂不可播</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="nf-btn-ghost"
+                    aria-pressed={episodeOrder === "descending"}
+                    onClick={() => setEpisodeOrder(v => (v === "ascending" ? "descending" : "ascending"))}
+                  >
+                    {episodeOrder === "ascending" ? "正序 ↑" : "倒序 ↓"}
+                  </button>
+                </div>
+              </div>
+
+              {episodeRows.length > 0 ? (
+                <div className="nf-episodes-grid">
+                  {episodeRows.map(row => {
+                    const { episode, progress: saved, percent } = row;
+                    const isResume = lastEpisode?.id === episode.id;
+                    const disabled = working || !providerCanPlay || episode.playable === false;
+                    const statusText = episode.playable === false
+                      ? "暂不可播"
+                      : !providerCanPlay
+                        ? "仅浏览"
+                        : saved?.completed
+                          ? "已看完"
+                          : saved
+                            ? `看到 ${formatEpisodePosition(saved.positionSec)}`
+                            : episode.runtimeLabel;
+                    return (
+                      <button
+                        key={episode.id}
+                        type="button"
+                        disabled={disabled}
+                        className={
+                          "nf-ep-card"
+                          + (episode.playable === false ? " is-unavailable" : "")
+                          + (saved?.completed ? " is-complete" : "")
+                          + (isResume ? " is-resume" : "")
+                        }
+                        onClick={() => void playEpisode(detail.series.id, episode.id)}
+                      >
+                        <div className="nf-ep-card-top">
+                          <span className="nf-ep-num">{String(episode.number).padStart(2, "0")}</span>
+                          <span className="nf-ep-status">{statusText}</span>
+                        </div>
+                        <strong title={episode.title}>{episode.title}</strong>
+                        {percent !== null && (
+                          <span className="nf-ep-bar" role="progressbar"
+                            aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+                            <i style={{ width: `${percent}%` }} />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="nf-empty-panel">
+                  <p>{detail.episodes.length === 0 ? "该作品暂未提供剧集。" : "没有符合筛选条件的剧集。"}</p>
+                  {(episodeQuery || episodeFilter !== "all") && (
+                    <button type="button" className="nf-btn-secondary"
+                      onClick={() => { setEpisodeQuery(""); setEpisodeFilter("all"); }}>
+                      清除筛选
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          </article>
+        ) : mode === "home" ? (
+          <DiscoveryHome
+            sources={sources}
+            busy={working}
+            refreshSignal={combinedRefresh}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={toggleFavoriteSeries}
+            onSelect={id => void showDetail(id)}
+            onQuickPlay={series => void quickPlaySeries(series)}
+            onExplore={(src, q) => {
+              setSourceId(src);
+              setInput(q);
+              setSearch(q);
+              setGenreFilter("all");
+              setMode("browse");
+            }}
+            onPlayProvider={playRecentProvider}
+            onPlayLocal={playRecentLocal}
+            onOpenLocalFile={onOpenLocalFile}
+            onAddLocalMedia={handleAddLocal}
+            onImportManifest={() => {
+              setSourceModalTab("webdav");
+              setSourceModalOpen(true);
+              return Promise.resolve();
+            }}
+          />
+        ) : mode === "favorites" ? (
+          <FavoritesView
+            favorites={favorites}
+            busy={working}
+            refreshSignal={combinedRefresh}
+            onSelectSeries={id => void showDetail(id)}
+            onQuickPlaySeries={series => void quickPlaySeries(series)}
+            onRemoveFavorite={id => toggleFavoriteSeries(id)}
+            onPlayLocal={onPlayLocal}
+            onGoHome={() => navigateTo("home")}
+          />
+        ) : mode === "local" ? (
+          <div className="nf-page-container">
+            <div className="nf-page-header">
+              <h1>本地视频</h1>
+            </div>
+            <LocalLibraryView
+              key="local"
+              refreshSignal={combinedRefresh}
+              onPlay={onPlayLocal}
+            />
+          </div>
+        ) : mode === "history" ? (
+          <div className="nf-page-container">
+            <div className="nf-page-header">
+              <h1>观看历史</h1>
+            </div>
+            <ContinueWatchingShelf
+              includeLocal={false}
+              limit={24}
+              busy={working}
+              refreshKey={combinedRefresh}
+              onPlayProvider={playRecentProvider}
+              onPlayLocal={playRecentLocal}
+            />
+            <div className="nf-section-divider">
+              <h2>本地视频记录</h2>
+            </div>
+            <LocalLibraryView
+              key="history"
+              historyOnly
+              refreshSignal={combinedRefresh}
+              onPlay={onPlayLocal}
+            />
+          </div>
+        ) : (
+          /* Browse All Grid */
+          <div className="nf-page-container">
+            <div className="nf-page-header nf-browse-header">
+              <div>
+                <h1>{search ? `搜索：“${search}”` : "片库探索"}</h1>
+                {search && (
+                  <button type="button" className="nf-link-btn"
+                    onClick={() => { setInput(""); setSearch(""); }}>
+                    清除搜索
+                  </button>
+                )}
+              </div>
+              <div className="nf-browse-tools">
+                {realSources.length > 1 && (
+                  <div className="nf-chip-group">
+                    <button type="button" className={sourceId === "all" ? "is-active" : ""}
+                      onClick={() => { setSourceId("all"); setGenreFilter("all"); }}>全部</button>
+                    {realSources.map(p => (
+                      <button key={p.id} type="button" className={sourceId === p.id ? "is-active" : ""}
+                        onClick={() => { setSourceId(p.id); setGenreFilter("all"); }}>{p.name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {browseGenres.length > 1 && (
+              <div className="nf-filter-strip nf-browse-genres">
+                <div className="nf-chip-group">
+                  <button type="button" className={genreFilter === "all" ? "is-active" : ""}
+                    onClick={() => setGenreFilter("all")}>全部题材</button>
+                  {browseGenres.map(name => (
+                    <button key={name} type="button" className={genreFilter === name ? "is-active" : ""}
+                      onClick={() => setGenreFilter(name)}>{name}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {loading ? (
+              <div className="nf-poster-grid-skeleton" role="status">
+                {Array.from({ length: 10 }).map((_, i) => <span key={i} />)}
+              </div>
+            ) : visibleBrowseItems.length === 0 ? (
+              <div className="nf-empty-panel">
+                <h3>{search ? "未找到匹配的作品" : "片库暂无内容"}</h3>
+                <p>{search ? "换个关键词试试，或浏览全部内容。" : "你可以添加本地 MP4 视频，或导入剧集 JSON 清单。"}</p>
+                <div className="nf-empty-actions">
+                  <button type="button" className="nf-btn-play" onClick={() => void handleAddLocal()}>
+                    ＋ 添加本地 MP4
+                  </button>
+                  <button type="button" className="nf-btn-secondary" onClick={() => void handleImportManifest()}>
+                    导入剧集清单
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="nf-poster-grid">
+                  {visibleBrowseItems.map((item, idx) => {
+                    const isFav = favoriteIds.has(item.id);
+                    return (
+                      <div key={item.id} className="nf-poster-card-wrap">
+                        <button
+                          type="button"
+                          className="nf-poster-card"
+                          disabled={working}
+                          onClick={() => void showDetail(item.id)}
+                        >
+                          <span className={"nf-poster-frame artwork-" + item.artwork} aria-hidden="true">
+                            <span className="nf-poster-fallback-title">{item.title}</span>
+                            <CoverImage url={item.coverUrl} seriesId={item.id} eager={idx < 10} priority={idx < 3} />
+                            <span className="nf-poster-gradient" />
+                            <span className="nf-poster-badge">
+                              {item.episodeCount > 1 ? `全 ${item.episodeCount} 集` : "影片"}
+                            </span>
+                            <span className="nf-poster-hover-play">
+                              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+                            </span>
+                          </span>
+                          <span className="nf-poster-info">
+                            <strong title={item.title}>{item.title}</strong>
+                            <small>{item.genre || item.badge || "本地片库"}</small>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className={"nf-poster-fav-btn" + (isFav ? " is-favorited" : "")}
+                          disabled={working}
+                          aria-pressed={isFav}
+                          aria-label={(isFav ? "取消收藏 " : "收藏 ") + item.title}
+                          title={isFav ? "取消收藏" : "加入我的收藏"}
+                          onClick={e => {
+                            e.stopPropagation();
+                            void toggleFavoriteSeries(item.id);
+                          }}
+                        >
+                          {isFav ? "★" : "☆"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {nextOffset !== null && (
+                  <div className="nf-home-footer-actions">
+                    <button type="button" className="nf-btn-secondary" disabled={loadingMore || working}
+                      onClick={() => void loadMore()}>
+                      {loadingMore ? "正在加载…" : "加载更多"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
-      </div> : mode === "home"
-      ? <DiscoveryHome sources={sources} busy={working}
-          onSelect={id => void showDetail(id)} onExplore={openExplorer}
-          onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
-      : loading ? <p className="catalog-empty" role="status">正在加载内容…</p>
-      : items.length === 0 ? <p className="catalog-empty">
-        {sourceId === "hongguo"
-          ? "红果接入接口尚未授权，当前不提供真实作品搜索或播放。已完成可扩展的 Provider 接入入口。"
-          : "没有匹配的内容，试试“城市”或“自然”。"}
-      </p>
-      : <div className="catalog-results">
-        <div className="catalog-results-heading">
-          <div><h3>全部作品</h3><p>按照当前内容源返回顺序展示，不代表热度或评分排名。</p></div>
-          <span>{visibleItems.length} 部</span>
-        </div>
-        <div className="catalog-grid">
-          {visibleItems.map((item, index) => <button key={item.id} type="button"
-            className="catalog-card" disabled={working} onClick={() => void showDetail(item.id)}>
-            <span className={"catalog-artwork artwork-" + item.artwork} aria-hidden="true">
-              <CoverImage url={item.coverUrl} diagnostic={item.providerId === "hgcommunity"}
-                eager={index < 10} priority={index < 3} />
-              <span className="catalog-card-source">{item.providerId === "manifest" ? "自有清单"
-                : item.providerId === "local" ? "本地媒体"
-                  : item.providerId === "hgcommunity" ? "社区 SDK · 实验" : "演示内容"}</span>
-              <span className="catalog-card-hover">查看详情 <i aria-hidden="true">→</i></span>
-            </span>
-            <strong>{item.title}</strong>
-            <span className="catalog-meta">{item.genre} · {item.episodeCount} 集</span>
-            <span className="catalog-card-badge">{item.badge}</span>
-          </button>)}
-        </div>
-      </div>}
-    {mode === "demo" && !detail && nextOffset !== null && <div className="catalog-pagination">
-      <span>已显示 {items.length} / {total} 条</span>
-      <button type="button" disabled={working || loadingMore}
-        onClick={() => void loadMore()}>{loadingMore ? "正在加载..." : "加载更多"}</button>
-    </div>}
-    {mode === "demo" && <p className="catalog-disclaimer">演示内容仅用于功能验证；本地来源只读取你主动添加的 MP4。自有清单仅接收用户选择的 JSON，引用公开 HTTPS MP4，导入前请确认内容使用权限；不会扫描或上传本地视频。</p>}
+      <SourceManagerModal
+        open={sourceModalOpen}
+        initialTab={sourceModalTab}
+        onClose={() => setSourceModalOpen(false)}
+        onChanged={msg => {
+          setToast(msg);
+          setRefreshKey(v => v + 1);
+        }}
+      />
     </div>
-  </section>;
+  );
 }

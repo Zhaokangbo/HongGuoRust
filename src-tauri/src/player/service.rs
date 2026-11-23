@@ -155,6 +155,31 @@ impl PlayerService {
         )
     }
 
+    /// Called only after CatalogService validated the WebDAV target.
+    pub fn open_catalog_webdav(
+        &self,
+        url: String,
+        auth_header: Option<String>,
+        series_id: String,
+        episode_id: String,
+    ) -> Result<u64, String> {
+        let source = MediaSource::webdav(url.clone(), auth_header)?;
+        let resume_at = self
+            .provider_progress
+            .resume_point(&series_id, &episode_id, &url)?;
+        self.open_source(
+            source,
+            None,
+            None,
+            Some(ProviderPlayback {
+                series_id,
+                episode_id,
+                source: url,
+                resume_at,
+            }),
+        )
+    }
+
     fn open_source(
         &self,
         source: MediaSource,

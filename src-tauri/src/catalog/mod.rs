@@ -1,17 +1,22 @@
 //! Content-provider boundary for M6. No scraping and no third-party credentials.
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
+pub mod favorites;
 mod hgcommunity;
 #[allow(dead_code)]
 mod hongguo;
+pub mod http_client;
 mod local;
 mod manifest;
 pub mod progress;
 mod registry;
 pub(crate) mod request;
+pub mod webdav;
 
-pub use manifest::OwnedManifestStore;
+pub use favorites::{FavoriteSeries, FavoritesStore};
+pub use manifest::{ManifestSubscriptionInfo, OwnedManifestStore};
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
+pub use webdav::{WebDavStatus, WebDavStore};
 
 use request::RequestContext;
 use serde::Serialize;
@@ -55,6 +60,10 @@ pub struct SeriesDetail {
 pub enum MediaTarget {
     Https(String),
     LocalLibrary(u64),
+    WebDav {
+        url: String,
+        auth_header: Option<String>,
+    },
 }
 
 pub trait ContentProvider: Send + Sync {

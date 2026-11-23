@@ -65,3 +65,24 @@ export interface RecentCatalogEpisode {
   episode: Episode;
   progress: ProviderEpisodeProgress;
 }
+
+export interface ManifestSubscriptionInfo {
+  url: string | null;
+  seriesCount: number;
+  lastSyncedMs: number | null;
+}
+
+export interface WebDavStatus {
+  configured: boolean;
+  name: string;
+  baseUrl: string;
+  username: string;
+  hasPassword: boolean;
+  seriesCount: number;
+  episodeCount: number;
+  lastSyncedMs: number | null;
+}
+
+export interface FavoriteSeries extends Series {
+  addedAtMs: number;
+}

@@ -1,10 +1,39 @@
 use std::path::PathBuf;
 
-/// A local MP4 or a user-selected direct public HTTPS MP4, without credentials.
+/// A local MP4, a public HTTPS MP4, or a user-configured WebDAV media stream.
 #[derive(Clone, Debug)]
 pub enum MediaSource {
     Local(PathBuf),
     Https(String),
+    WebDav {
+        url: String,
+        auth_header: Option<String>,
+    },
+}
+
+pub fn webdav_media_url(value: &str) -> Result<String, String> {
+    if value.len() > 2048
+        || !(value.starts_with("http://") || value.starts_with("https://"))
+        || value
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
+        || value.contains('#')
+    {
+        return Err("无效的 WebDAV 媒体链接".into());
+    }
+    let after_scheme = value.split_once("://").map(|(_, r)| r).unwrap_or("");
+    let authority = after_scheme.split(['/', '?']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return Err("WebDAV 链接无效，请勿在链接中内嵌账号密码".into());
+    }
+    let clean_path = value.split('?').next().unwrap_or("").to_ascii_lowercase();
+    if ![".mp4", ".mkv", ".mov", ".m4v", ".webm"]
+        .iter()
+        .any(|ext| clean_path.ends_with(ext))
+    {
+        return Err("不支持的 WebDAV 视频格式".into());
+    }
+    Ok(value.to_owned())
 }
 
 pub fn public_https_url(value: &str) -> Result<String, String> {
@@ -67,6 +96,13 @@ impl MediaSource {
         Ok(Self::Https(public_https_url(&value)?))
     }
 
+    pub fn webdav(url: String, auth_header: Option<String>) -> Result<Self, String> {
+        Ok(Self::WebDav {
+            url: webdav_media_url(&url)?,
+            auth_header,
+        })
+    }
+
     pub fn label(&self) -> String {
         match self {
             Self::Local(path) => path
@@ -77,6 +113,13 @@ impl MediaSource {
                 "HTTPS · {}",
                 url[8..].split(['/', '?']).next().unwrap_or("remote")
             ),
+            Self::WebDav { url, .. } => {
+                let host = url
+                    .split_once("://")
+                    .map(|(_, r)| r.split(['/', '?']).next().unwrap_or("webdav"))
+                    .unwrap_or("webdav");
+                format!("WebDAV · {host}")
+            }
         }
     }
 
@@ -84,6 +127,7 @@ impl MediaSource {
         match self {
             Self::Local(_) => "local",
             Self::Https(_) => "https",
+            Self::WebDav { .. } => "webdav",
         }
     }
 }

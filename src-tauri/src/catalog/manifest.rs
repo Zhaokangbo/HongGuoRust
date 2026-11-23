@@ -1,6 +1,7 @@
 //! Explicitly user-selected, locally persisted catalog of direct public HTTPS MP4s.
 //! No directory traversal, remote search, scraping or arbitrary file paths.
 //! Only manifest metadata is exposed via the catalog API, never playback URLs.
+use super::http_client;
 use super::{ContentProvider, Episode, MediaTarget, Series, SeriesDetail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -9,15 +10,31 @@ use std::io::Write;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Storage::FileSystem::{
     MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
 };
 
 const SCHEMA: u32 = 1;
-const MAX_BYTES: u64 = 256 * 1024;
+const MAX_BYTES: u64 = 512 * 1024;
 const MAX_SERIES: usize = 100;
 const MAX_EPISODES: usize = 500;
 const MAX_EPISODES_PER_SERIES: usize = 100;
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubscriptionMeta {
+    url: Option<String>,
+    last_synced_ms: Option<u64>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManifestSubscriptionInfo {
+    pub url: Option<String>,
+    pub series_count: usize,
+    pub last_synced_ms: Option<u64>,
+}
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,6 +52,8 @@ struct ManifestSeries {
     description: String,
     #[serde(default)]
     genre: String,
+    #[serde(default)]
+    cover_url: Option<String>,
     episodes: Vec<ManifestEpisode>,
 }
 
@@ -68,6 +87,9 @@ impl ManifestData {
             validate_text(&series.title, 128, true)?;
             validate_text(&series.description, 1024, false)?;
             validate_text(&series.genre, 64, false)?;
+            if let Some(cover) = series.cover_url.as_deref() {
+                validate_public_https_resource(cover, "封面链接")?;
+            }
             if !series_ids.insert(series.id.as_str()) {
                 return Err("manifest_duplicate: 重复的系列 ID".into());
             }
@@ -103,6 +125,64 @@ fn validate_id(id: &str) -> Result<(), String> {
         return Err("manifest_id: ID 只能包含 1–64 个英数字、短横线、下划线".into());
     }
     Ok(())
+}
+
+fn validate_public_https_resource(value: &str, label: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.len() > 2048
+        || !trimmed.starts_with("https://")
+        || trimmed
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
+        || trimmed.contains('#')
+    {
+        return Err(format!("manifest_url: {label}必须是有效的公开 HTTPS 链接"));
+    }
+    let parsed = http_client::parse_url(trimmed)?;
+    let host = parsed.host.to_ascii_lowercase();
+    let labels: Vec<_> = host.split('.').collect();
+    if !parsed.secure
+        || parsed.port != 443
+        || labels.len() < 2
+        || labels
+            .last()
+            .is_none_or(|tld| tld.len() < 2 || !tld.bytes().all(|b| b.is_ascii_alphabetic()))
+        || ["local", "internal", "localhost", "test", "invalid"]
+            .contains(labels.last().unwrap_or(&""))
+    {
+        return Err(format!("manifest_url: {label}必须指向公开 HTTPS 域名"));
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn subscription_meta_path(manifest_path: &Path) -> PathBuf {
+    manifest_path.with_file_name("manifest-subscription.json")
+}
+
+fn read_subscription_meta(manifest_path: &Path) -> SubscriptionMeta {
+    let path = subscription_meta_path(manifest_path);
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SubscriptionMeta>(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn persist_subscription_meta(manifest_path: &Path, meta: &SubscriptionMeta) {
+    if manifest_path.as_os_str().is_empty() {
+        return;
+    }
+    let path = subscription_meta_path(manifest_path);
+    if let Ok(bytes) = serde_json::to_vec_pretty(meta) {
+        let _ = fs::write(path, bytes);
+    }
 }
 
 fn validate_text(value: &str, max: usize, required: bool) -> Result<(), String> {
@@ -172,6 +252,7 @@ fn persist_manifest(path: &Path, data: &ManifestData) -> Result<(), String> {
 struct ManifestState {
     data: ManifestData,
     load_error: Option<String>,
+    subscription: SubscriptionMeta,
 }
 
 pub struct OwnedManifestStore {
@@ -192,6 +273,7 @@ impl OwnedManifestStore {
                 state: Mutex::new(ManifestState {
                     data: ManifestData::empty(),
                     load_error: Some("manifest_unavailable: 缺少 LOCALAPPDATA".into()),
+                    subscription: SubscriptionMeta::default(),
                 }),
             },
         }
@@ -207,9 +289,14 @@ impl OwnedManifestStore {
             Ok(data) => (data, None),
             Err(e) => (ManifestData::empty(), Some(e)),
         };
+        let subscription = read_subscription_meta(&path);
         Self {
             path,
-            state: Mutex::new(ManifestState { data, load_error }),
+            state: Mutex::new(ManifestState {
+                data,
+                load_error,
+                subscription,
+            }),
         }
     }
 
@@ -219,6 +306,15 @@ impl OwnedManifestStore {
             return Err(err.clone());
         }
         Ok(state.data.clone())
+    }
+
+    pub fn subscription_info(&self) -> ManifestSubscriptionInfo {
+        let state = self.state.lock().unwrap();
+        ManifestSubscriptionInfo {
+            url: state.subscription.url.clone(),
+            series_count: state.data.series.len(),
+            last_synced_ms: state.subscription.last_synced_ms,
+        }
     }
 
     /// The selected JSON file remains in place. Only validated metadata is
@@ -235,24 +331,56 @@ impl OwnedManifestStore {
             return Err("manifest_file: 所选清单文件不存在".into());
         }
         let data = read_manifest(source)?;
-        self.replace(data)
+        self.replace_with_meta(data, SubscriptionMeta::default())
     }
 
-    fn replace(&self, data: ManifestData) -> Result<usize, String> {
+    /// Fetch and subscribe to a remote public HTTPS JSON manifest.
+    pub fn import_remote_url(&self, raw_url: &str) -> Result<usize, String> {
+        let url = validate_public_https_resource(raw_url, "订阅链接")?;
+        let bytes = http_client::get_bytes(&url, MAX_BYTES as usize)?;
+        let data = parse_manifest(&bytes)?;
+        let meta = SubscriptionMeta {
+            url: Some(url),
+            last_synced_ms: Some(now_ms()),
+        };
+        self.replace_with_meta(data, meta)
+    }
+
+    /// Re-fetch the currently subscribed remote HTTPS JSON manifest.
+    pub fn refresh_subscription(&self) -> Result<usize, String> {
+        let url = {
+            let state = self.state.lock().map_err(|e| e.to_string())?;
+            state
+                .subscription
+                .url
+                .clone()
+                .ok_or("manifest_subscription: 尚未配置远程订阅链接")?
+        };
+        self.import_remote_url(&url)
+    }
+
+    fn replace_with_meta(
+        &self,
+        data: ManifestData,
+        meta: SubscriptionMeta,
+    ) -> Result<usize, String> {
         data.validate()?;
         let mut state = self.state.lock().map_err(|e| e.to_string())?;
         if self.path.as_os_str().is_empty() {
             return Err("manifest_unavailable: 缺少应用数据目录".into());
         }
         persist_manifest(&self.path, &data)?;
+        persist_subscription_meta(&self.path, &meta);
         let count = data.series.len();
         state.data = data;
         state.load_error = None;
+        state.subscription = meta;
         Ok(count)
     }
 
     pub fn clear(&self) -> Result<(), String> {
-        self.replace(ManifestData::empty()).map(|_| ())
+        self.replace_with_meta(ManifestData::empty(), SubscriptionMeta::default())
+            .map(|_| ())
     }
 }
 
@@ -271,13 +399,13 @@ impl OwnedManifestProvider {
             title: value.title.clone(),
             description: value.description.clone(),
             genre: if value.genre.is_empty() {
-                "自有内容".into()
+                "剧集清单".into()
             } else {
                 value.genre.clone()
             },
-            badge: "用户导入 · 请确保媒体授权".into(),
+            badge: "剧集清单".into(),
             artwork: "studio".into(),
-            cover_url: None,
+            cover_url: value.cover_url.clone(),
             episode_count: value.episodes.len(),
             provider_id: "manifest".into(),
         }

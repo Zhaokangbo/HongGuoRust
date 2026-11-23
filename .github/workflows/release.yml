@@ -1,0 +1,159 @@
+name: Windows Release Installer
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.2.0; defaults to v<Cargo version>)'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install Rust x64 MSVC and rustfmt
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Install verified Tauri CLI 2.11.4
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'cargo-tauri.zip'
+          $cli = Join-Path $env:RUNNER_TEMP 'tauri-cli'
+          Invoke-WebRequest 'https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.4/cargo-tauri-x86_64-pc-windows-msvc.zip' -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne '0743e30a661a35d63339b24cf63828f97ba5389a1d7f13b368a542794dd0a3f3') {
+            throw 'Tauri CLI archive checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath $cli
+          $binary = @(Get-ChildItem $cli -Recurse -Filter cargo-tauri.exe -File)
+          if ($binary.Count -ne 1) { throw 'Expected one cargo-tauri.exe in the verified archive' }
+          $binary[0].DirectoryName >> $env:GITHUB_PATH
+
+      - name: Install optional community cover codecs for frontend test suite
+        run: npm install --prefix scripts/hg2a-sdk --ignore-scripts --no-audit --no-fund
+
+      - name: Prepare libmpv and bundled Vulkan runtime
+        run: |
+          $native = Join-Path $env:RUNNER_TEMP 'mpv-release'
+          ./scripts/prepare-mpv-msvc.ps1 -Destination $native -ForceBuildVulkan
+          $mpvDll = Join-Path $native 'libmpv-2.dll'
+          $vulkanDll = Join-Path $native 'vulkan-1.dll'
+          $sha = (Get-FileHash -LiteralPath $mpvDll -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sha -ne 'df006bfc754d1212fb2084c6a6da04876882648c025ccb56cf1132b27b1e7913') {
+            throw "libmpv checksum mismatch: $sha"
+          }
+          New-Item -ItemType Directory -Force -Path 'src-tauri/resources' | Out-Null
+          Copy-Item -LiteralPath $mpvDll -Destination 'src-tauri/resources/libmpv-2.dll' -Force
+          Copy-Item -LiteralPath $vulkanDll -Destination 'src-tauri/resources/vulkan-1.dll' -Force
+          "NATIVE_RUNTIME=$native" >> $env:GITHUB_ENV
+          "LIB=$native;$env:LIB" >> $env:GITHUB_ENV
+          $native >> $env:GITHUB_PATH
+
+      - name: Build frontend, run Rust tests and package Windows NSIS installer
+        run: |
+          ./scripts/check-windows.ps1
+          npm ci
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo tauri build --config 'src-tauri/tauri.bundle.conf.json' --bundles nsis -- --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Stage release installer, portable archive and SHA256SUMS
+        run: |
+          $manifest = Get-Content 'src-tauri/Cargo.toml' -Raw
+          $version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
+          if (!$version) { throw 'Missing Cargo.toml version' }
+
+          $tag = ''
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.tag }}'.Trim()) {
+            $tag = '${{ inputs.tag }}'.Trim()
+          } elseif ('${{ github.ref_type }}' -eq 'tag') {
+            $tag = '${{ github.ref_name }}'
+          } else {
+            $tag = "v$version"
+          }
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+          $outDir = New-Item -ItemType Directory -Force -Path 'release-assets'
+          $setups = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter '*-setup.exe' -File)
+          if ($setups.Count -eq 0) { throw 'NSIS installer was not generated' }
+          $setupName = "HongGuoRust-$version-windows-x64-setup.exe"
+          Copy-Item -LiteralPath $setups[0].FullName -Destination (Join-Path $outDir.FullName $setupName) -Force
+
+          $portableStage = New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'portable-stage')
+          Copy-Item 'src-tauri/target/release/hongguorust.exe' -Destination $portableStage.FullName -Force
+          Copy-Item 'src-tauri/resources/libmpv-2.dll' -Destination $portableStage.FullName -Force
+          Copy-Item 'src-tauri/resources/vulkan-1.dll' -Destination $portableStage.FullName -Force
+          Copy-Item 'docs/fixtures/open-cinema-manifest.json' -Destination $portableStage.FullName -Force
+          Copy-Item 'LICENSE' -Destination $portableStage.FullName -Force
+          $zipName = "HongGuoRust-$version-windows-x64-portable.zip"
+          Compress-Archive -Path (Join-Path $portableStage.FullName '*') -DestinationPath (Join-Path $outDir.FullName $zipName) -Force
+
+          $hashes = foreach ($file in (Get-ChildItem $outDir.FullName -File | Sort-Object Name)) {
+            $h = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$h  $($file.Name)"
+          }
+          $hashes | Set-Content -Encoding ascii (Join-Path $outDir.FullName 'SHA256SUMS.txt')
+          Get-ChildItem $outDir.FullName | Format-Table Name, Length -AutoSize
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $version = $env:APP_VERSION
+          $title = "HongGuoRust $tag (Windows x64)"
+          $notes = @(
+            "## HongGuoRust $tag - Windows x64 Installer & Portable"
+            ""
+            "### Download (Ready to use, includes libmpv-2.dll & vulkan-1.dll)"
+            "- **Installer (Recommended)**: ``HongGuoRust-$version-windows-x64-setup.exe`` - One-click Windows installer with Start Menu shortcut and video right-click Open With associations."
+            "- **Portable ZIP**: ``HongGuoRust-$version-windows-x64-portable.zip`` - Extract and double-click ``hongguorust.exe`` directly."
+            ""
+            "### Highlights"
+            "- Netflix dark cinema UI: Hero billboard, horizontal poster rails, series detail, local library & unified Favorites page"
+            "- Transparent owned overlay player controls (auto-hide HUD, scrub thumbnail preview, speed, audio/subtitle tracks, slide-over episode drawer, keyboard shortcuts)"
+            "- Dark native Windows titlebar and custom crimson app icon"
+            "- Automatic video frame cover extraction with local disk cache"
+            "- WebDAV media library (Alist / NAS), remote HTTPS JSON manifest subscriptions, Windows right-click Open With playback, and automatic Windows system proxy detection for libmpv"
+          ) -join "`n"
+          $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -Encoding utf8 -Path $notesFile -Value $notes
+
+          $files = @(Get-ChildItem 'release-assets' -File | ForEach-Object { $_.FullName })
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title $title --notes-file $notesFile --target $env:GITHUB_SHA --latest
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            gh release upload $tag @files --repo $env:GITHUB_REPOSITORY --clobber
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } else {
+            gh release create $tag @files --repo $env:GITHUB_REPOSITORY --title $title --notes-file $notesFile --target $env:GITHUB_SHA --latest
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }

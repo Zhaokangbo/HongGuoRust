@@ -185,19 +185,42 @@ fn render_image(
     let outdir = folder.path().to_string_lossy().into_owned();
     let seek_start = seconds.to_string();
     let local = matches!(source, MediaSource::Local(_));
-    let name = match source {
-        MediaSource::Local(path) => path.to_str()?.to_owned(),
-        MediaSource::Https(url) => url.clone(),
+    let local_is_mov = match source {
+        MediaSource::Local(path) => path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+            e.eq_ignore_ascii_case("mp4")
+                || e.eq_ignore_ascii_case("mov")
+                || e.eq_ignore_ascii_case("m4v")
+        }),
+        _ => false,
+    };
+    let (name, auth_header) = match source {
+        MediaSource::Local(path) => (path.to_str()?.to_owned(), None),
+        MediaSource::Https(url) => (url.clone(), None),
+        MediaSource::WebDav { url, auth_header } => (url.clone(), auth_header.clone()),
+    };
+    let proxy = if local {
+        None
+    } else {
+        crate::catalog::http_client::system_http_proxy(&name)
     };
     let mpv = Mpv::with_initializer(|init| {
         init.set_option("load-scripts", false)?;
         init.set_option("ytdl", false)?;
         init.set_option("demuxer", "lavf")?;
         if local {
-            init.set_option("demuxer-lavf-format", "mov")?;
+            if local_is_mov {
+                init.set_option("demuxer-lavf-format", "mov")?;
+            }
             init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
         } else {
             init.set_option("network-timeout", 3_i64)?;
+            if let Some(proxy_url) = proxy.as_deref() {
+                let _ = init.set_option("http-proxy", proxy_url);
+            }
+            if let Some(auth) = auth_header.as_deref() {
+                let header = format!("Authorization: {auth}");
+                init.set_option("http-header-fields", header.as_str())?;
+            }
         }
         init.set_option("aid", "no")?;
         init.set_option("sub-auto", "no")?;
@@ -278,6 +301,239 @@ impl PreviewService {
 
     pub fn cancel(&self) {
         self.generation.fetch_add(1, Ordering::AcqRel);
+    }
+}
+
+const POSTER_TIMEOUT: Duration = Duration::from_millis(4500);
+const MAX_POSTER_MEM_ITEMS: usize = 48;
+const MAX_POSTER_DISK_FILES: usize = 120;
+
+fn fnv1a_hex(parts: &[&[u8]]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for part in parts {
+        for &byte in *part {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn poster_cache_key(source: &MediaSource) -> Option<String> {
+    match source {
+        MediaSource::Local(path) => {
+            let meta = fs::metadata(path).ok()?;
+            let size = meta.len().to_le_bytes();
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+                .to_le_bytes();
+            let path_str = path.to_string_lossy();
+            Some(format!(
+                "local-{}",
+                fnv1a_hex(&[path_str.as_bytes(), &size, &modified])
+            ))
+        }
+        MediaSource::Https(url) => Some(format!("https-{}", fnv1a_hex(&[url.as_bytes()]))),
+        MediaSource::WebDav { url, .. } => Some(format!("webdav-{}", fnv1a_hex(&[url.as_bytes()]))),
+    }
+}
+
+fn render_poster_jpeg(source: &MediaSource, start_sec: f64) -> Option<Vec<u8>> {
+    let folder = PreviewDir::create()?;
+    let outdir = folder.path().to_string_lossy().into_owned();
+    let seek_start = start_sec.to_string();
+    let local = matches!(source, MediaSource::Local(_));
+    let local_is_mov = match source {
+        MediaSource::Local(path) => path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+            e.eq_ignore_ascii_case("mp4")
+                || e.eq_ignore_ascii_case("mov")
+                || e.eq_ignore_ascii_case("m4v")
+        }),
+        _ => false,
+    };
+    let (name, auth_header) = match source {
+        MediaSource::Local(path) => (path.to_str()?.to_owned(), None),
+        MediaSource::Https(url) => (url.clone(), None),
+        MediaSource::WebDav { url, auth_header } => (url.clone(), auth_header.clone()),
+    };
+    let proxy = if local {
+        None
+    } else {
+        crate::catalog::http_client::system_http_proxy(&name)
+    };
+    let mpv = Mpv::with_initializer(|init| {
+        init.set_option("load-scripts", false)?;
+        init.set_option("ytdl", false)?;
+        init.set_option("demuxer", "lavf")?;
+        if local {
+            if local_is_mov {
+                init.set_option("demuxer-lavf-format", "mov")?;
+            }
+            init.set_option("demuxer-lavf-o", "protocol_whitelist=file")?;
+        } else {
+            init.set_option("network-timeout", 4_i64)?;
+            if let Some(proxy_url) = proxy.as_deref() {
+                let _ = init.set_option("http-proxy", proxy_url);
+            }
+            if let Some(auth) = auth_header.as_deref() {
+                let header = format!("Authorization: {auth}");
+                init.set_option("http-header-fields", header.as_str())?;
+            }
+        }
+        init.set_option("aid", "no")?;
+        init.set_option("sub-auto", "no")?;
+        init.set_option("audio-file-auto", "no")?;
+        init.set_option("hwdec", "no")?;
+        init.set_option("vo", "image")?;
+        init.set_option("vo-image-outdir", outdir.as_str())?;
+        init.set_option("vo-image-format", "jpg")?;
+        init.set_option("vo-image-jpeg-quality", 76_i64)?;
+        init.set_option("vf", "scale=640:-2")?;
+        init.set_option("frames", 1_i64)?;
+        init.set_option("start", seek_start.as_str())?;
+        Ok(())
+    })
+    .ok()?;
+    if mpv.command("loadfile", &[name.as_str()]).is_err() {
+        return None;
+    }
+    let started = Instant::now();
+    loop {
+        if started.elapsed() >= POSTER_TIMEOUT {
+            return None;
+        }
+        match mpv.wait_event(0.05) {
+            Some(Ok(Event::EndFile(_))) | Some(Ok(Event::Shutdown)) => break,
+            Some(Err(_)) => return None,
+            _ => {}
+        }
+    }
+    drop(mpv);
+    first_jpeg(folder.path())
+}
+
+/// Bounded in-memory + disk cache for extracted video cover frames.
+/// Never leaks local file paths or signed URLs to the frontend.
+pub struct PosterCache {
+    dir: PathBuf,
+    mem: Mutex<VecDeque<(String, String)>>,
+    extract_lock: Mutex<()>,
+}
+
+impl PosterCache {
+    pub fn new() -> Self {
+        let dir = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("HongGuoRust")
+            .join("thumbnails");
+        let _ = fs::create_dir_all(&dir);
+        Self {
+            dir,
+            mem: Mutex::new(VecDeque::new()),
+            extract_lock: Mutex::new(()),
+        }
+    }
+
+    fn mem_get(&self, key: &str) -> Option<String> {
+        let mut guard = self.mem.lock().ok()?;
+        let pos = guard.iter().position(|(k, _)| k == key)?;
+        let item = guard.remove(pos)?;
+        let value = item.1.clone();
+        guard.push_back(item);
+        Some(value)
+    }
+
+    fn mem_insert(&self, key: String, data_url: String) {
+        if let Ok(mut guard) = self.mem.lock() {
+            if let Some(pos) = guard.iter().position(|(k, _)| k == &key) {
+                guard.remove(pos);
+            }
+            guard.push_back((key, data_url));
+            while guard.len() > MAX_POSTER_MEM_ITEMS {
+                guard.pop_front();
+            }
+        }
+    }
+
+    fn prune_disk_cache(&self) {
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return;
+        };
+        let mut files: Vec<(PathBuf, SystemTime)> = entries
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                if !path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg"))
+                {
+                    return None;
+                }
+                let modified = entry
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .unwrap_or(UNIX_EPOCH);
+                Some((path, modified))
+            })
+            .collect();
+        if files.len() <= MAX_POSTER_DISK_FILES {
+            return;
+        }
+        files.sort_by_key(|(_, modified)| *modified);
+        let remove_count = files.len() - MAX_POSTER_DISK_FILES;
+        for (path, _) in files.into_iter().take(remove_count) {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    pub fn poster_frame(&self, source: &MediaSource) -> Option<String> {
+        let key = poster_cache_key(source)?;
+        if let Some(hit) = self.mem_get(&key) {
+            return Some(hit);
+        }
+        let disk_path = self.dir.join(format!("{key}.jpg"));
+        if let Ok(bytes) = fs::read(&disk_path) {
+            if bytes.len() >= 4
+                && bytes.len() <= MAX_JPEG_BYTES
+                && bytes.starts_with(&[0xff, 0xd8])
+                && bytes.ends_with(&[0xff, 0xd9])
+            {
+                let data_url = format!("data:image/jpeg;base64,{}", encode_base64(&bytes));
+                self.mem_insert(key, data_url.clone());
+                return Some(data_url);
+            }
+        }
+
+        // Serialize libmpv image extraction so mounting a grid never spikes CPU.
+        let _guard = self.extract_lock.lock().ok()?;
+        if let Some(hit) = self.mem_get(&key) {
+            return Some(hit);
+        }
+        // Skip opening black fade-in frames when possible, falling back to 0s for short clips.
+        let preferred_start = if matches!(source, MediaSource::Local(_)) {
+            3.0
+        } else {
+            2.0
+        };
+        let bytes = render_poster_jpeg(source, preferred_start)
+            .or_else(|| render_poster_jpeg(source, 0.0))?;
+        if bytes.len() > MAX_JPEG_BYTES {
+            return None;
+        }
+        let _ = fs::create_dir_all(&self.dir);
+        let _ = fs::write(&disk_path, &bytes);
+        self.prune_disk_cache();
+        let data_url = format!("data:image/jpeg;base64,{}", encode_base64(&bytes));
+        self.mem_insert(key, data_url.clone());
+        Some(data_url)
     }
 }
 

@@ -1,0 +1,25 @@
+:root {
+  --nf-bg: #141414;
+  --nf-bg-deep: #0b0b0b;
+  --nf-surface: #1c1c1c;
+  --nf-surface-hover: #272727;
+  --nf-surface-glass: rgba(24, 24, 24, 0.84);
+  --nf-border: rgba(255, 255, 255, 0.1);
+  --nf-border-strong: rgba(255, 255, 255, 0.22);
+
+  --nf-red: #e50914;
+  --nf-red-hover: #f6121d;
+  --nf-red-soft: rgba(229, 9, 20, 0.18);
+
+  --nf-text: #ffffff;
+  --nf-text-secondary: #b8b8b8;
+  --nf-text-muted: #7a7a7a;
+
+  --nf-nav-height: 68px;
+  --nf-gutter: clamp(24px, 4vw, 56px);
+  --nf-radius-sm: 6px;
+  --nf-radius-md: 10px;
+  --nf-radius-lg: 14px;
+  --nf-shadow-card: 0 14px 36px rgba(0, 0, 0, 0.58);
+  --nf-shadow-popover: 0 22px 54px rgba(0, 0, 0, 0.78);
+}
