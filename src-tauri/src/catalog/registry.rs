@@ -212,11 +212,17 @@ impl CatalogService {
         if limit == 0 || limit > MAX_PAGE_SIZE || offset > MAX_OFFSET {
             return Err("invalid_page: Unsupported search page range".into());
         }
-        let source = source.unwrap_or(if self.providers.iter().any(|provider| provider.id() == "hgcommunity") {
-            "hgcommunity"
-        } else {
-            "demo"
-        });
+        let source = source.unwrap_or(
+            if self
+                .providers
+                .iter()
+                .any(|provider| provider.id() == "hgcommunity")
+            {
+                "hgcommunity"
+            } else {
+                "demo"
+            },
+        );
         if source != "all" {
             self.provider(source)?;
         }
@@ -371,10 +377,7 @@ mod tests {
 
     #[test]
     fn desktop_registry_uses_real_community_source_without_demo_or_placeholder_data() {
-        let catalog = CatalogService::new_for_desktop(
-            Arc::new(OwnedManifestStore::new()),
-            None,
-        );
+        let catalog = CatalogService::new_for_desktop(Arc::new(OwnedManifestStore::new()), None);
         let sources = catalog.sources();
         let ids: HashSet<_> = sources.iter().map(|source| source.id.as_str()).collect();
         assert!(ids.contains("hgcommunity"));

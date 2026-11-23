@@ -8,8 +8,8 @@ mod local;
 mod manifest;
 pub mod progress;
 mod registry;
-mod sidecar;
 pub(crate) mod request;
+mod sidecar;
 
 pub use manifest::OwnedManifestStore;
 pub use registry::{CatalogService, ProviderInfo, SearchPage};

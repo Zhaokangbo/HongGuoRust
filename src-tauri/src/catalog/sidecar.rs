@@ -23,11 +23,17 @@ impl CommunitySidecar {
         match Self::launch() {
             Ok((child, token)) => {
                 tracing::info!("managed RedFruit community SDK sidecar started");
-                Self { child: Mutex::new(Some(child)), token: Some(token) }
+                Self {
+                    child: Mutex::new(Some(child)),
+                    token: Some(token),
+                }
             }
             Err(reason) => {
                 tracing::warn!(reason, "managed RedFruit community SDK sidecar unavailable");
-                Self { child: Mutex::new(None), token: None }
+                Self {
+                    child: Mutex::new(None),
+                    token: None,
+                }
             }
         }
     }
@@ -37,8 +43,12 @@ impl CommunitySidecar {
     }
 
     pub fn shutdown(&self) {
-        let Ok(mut guard) = self.child.lock() else { return; };
-        let Some(mut child) = guard.take() else { return; };
+        let Ok(mut guard) = self.child.lock() else {
+            return;
+        };
+        let Some(mut child) = guard.take() else {
+            return;
+        };
         stop_child(&mut child);
         tracing::info!("managed RedFruit community SDK sidecar stopped");
     }
@@ -168,7 +178,9 @@ fn has_sdk_runtime(path: &Path) -> bool {
         && path.join("node_modules/openhongguo/package.json").is_file()
         && path.join("node_modules/libheif-js/package.json").is_file()
         && path.join("node_modules/jpeg-js/package.json").is_file()
-        && path.join("node_modules/https-proxy-agent/package.json").is_file()
+        && path
+            .join("node_modules/https-proxy-agent/package.json")
+            .is_file()
 }
 
 fn find_sdk_dir() -> Option<PathBuf> {
@@ -194,10 +206,15 @@ fn node_version_supported(program: &Path) -> bool {
     let Ok(output) = Command::new(program).arg("--version").output() else {
         return false;
     };
-    if !output.status.success() { return false; }
+    if !output.status.success() {
+        return false;
+    }
     let version = String::from_utf8_lossy(&output.stdout);
-    version.trim().trim_start_matches('v')
-        .split('.').next()
+    version
+        .trim()
+        .trim_start_matches('v')
+        .split('.')
+        .next()
         .and_then(|major| major.parse::<u32>().ok())
         .is_some_and(|major| major >= 22)
 }

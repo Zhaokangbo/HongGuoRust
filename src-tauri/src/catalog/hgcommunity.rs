@@ -127,7 +127,10 @@ impl HgCommunityProvider {
     /// could not start. Requests then fail closed instead of showing demo data.
     pub fn managed(token: Option<String>) -> Self {
         let token = token.filter(|value| Self::valid_token(value));
-        Self { token, hosts: Self::configured_hosts() }
+        Self {
+            token,
+            hosts: Self::configured_hosts(),
+        }
     }
 
     pub fn from_env() -> Option<Self> {
@@ -140,10 +143,12 @@ impl HgCommunityProvider {
         if !Self::valid_token(&token) {
             return None;
         }
-        let hosts = Self::parse_hosts(
-            &std::env::var("HONGGUORUST_HG2A_MEDIA_HOSTS").unwrap_or_default(),
-        );
-        Some(Self { token: Some(token), hosts })
+        let hosts =
+            Self::parse_hosts(&std::env::var("HONGGUORUST_HG2A_MEDIA_HOSTS").unwrap_or_default());
+        Some(Self {
+            token: Some(token),
+            hosts,
+        })
     }
 
     fn get_json(&self, path: &str, context: Option<&RequestContext>) -> Result<Value, String> {
@@ -156,7 +161,10 @@ impl HgCommunityProvider {
         if let Some(ctx) = context {
             ctx.check()?;
         }
-        let token = self.token.as_deref().ok_or("hgcommunity_sidecar_unavailable")?;
+        let token = self
+            .token
+            .as_deref()
+            .ok_or("hgcommunity_sidecar_unavailable")?;
         let started = Instant::now();
         let mut stream = TcpStream::connect_timeout(
             &SocketAddr::from((Ipv4Addr::LOCALHOST, PORT)),
@@ -458,7 +466,10 @@ mod tests {
         assert!(provider.supports_search());
         assert!(provider.supports_detail());
         assert!(!provider.supports_play());
-        assert!(provider.search("").unwrap_err().contains("hgcommunity_sidecar_unavailable"));
+        assert!(provider
+            .search("")
+            .unwrap_err()
+            .contains("hgcommunity_sidecar_unavailable"));
     }
 
     #[test]
