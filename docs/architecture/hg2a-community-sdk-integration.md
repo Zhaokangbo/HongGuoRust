@@ -1,4 +1,6 @@
-# HG-2A：直接复用开源红果 SDK，而不是继续只做 Mock
+# HG-2A / HG-3A：直接复用开源红果 SDK，并由桌面应用管理
+
+> **当前实现状态（HG-3A）**：旧版 HG-2A 的 PowerShell 显式启动方式已被 Tauri 管理的 Sidecar 生命周期取代。桌面运行时默认注册 `hgcommunity` 真实内容源；不再将演示 Provider 或“红果待授权”占位源放入用户界面。`start-hg2a-community.ps1` 仅保留为历史开发工具。HG-3A 当前默认只浏览真实元数据与封面；媒体播放仍需显式配置允许的主机，并且只支持未受保护的直接 HTTPS MP4。
 
 ## 选择结论（2026-11-22 仓库源码核对）
 
@@ -11,9 +13,18 @@
 - [zfdang/hongguo-open-player](https://github.com/zfdang/hongguo-open-player)（[本地 server/index.js](https://github.com/zfdang/hongguo-open-player/blob/main/src/server/index.js)）：Electron + Node/Express + Vue 独立桌面应用；本地 HTTP 服务为界面提供目录、搜索、详情、播放操作。可参考服务边界和可观察性；视频解密与原生客户端模块不直接搬入本项目。
 - [yangbin1322/hongguo-player](https://github.com/yangbin1322/hongguo-player)：仓库 README 明确声明仅发安装包、不公开源码，不适合作为可审计的接入实现。
 
-**授权边界**：以上都不是红果官方第三方桌面 API。上游开放源代码的许可证不等于平台内容、私有 API 或短剧播放/再分发许可证。openhongguo package.json 指明 Apache-2.0，Node README 另写了学习/非商用声明；将其纳入产品分发前需逐项复核许可证文件、README 附加条款、平台接入协议和内容权利。HG-2A 目前是用户显式启动的开发实验，而不是正式发布功能。
+**授权边界**：以上都不是红果官方第三方桌面 API。上游开放源代码的许可证不等于平台内容、私有 API 或短剧播放/再分发许可证。openhongguo package.json 指明 Apache-2.0，Node README 另写了学习/非商用声明；将其纳入产品分发前需逐项复核许可证文件、README 附加条款、平台接入协议和内容权利。HG-2A 仅用于个人非商业学习；不代表官方接口或内容授权。
 
-## 实际实现
+## HG-3A：桌面应用托管 Sidecar（当前）
+
+- `src-tauri/src/catalog/sidecar.rs` 在 Tauri 启动前定位随包提供的 `hg2a-sdk/server.mjs` 与 Node.js 22+ 运行时，启动 Node 子进程并等待 `HG3_READY` 握手。
+- Node 使用 `crypto.randomBytes(32)` 生成每次启动独立的 256-bit token，通过子进程 stdout 私有管道交给 Rust；token 不写日志、不落盘。Sidecar 仍只绑定 `127.0.0.1:19091`，Rust 仅在握手成功后持有该 token。
+- 关闭窗口时先等待 libmpv worker 退出，再停止并回收 Node 子进程。Sidecar 缺失、启动失败或端口被占用时，Provider 保持可见但明确报错；绝不回退到 Mock/演示数据，也不复用未知进程。
+- `CatalogService::new_for_desktop` 只注册 `hgcommunity` 和用户自有 `manifest`；演示源、旧的 `hongguo` 待授权占位源及单独的 local Provider 不进入正式剧库来源。用户本地视频仍由独立媒体库管理。
+- Windows M2 调试产物新增 `HongGuoRust-HG3A-Windows-Debug`，包含 `hongguorust.exe`、`node.exe`、完整 `hg2a-sdk` 依赖目录及 `libmpv-2.dll`；直接运行 EXE，不再手动运行 PowerShell 启动器。
+- 默认未设置 `HONGGUORUST_HG3_MEDIA_HOSTS`，因此真实目录可浏览，但播放能力关闭。只有用户明确提供精确媒体域名 allowlist 后，才允许符合现有 SDK 与 Rust 校验的未保护 HTTPS MP4；不解密受保护媒体。
+
+## 实际实现（HG-2A/HG-2B 基础）
 
 `scripts/hg2a-sdk/package.json`（固定上游版本 0.4.0）和 `scripts/hg2a-sdk/server.mjs`：
 
@@ -24,8 +35,8 @@
 - 单集取址路径仅接受 **SDK 明确 `protected=false`、非 HLS/DASH、可直接访问的 HTTPS MP4**。如果受保护、没有直链或接口失败，直接返回明确错误；不使用上游 `contentKey`，不做 CENC/DRM 解密、付费墙或登录绕过。
 - HTTP 服务只绑定 `127.0.0.1:19091`，所有调用需进程随机 48+ 位十六进制会话令牌（HTTP 自定义 Header），拒绝 Origin、非 GET、非法路径，不开放 CORS，不保存密钥或目录，结果不包含 SDK 原生设备信息/内容密钥。
 - `src-tauri/src/catalog/hgcommunity.rs`：Rust 用 `std::net::TcpStream` 访问固定 Loopback，不新增 HTTP crate，限定连接/总时限、响应体及 Header 上限，校验 HTTP 状态、JSON schema、ID/集数、URL 和显式提供的媒体域名列表。源 ID 是 `hgcommunity`，严格和 HG-1 的 `hongguo`（待授权/全禁播）分离。
-- 仅在 Rust debug build **且** `HONGGUORUST_HG2A_EXPERIMENT=1` + 本机随机令牌有效时注册该实验源；正式 Release 默认永不注册。媒体播放额外要求显式设置 `HONGGUORUST_HG2A_MEDIA_HOSTS` 域名列表，未设时只可浏览真实元数据。
-- `src/catalog/CatalogView.tsx` 仅在来源真正存在时显示「社区接口实验」页签，并持续标注「非官方」；原来的「红果接入（待授权）」仍为空且原生禁播。
+- 历史 HG-2A 仅在 Rust debug build 且显式环境变量有效时注册；HG-3A 的桌面运行时改为通过 Tauri 托管 Sidecar 握手后注册真实源。媒体播放额外要求显式设置 `HONGGUORUST_HG2A_MEDIA_HOSTS` 域名列表，未设时只可浏览真实元数据。
+- `src/catalog/CatalogView.tsx` 默认显示真实红果来源并标注「非官方」；演示与待授权占位来源不再显示。
 - `tests/hg2a-community-gateway.test.mjs` 对上述 Node API 使用 Fake SDK 测试（不联网），包括真实 SDK 结构、Loopback 会话令牌、异常码脱敏、保护媒体拒绝及无效 ID。
 - 之前 `scripts/hg2a-mock-server.mjs` **仅保留为离线故障测试工具**，不是 HG-2A 产品的默认数据来源。
 

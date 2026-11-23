@@ -14,6 +14,7 @@ import os
 import json
 import tempfile
 import time
+import socket
 import math
 from array import array
 
@@ -42,6 +43,27 @@ def owned_window(pid):
         if owner.value == pid:
             return hwnd
     return None
+
+def wait_for_managed_sidecar(process, timeout=25):
+    """Fail CI if the desktop did not start its bundled real-content sidecar."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+            node = next((child for child in children
+                         if "node" in child.name().lower() and
+                         any("server.mjs" in arg.lower() for arg in child.cmdline())), None)
+            if node and node.is_running():
+                with socket.create_connection(("127.0.0.1", 19091), timeout=0.5):
+                    print("PASS: managed openhongguo sidecar is listening on 127.0.0.1:19091",
+                          flush=True)
+                    return
+        except (OSError, psutil.Error):
+            pass
+        time.sleep(0.15)
+    raise RuntimeError("Managed openhongguo sidecar did not start or listen on 127.0.0.1:19091")
+
 
 def check_output_endpoint():
     # Only sample the isolated hosted runner; do not capture a developer's desktop audio.
@@ -245,11 +267,17 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
     process = subprocess.Popen([exe])
     try:
         main = until(lambda: owned_window(process.pid), "main HWND", 90)
+        wait_for_managed_sidecar(process)
         ui = Desktop(backend="uia").window(handle=main)
         def text_visible(name):
             return ui.child_window(title=name,control_type="Text").exists(timeout=.3)
         def button(name):
             return ui.child_window(title=name,control_type="Button").wrapper_object()
+        def idle_controls_ready():
+            # Idle is an internal Rust state, not visible UI copy. Assert its
+            # actual IPC-derived controls instead: Open is enabled and Stop
+            # is disabled. This also proves the WebView received the snapshot.
+            return button("打开本地 MP4").is_enabled() and not button("停止").is_enabled()
         # UI-3 starts in the browse-first Home surface. Verify Home, then use
         # a physical UI click so WebView2 dispatches the same event as a user.
         home = ui.child_window(title="首页", control_type="Button")
@@ -259,7 +287,7 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
               "enabled player surface entry", 90)
         foreground(main)
         player_entry.wrapper_object().click_input()
-        until(lambda: text_visible("Idle"), "IPC Idle after opening player", 90)
+        until(idle_controls_ready, "IPC-derived idle player controls after opening player", 90)
         child = until(lambda: find(main,None,"Static","HongGuoRust video"), "visible video HWND", 30)
         def select(path):
             until(lambda: button("打开本地 MP4").is_enabled(), "available file picker")
@@ -303,28 +331,28 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
             print(f"First sampled {first} pixel {time.monotonic()-t:.3f}s after picker returned", flush=True)
             frame(child, {"blue" if first=="red" else "red"})
             check_output_endpoint()
-            until(lambda: text_visible("Playing"), "Rust Playing")
+            until(lambda: text_visible("正在播放"), "Rust Playing")
             if os.environ.get("HONGGUORUST_LOADED_MODULE_REPORT"):
                 inspect_loaded_native_modules(process, Path(exe).resolve().parent)
             select(second)
             frame(child, {"green"})
-            until(lambda: text_visible(second.name) and text_visible("Playing"), "replacement snapshot")
+            until(lambda: text_visible(second.name) and text_visible("正在播放"), "replacement snapshot")
             desktop_checks(main, child)
             button("停止").invoke()
-            until(lambda: text_visible("Idle"), "stopped snapshot")
+            until(idle_controls_ready, "IPC-derived idle controls after stop")
             select(clip)
             select(second)
             frame(child, {"green"})
-            until(lambda: text_visible(second.name) and text_visible("Playing"), "rapid A/B replacement")
+            until(lambda: text_visible(second.name) and text_visible("正在播放"), "rapid A/B replacement")
             select(corrupt)
-            until(lambda: text_visible("Error"), "corrupt MP4 error")
+            until(lambda: text_visible("播放失败"), "corrupt MP4 error")
             select(short_clip)
-            until(lambda: text_visible("Ended"), "natural end of file")
+            until(lambda: text_visible("播放结束"), "natural end of file")
             select(second)
             frame(child, {"green"})
-            until(lambda: text_visible("Playing"), "recovered playback")
+            until(lambda: text_visible("正在播放"), "recovered playback")
         else:
-            until(lambda: text_visible("Playing"), "playing before close")
+            until(lambda: text_visible("正在播放"), "playing before close")
         if detailed:
             button("打开本地 MP4").invoke()
             Desktop(backend="win32").window(process=process.pid,class_name="#32770").wait("visible",timeout=15)

@@ -100,6 +100,20 @@ impl CatalogService {
         Self::from_providers(providers).expect("built-in provider IDs must be unique and valid")
     }
 
+    /// Runtime registry for the desktop product. Real community content is
+    /// the default source; demo and authorization placeholders stay out of the
+    /// user-facing registry.
+    pub fn new_for_desktop(
+        manifest: Arc<OwnedManifestStore>,
+        community_token: Option<String>,
+    ) -> Self {
+        Self::from_providers(vec![
+            Box::new(HgCommunityProvider::managed(community_token)),
+            Box::new(OwnedManifestProvider::new(manifest)),
+        ])
+        .expect("desktop provider IDs must be unique and valid")
+    }
+
     fn from_providers(providers: Vec<Box<dyn ContentProvider>>) -> Result<Self, String> {
         let mut keys = HashSet::new();
         for provider in &providers {
@@ -162,11 +176,10 @@ impl CatalogService {
         self.detail_inner(id, Some(guard.context()))
     }
 
-    /// Existing M6 IPC still searches only the built-in demo source.
+    /// Legacy IPC follows the same default source as the desktop registry.
+    /// Test registries without a community provider continue to default to demo.
     pub fn search(&self, query: Option<&str>) -> Result<Vec<Series>, String> {
-        Ok(self
-            .search_page(query, Some("demo"), 0, MAX_PAGE_SIZE)?
-            .items)
+        Ok(self.search_page(query, None, 0, MAX_PAGE_SIZE)?.items)
     }
 
     /// Search is deterministic by provider registration order and provider item order.
@@ -199,7 +212,17 @@ impl CatalogService {
         if limit == 0 || limit > MAX_PAGE_SIZE || offset > MAX_OFFSET {
             return Err("invalid_page: Unsupported search page range".into());
         }
-        let source = source.unwrap_or("demo");
+        let source = source.unwrap_or(
+            if self
+                .providers
+                .iter()
+                .any(|provider| provider.id() == "hgcommunity")
+            {
+                "hgcommunity"
+            } else {
+                "demo"
+            },
+        );
         if source != "all" {
             self.provider(source)?;
         }
@@ -350,6 +373,21 @@ mod tests {
         ) -> Result<MediaTarget, String> {
             Ok(MediaTarget::Https("https://example.org/clip.mp4".into()))
         }
+    }
+
+    #[test]
+    fn desktop_registry_uses_real_community_source_without_demo_or_placeholder_data() {
+        let catalog = CatalogService::new_for_desktop(Arc::new(OwnedManifestStore::new()), None);
+        let sources = catalog.sources();
+        let ids: HashSet<_> = sources.iter().map(|source| source.id.as_str()).collect();
+        assert!(ids.contains("hgcommunity"));
+        assert!(ids.contains("manifest"));
+        assert!(!ids.contains("demo"));
+        assert!(!ids.contains("local"));
+        assert!(!ids.contains("hongguo"));
+
+        let error = catalog.search_page(None, None, 0, 24).unwrap_err();
+        assert!(error.contains("hgcommunity_sidecar_unavailable"));
     }
 
     #[test]

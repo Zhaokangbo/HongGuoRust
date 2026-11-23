@@ -1,8 +1,7 @@
-//! HG-2A optional community SDK provider, powered by a separate opt-in local
-//! Node bridge. This is NOT an official HongGuo API or a licensed content source.
-//! All traffic from the Tauri client stays on fixed 127.0.0.1:19091; the
-//! optional Node SDK process handles its own upstream API requests.
-//! Production release builds never register this experimental adapter.
+//! Nonofficial openhongguo community provider, hosted by the desktop-managed
+//! Node sidecar. This is NOT an official HongGuo API or a licensed content source.
+//! All Rust traffic stays on fixed 127.0.0.1:19091; the Node SDK process handles
+//! upstream requests. The desktop runtime registers this source by default.
 use super::request::RequestContext;
 use super::{ContentProvider, Episode, MediaTarget, Series, SeriesDetail};
 use serde_json::Value;
@@ -16,7 +15,7 @@ const MAX_HEADER: usize = 4096;
 const PORT: u16 = 19091;
 
 pub struct HgCommunityProvider {
-    token: String,
+    token: Option<String>,
     hosts: HashSet<String>,
 }
 
@@ -108,6 +107,32 @@ fn url_encode(value: &str) -> String {
 }
 
 impl HgCommunityProvider {
+    fn valid_token(value: &str) -> bool {
+        (48..=128).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    }
+
+    fn parse_hosts(value: &str) -> HashSet<String> {
+        value
+            .split(',')
+            .map(|host| host.trim().to_ascii_lowercase())
+            .filter(|host| is_host(host))
+            .collect()
+    }
+
+    fn configured_hosts() -> HashSet<String> {
+        Self::parse_hosts(&std::env::var("HONGGUORUST_HG3_MEDIA_HOSTS").unwrap_or_default())
+    }
+
+    /// Register the personal-use source even when its managed Node process
+    /// could not start. Requests then fail closed instead of showing demo data.
+    pub fn managed(token: Option<String>) -> Self {
+        let token = token.filter(|value| Self::valid_token(value));
+        Self {
+            token,
+            hosts: Self::configured_hosts(),
+        }
+    }
+
     pub fn from_env() -> Option<Self> {
         if !cfg!(debug_assertions)
             || std::env::var("HONGGUORUST_HG2A_EXPERIMENT").ok().as_deref() != Some("1")
@@ -115,16 +140,15 @@ impl HgCommunityProvider {
             return None;
         }
         let token = std::env::var("HONGGUORUST_HG2A_TOKEN").ok()?;
-        if !(48..=128).contains(&token.len()) || !token.bytes().all(|v| v.is_ascii_hexdigit()) {
+        if !Self::valid_token(&token) {
             return None;
         }
-        let hosts = std::env::var("HONGGUORUST_HG2A_MEDIA_HOSTS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.trim().to_ascii_lowercase())
-            .filter(|s| is_host(s))
-            .collect();
-        Some(Self { token, hosts })
+        let hosts =
+            Self::parse_hosts(&std::env::var("HONGGUORUST_HG2A_MEDIA_HOSTS").unwrap_or_default());
+        Some(Self {
+            token: Some(token),
+            hosts,
+        })
     }
 
     fn get_json(&self, path: &str, context: Option<&RequestContext>) -> Result<Value, String> {
@@ -137,12 +161,16 @@ impl HgCommunityProvider {
         if let Some(ctx) = context {
             ctx.check()?;
         }
+        let token = self
+            .token
+            .as_deref()
+            .ok_or("hgcommunity_sidecar_unavailable")?;
         let started = Instant::now();
         let mut stream = TcpStream::connect_timeout(
             &SocketAddr::from((Ipv4Addr::LOCALHOST, PORT)),
             Duration::from_millis(250),
         )
-        .map_err(|_| "hgcommunity_offline: Start the opt-in local SDK bridge")?;
+        .map_err(|_| "hgcommunity_sidecar_offline")?;
         stream
             .set_read_timeout(Some(Duration::from_millis(100)))
             .map_err(|_| "hgcommunity_io_error")?;
@@ -150,8 +178,7 @@ impl HgCommunityProvider {
             .set_write_timeout(Some(Duration::from_millis(300)))
             .map_err(|_| "hgcommunity_io_error")?;
         let request = format!(
-            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nX-HG2A-Token: {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
-            self.token
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nX-HG2A-Token: {token}\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
         );
         stream
             .write_all(request.as_bytes())
@@ -255,7 +282,7 @@ impl HgCommunityProvider {
             title: title.into(),
             description: description.into(),
             genre: genre.into(),
-            badge: "非官方社区数据（实验）".into(),
+            badge: "非官方 SDK 数据".into(),
             artwork: "studio".into(),
             cover_url: item["coverUrl"]
                 .as_str()
@@ -354,11 +381,11 @@ impl ContentProvider for HgCommunityProvider {
     }
 
     fn name(&self) -> &'static str {
-        "红果社区 SDK（非官方实验）"
+        "红果短剧（非官方）"
     }
 
     fn supports_play(&self) -> bool {
-        !self.hosts.is_empty()
+        self.token.is_some() && !self.hosts.is_empty()
     }
 
     fn search(&self, query: &str) -> Result<Vec<Series>, String> {
@@ -431,6 +458,19 @@ impl ContentProvider for HgCommunityProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_provider_fails_closed_when_sidecar_is_unavailable() {
+        let provider = HgCommunityProvider::managed(None);
+        assert_eq!(provider.name(), "红果短剧（非官方）");
+        assert!(provider.supports_search());
+        assert!(provider.supports_detail());
+        assert!(!provider.supports_play());
+        assert!(provider
+            .search("")
+            .unwrap_err()
+            .contains("hgcommunity_sidecar_unavailable"));
+    }
 
     #[test]
     fn gateway_error_only_exposes_allowlisted_sdk_codes() {

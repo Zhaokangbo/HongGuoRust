@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Optional nonofficial openhongguo SDK integration; never bundled by default",
+  "description": "Nonofficial openhongguo SDK sidecar for personal use; bundled in HG-3A debug builds only",
   "engines": { "node": ">=22" },
   "dependencies": {
     "openhongguo": "0.4.0",

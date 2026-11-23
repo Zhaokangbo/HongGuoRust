@@ -6,7 +6,7 @@ mod local_library;
 mod player;
 
 use catalog::progress::ProviderProgressStore;
-use catalog::{CatalogService, OwnedManifestStore};
+use catalog::{CatalogService, CommunitySidecar, OwnedManifestStore};
 use local_library::LocalLibrary;
 use player::{preferences::PreferencesStore, service::PlayerService, window};
 use std::fs::{self, File};
@@ -39,7 +39,8 @@ fn main() {
     }
     let library = Arc::new(LocalLibrary::new());
     let manifest = Arc::new(OwnedManifestStore::new());
-    let catalog = CatalogService::new(Arc::clone(&library), Arc::clone(&manifest));
+    let sidecar = Arc::new(CommunitySidecar::start());
+    let catalog = CatalogService::new_for_desktop(Arc::clone(&manifest), sidecar.token());
     let progress = Arc::new(ProviderProgressStore::new());
     let preferences = Arc::new(PreferencesStore::new());
     tauri::Builder::default()
@@ -48,6 +49,7 @@ fn main() {
         .manage(progress)
         .manage(preferences)
         .manage(manifest)
+        .manage(Arc::clone(&sidecar))
         .manage(window::Picker::default())
         .setup(|app| {
             let win = app
@@ -76,6 +78,7 @@ fn main() {
                     if service.begin_close() {
                         let requested = Instant::now();
                         let win = win.clone();
+                        let sidecar = Arc::clone(win.state::<Arc<CommunitySidecar>>().inner());
                         tauri::async_runtime::spawn_blocking(move || {
                             if let Ok(hwnd) = win.hwnd() {
                                 win.state::<window::Picker>().shutdown(hwnd.0 as isize);
@@ -83,6 +86,7 @@ fn main() {
                             if win.state::<PlayerService>().join().is_err() {
                                 tracing::error!("player worker panicked");
                             }
+                            sidecar.shutdown();
                             tracing::info!(
                                 elapsed_ms = requested.elapsed().as_millis() as u64,
                                 "worker joined before window destroy"

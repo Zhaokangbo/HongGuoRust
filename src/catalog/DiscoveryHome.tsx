@@ -20,13 +20,12 @@ interface Props {
 
 const PAGE_SIZE = 50;
 const sourceFallback: CatalogProvider[] = [
-  { id: "demo", name: "演示内容", supportsSearch: true, supportsDetail: true, supportsPlay: true },
-  { id: "local", name: "本地媒体", supportsSearch: true, supportsDetail: true, supportsPlay: true },
+  { id: "hgcommunity", name: "红果短剧（非官方）", supportsSearch: true, supportsDetail: true, supportsPlay: false },
   { id: "manifest", name: "自有媒体清单", supportsSearch: true, supportsDetail: true, supportsPlay: true },
 ];
 
 export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvider, onPlayLocal }: Props) {
-  const [source, setSource] = useState("all");
+  const [source, setSource] = useState("hgcommunity");
   const [genre, setGenre] = useState("all");
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
@@ -78,9 +77,11 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
     pageController.current?.abort();
   }, []);
 
+  const visibleSources = useMemo(() => (sources.length ? sources : sourceFallback)
+    .filter(provider => provider.id === "hgcommunity" || provider.id === "manifest"), [sources]);
   const names = useMemo(() => new Map(
-    (sources.length ? sources : sourceFallback).map(item => [item.id, item.name]),
-  ), [sources]);
+    visibleSources.map(item => [item.id, item.name]),
+  ), [visibleSources]);
   const genres = useMemo(() => discoveryGenres(items), [items]);
   const currentGenre = genre === "all" || genres.includes(genre) ? genre : "all";
   const visible = useMemo(() => discoveryItems(items, currentGenre), [items, currentGenre]);
@@ -180,7 +181,7 @@ export function DiscoveryHome({ sources, busy, onSelect, onExplore, onPlayProvid
               <button type="button" aria-pressed={source === "all"}
                 className={source === "all" ? "active" : ""}
                 onClick={() => chooseSource("all")}>全部</button>
-              {(sources.length ? sources : sourceFallback).map(provider =>
+              {visibleSources.map(provider =>
                 <button type="button" key={provider.id}
                   aria-pressed={source === provider.id}
                   className={source === provider.id ? "active" : ""}
