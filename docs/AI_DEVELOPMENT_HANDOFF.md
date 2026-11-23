@@ -83,7 +83,7 @@
 ### 当前优先工作流：UI-5 详情页与播放器控制栏体验
 
 - **UI-4 已完成实机验收**：PR #37 [feat(ui-4): unify personal media library, history and favorites](https://github.com/Zhaokangbo/HongGuoRust/pull/37)，分支 `feat/ui-4-personal-library`，base `main`，当前 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1`，Open / Draft / 未合并。用户已明确确认隔离 UI-4 Windows Debug 测试包 **21/21 项全部通过**；`docs/acceptance/ui-4.md` 已全部勾选，PR #37 描述已记录 owner sign-off。应用代码经测试 HEAD 为 `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03`，其 Windows M1 run `45047805176`、M2 run `45047805159` 均 completed/success。M2 artifact `14764800311`，ZIP SHA256 `9021693acc36b0b5f1b946f4e26f59313ada0b3c15a2d882f2fca90fa419425c`，EXE SHA256 `44cde497eed65192c54d2dc7748388431f5596f487979b3c44e3e771266c0f6b`。UI-4 隔离测试包 SHA256 `a30d0502f2c1cb36f3c5c40d980de2a060961f598987f3946b121c628749df4c`。PR #37 仍 Draft / 未合并；验收通过不构成合并授权。
-- **UI-5 当前 Draft PR #38**：[feat(ui-5): improve detail discovery and player controls](https://github.com/Zhaokangbo/HongGuoRust/pull/38)，分支 `feat/ui-5-detail-player-experience`，base `main`，当前 HEAD `9d91034308f0662a74ad92c00662559194bdfd48`，Open / Draft / 未合并。该分支从 UI-4 最终验收/文档 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生，PR 保持 cumulative stacked diff，以便 Windows M1/M2 对 main 的 PR 触发。
+- **UI-5 当前 Draft PR #38**：[feat(ui-5): improve detail discovery and player controls](https://github.com/Zhaokangbo/HongGuoRust/pull/38)，分支 `feat/ui-5-detail-player-experience`，base `main`，当前 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`，Open / Draft / 未合并。该分支从 UI-4 最终验收/文档 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生，PR 保持 cumulative stacked diff，以便 Windows M1/M2 对 main 的 PR 触发。
 - **UI-5 已实现的代码范围**：
   - `src/catalog/detailEpisodes.ts`：按 series ID 隔离观看记录；支持标题搜索、精确集数搜索（输入“2”不会误匹配第 12 集）、未完播/已看完/上游不可播放筛选、集数正倒序和观看进度摘要。
   - `src/catalog/CatalogView.tsx`：详情简介展开/收起、剧集完播进度、上次观看集以 resume-target 样式高亮（不误用 aria-current 当前步骤语义）、搜索/筛选/排序、空结果与清除筛选；保持 browse-only 和上游 `playable=false` 禁播语义。
@@ -91,7 +91,7 @@
   - `src/style.css`：详情页和控制栏视觉/响应式/键盘焦点优化；Footer 仍为 96px，Header 仍为 66px。
   - 新增 `src/player/volume.ts`、`tests/player-volume.test.mjs`、`src/catalog/detailEpisodes.ts`、`tests/detail-episodes.test.mjs`；两组新 Node 测试均已加入 `npm run build`。新增 20 项 Windows 实机验收文档 `docs/acceptance/ui-5.md`。
 - **UI-5 工程边界**：没有修改 Rust、libmpv worker 所有权、native session ID、Tauri IPC、Provider 合约、媒体授权或 HWND 几何；剧集筛选只改变当前详情视图，不改变持久化进度或播放器 episode queue；没有改变 66px/96px 窗口几何。
-- **UI-5 验证状态**：当前 HEAD 的 Windows M1/M2 CI 尚未核对；遵守 `AGENTS.md`，不要轮询 GitHub Actions，等待用户通知“编译完成”后仅核对精确 HEAD `9d91034308f0662a74ad92c00662559194bdfd48`。新增两组纯逻辑 Node 测试在隔离 Node 22.16 harness 中 **8/8 通过**；这不等于完整仓库 `npm run build`、TypeScript typecheck 或 Windows CI 通过。Windows 实机验收 20 项均待用户完成。
+- **UI-5 验证状态**：当前 HEAD 的 Windows M1/M2 CI 尚未核对；遵守 `AGENTS.md`，不要轮询 GitHub Actions，等待用户通知“编译完成”后仅核对精确 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`。新增两组纯逻辑 Node 测试在隔离 Node 22.16 harness 中 **8/8 通过**；这不等于完整仓库 `npm run build`、TypeScript typecheck 或 Windows CI 通过。Windows 实机验收 20 项均待用户完成。
 - **下一步**：用户先按本地开发流程编译 UI-5；通知“编译完成”后，一次性核对该 HEAD 的 Windows M1/M2。双绿后下载同 SHA M2 Debug artifact、核验 ZIP/EXE SHA256、准备隔离 Windows 测试包；用户按 `docs/acceptance/ui-5.md` 20 项验收。若 CI 失败，按失败 job log 修复。PR #38 保持 Draft，不合并。
 
 ### 并行验收工作流：HG-2B
@@ -118,7 +118,7 @@
 
 **新对话可直接发送下面这段话：**
 
-> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。先读取 main 上的 `AGENTS.md` 和本交接文档，再通过 GitHub 核对 PR、branch、HEAD、代码与 CI。当前阶段为 **UI-5 详情页与播放器控制栏体验**：Draft PR #38，分支 `feat/ui-5-detail-player-experience`，当前 HEAD `9d91034308f0662a74ad92c00662559194bdfd48`，base `main`，从 UI-4 最终验收/文档 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生。UI-4 PR #37 的 21/21 项 Windows 实机验收已由我明确确认通过；其精确应用代码 HEAD `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03` 的 M1/M2 CI 双绿，PR #37 仍 Draft/未合并。UI-5 已加入详情页简介展开、进度摘要、精确集数/标题搜索、状态筛选、正倒序、空结果恢复；播放器控制栏分组和静音/恢复上次非零音量。新增 `tests/detail-episodes.test.mjs`、`tests/player-volume.test.mjs`，已加入 `npm run build`；`docs/acceptance/ui-5.md` 有 20 项 Windows 实机验收。UI-5 不修改 Rust/libmpv worker、native session ID、Tauri IPC、Provider 合约、媒体授权或 HWND 几何，保持 66px Header / 96px Footer。**不要轮询 GitHub Actions**：等待我明确说“编译完成”后，仅核对当前精确 HEAD 的 Windows M1/M2；双绿后准备同 SHA Windows Debug 包，我负责实机验收。依赖顺序保持 #31 → #32 → #33 → #34 → #36 → #37 → #38。未经我授权不合并任何 PR。每完成一个阶段都更新 main 上的交接文档。
+> 继续开发我的 GitHub 仓库 `Zhaokangbo/HongGuoRust`。先读取 main 上的 `AGENTS.md` 和本交接文档，再通过 GitHub 核对 PR、branch、HEAD、代码与 CI。当前阶段为 **UI-5 详情页与播放器控制栏体验**：Draft PR #38，分支 `feat/ui-5-detail-player-experience`，当前 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`，base `main`，从 UI-4 最终验收/文档 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生。UI-4 PR #37 的 21/21 项 Windows 实机验收已由我明确确认通过；其精确应用代码 HEAD `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03` 的 M1/M2 CI 双绿，PR #37 仍 Draft/未合并。UI-5 已加入详情页简介展开、进度摘要、精确集数/标题搜索、状态筛选、正倒序、空结果恢复；播放器控制栏分组和静音/恢复上次非零音量。新增 `tests/detail-episodes.test.mjs`、`tests/player-volume.test.mjs`，已加入 `npm run build`；`docs/acceptance/ui-5.md` 有 20 项 Windows 实机验收。UI-5 不修改 Rust/libmpv worker、native session ID、Tauri IPC、Provider 合约、媒体授权或 HWND 几何，保持 66px Header / 96px Footer。**不要轮询 GitHub Actions**：等待我明确说“编译完成”后，仅核对当前精确 HEAD 的 Windows M1/M2；双绿后准备同 SHA Windows Debug 包，我负责实机验收。依赖顺序保持 #31 → #32 → #33 → #34 → #36 → #37 → #38。未经我授权不合并任何 PR。每完成一个阶段都更新 main 上的交接文档。
 
 **交接文件更新纪律：**每个阶段至少维护：当前阶段、PR/branch/HEAD、构建状态+artifact ID、已经明确通过的验收条目、尚待验证的条目、遇到的问题/修复、下一步动作。**禁止把未运行/未通过状态写成通过。**优先将本文件更新到 main，确保下一段对话不会从旧功能分支获取过期状态；如果 main 提交权限不可用，才更新工作分支并明确告知用户路径。
 
@@ -233,12 +233,12 @@
 - UI-2：Draft PR #34；精确 HEAD CI 已全绿，Windows 实机验收仍待用户明确确认。
 - UI-3：Draft PR #36；最新 HEAD `d85f131e6fa4e2c4c481cc6148bd9ecd7e9d4224` 的 Windows M1/M2 CI 已双绿，用户已明确确认 Windows 实机验收通过。
 - UI-4：本地媒体、历史和收藏的统一个人媒体中心；Draft PR #37，用户已明确确认 Windows 实机验收 21/21 通过，精确应用代码 HEAD 的 Windows M1/M2 CI 双绿；PR 仍 Draft / 未合并。
-- UI-5：详情页与播放器控制栏深度体验优化；Draft PR #38，当前 HEAD `9d91034308f0662a74ad92c00662559194bdfd48`，代码已提交，Windows M1/M2 CI 待用户编译完成后核对，20 项 Windows 实机验收待完成。
+- UI-5：详情页与播放器控制栏深度体验优化；Draft PR #38，当前 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`，代码已提交，Windows M1/M2 CI 待用户编译完成后核对，20 项 Windows 实机验收待完成。
 - HG2B 的独立验收状态不得因 UI-1 通过而误标完成；PR #31/#32/#33/#34/#36 均不得自动合并。
 
 ### 跨对话接力约定
 
-新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-5 分支为 `feat/ui-5-detail-player-experience`，Draft PR #38，base `main`，HEAD `9d91034308f0662a74ad92c00662559194bdfd48`；从 UI-4 PR #37 最终验收/文档 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生。UI-4 用户已确认 Windows 21/21 通过；UI-5 M1/M2 尚未核对，等待用户通知“编译完成”后再查。堆叠依赖顺序 #31 → #32 → #33 → #34 → #36 → #37 → #38，所有 PR 保持 Draft/未合并，未经用户授权不合并。
+新会话开始时先读取 main 分支 `AGENTS.md` 和本交接文档，再核对实际 PR HEAD、分支和精确 commit 的 Windows M1/M2 CI。当前 UI-5 分支为 `feat/ui-5-detail-player-experience`，Draft PR #38，base `main`，HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`；从 UI-4 PR #37 最终验收/文档 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生。UI-4 用户已确认 Windows 21/21 通过；UI-5 M1/M2 尚未核对，等待用户通知“编译完成”后再查。堆叠依赖顺序 #31 → #32 → #33 → #34 → #36 → #37 → #38，所有 PR 保持 Draft/未合并，未经用户授权不合并。
 
 ### 2026-11-22 历史快照：UI-3 HEAD 84537517（已被后续记录取代）
 
@@ -305,6 +305,18 @@
 ### 2026-11-22 UI-4 21/21 实机验收完成，UI-5 开发启动
 
 - 用户明确确认 UI-4 隔离 Windows 测试包 21/21 项全部通过；已在 UI-4 分支勾选 `docs/acceptance/ui-4.md` 全部 21 项，更新路线图和 PR #37 描述。PR #37 当前 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1`，open / Draft / unmerged。
-- 创建 UI-5 分支 `feat/ui-5-detail-player-experience`，从 UI-4 最终验收 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生；Draft PR #38 base `main`，HEAD `9d91034308f0662a74ad92c00662559194bdfd48`。PR 目标为 main，以满足 Windows M1/M2 PR workflow 触发条件；其变更是包含 UI-4 的 cumulative stacked diff。
+- 创建 UI-5 分支 `feat/ui-5-detail-player-experience`，从 UI-4 最终验收 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生；Draft PR #38 base `main`，HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`。PR 目标为 main，以满足 Windows M1/M2 PR workflow 触发条件；其变更是包含 UI-4 的 cumulative stacked diff。
 - UI-5 代码已实现详情页简介展开/收起、剧集观看进度摘要、精确集数/标题搜索、未完播/已看完/上游不可播放筛选、正倒序、上次观看集 resume-target 高亮和空结果恢复；播放器控制栏分组、静音/恢复上次非零音量、控件无障碍标签与响应式样式。新增纯逻辑测试 `tests/detail-episodes.test.mjs` 和 `tests/player-volume.test.mjs` 并加入 `npm run build`。新增 20 项 `docs/acceptance/ui-5.md`。
-- UI-5 当前 Windows M1/M2 CI 尚未核对，不能声称通过；按 AGENTS.md 等待用户“编译完成”通知后仅核对精确 HEAD。新增纯逻辑测试在隔离 Node 22.16 harness 中 8/8 通过，但完整 npm build/typecheck 尚待验证。Windows 20 项实机验收 pending。保持 PR #31/#32/#33/#34/#36/#37/#38 Draft / unmerged，不合并任何 PR。
+- UI-5 的前一轮 M1 run `45052537233` / job `137300639793` 与 M2 run `45052537024` / job `137300639209`，均对应已过期 HEAD `a7b3b4854c55985f1e4508b52c4f5bffbdb35452`，失败点相同：`npm run build` 的 `test:detail-episodes` 运行时加载 `detailEpisodes.ts` 时误引入 extensionless `recentActivity`，Node 24 报 `ERR_MODULE_NOT_FOUND`；M1/M2 的 npm ci、typecheck 和此前测试通过，失败发生在 detail-episodes 测试。已在后续代码提交中移除运行时依赖，把进度百分比逻辑内聚到 `detailEpisodes.ts`，并把集数正则解析移到循环外；当前代码树 commit `6e110f19ea56d752673f40401cfddeddc1de352c`。随后创建了空验证提交 `3555bb3733afb28c2bce41dda76f9b602fb2a2af`（树与 `6e110f1` 相同），PR #38 head 已更新到该 SHA。
+- 当前精确 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af` 的 check-runs 为 0、commit workflow runs 为 0；尚无对应 Windows M1/M2 run 或可用 artifact。GitHub connector 不提供 workflow_dispatch 操作；Contents/Git ref 更新后也未观察到新 Actions run。仓库 `.github/workflows/windows.yml`（Windows M1）和 `mpv-probe.yml`（Windows M2 playback）都已启用 `workflow_dispatch`。下一步请用户在 GitHub Actions 页面分别对这两个 workflow 选择 branch `feat/ui-5-detail-player-experience` 并点击 Run workflow，或从本机该分支 push 一个空提交触发 `pull_request:synchronize`；随后用户通知后再一次性核对精确 HEAD。不要把旧 SHA 失败 run 误认为当前 HEAD 结果。
+- 当前代码树的两组新增纯逻辑测试已在 Node 22.16.0 环境重新运行 **8/8 passed**。这是独立测试结果，不代表完整仓库 `npm run build`、TypeScript typecheck、Windows CI 或实机验收通过。20 项 Windows 实机验收 pending；没有生成/交付 UI-5 Debug artifact。保持 PR #31/#32/#33/#34/#36/#37/#38 Draft / unmerged，不合并任何 PR。
+
+
+### 2026-11-23 UI-5 Windows CI 失败根因修复与验证交接
+
+- 用户在 2026-11-22 晚间通知 UI-5 本地编译完成；当时 PR #38 HEAD 为 `9d91034308f0662a74ad92c00662559194bdfd48`。核对发现此前 PR 创建时的 M1/M2 对较早 SHA `a7b3b4854c55985f1e4508b52c4f5bffbdb35452` 均失败于 `npm run build` 的 `test:detail-episodes`：`detailEpisodes.ts` 有 extensionless runtime import `recentActivity`，Node 24 报 `ERR_MODULE_NOT_FOUND`。M1/M2 前置 typecheck 和此前 Node suites 均通过，未进入 Rust build / playback probe。
+- 修复已在 UI-5 分支提交：`detailEpisodes.ts` 删除对 `recentActivity` 的运行时导入，内聚 `episodeProgressPercent`；集数查询正则只解析一次。代码树 SHA `6e110f19ea56d752673f40401cfddeddc1de352c`。
+- 为尝试触发 PR synchronize，创建了无文件差异验证提交 `3555bb3733afb28c2bce41dda76f9b602fb2a2af`，tree SHA 与 `6e110f1` 相同；PR #38 当前仍 open / Draft / unmerged，base `main`，head `3555bb3733afb28c2bce41dda76f9b602fb2a2af`。该提交后查询 exact-head check-runs、commit workflow runs 仍为 0；分支历史只观察到旧 SHA 的 6 条 run。没有可用当前 SHA artifact。
+- 在 Node `v22.16.0` 容器中，使用 exact current source tree 的 `tests/detail-episodes.test.mjs` 与 `tests/player-volume.test.mjs` 重跑：**8/8 passed**。此结果只覆盖两组纯逻辑测试，不等同于完整 `npm run build`、TypeScript、Windows M1/M2 或 Windows 实机验收。
+- 工作流入口已确认：`.github/workflows/windows.yml` 的 Windows M1 与 `.github/workflows/mpv-probe.yml` 的 Windows M2 playback 都支持 `workflow_dispatch`。GitHub connector 当前没有 dispatch action；下一步由用户在 GitHub Actions 分别手动 Run workflow，branch 选择 `feat/ui-5-detail-player-experience`（当前 head `3555bb3733afb28c2bce41dda76f9b602fb2a2af`），或从本机该分支 push 空提交触发 `pull_request:synchronize`。用户通知 CI 已启动/完成后，仅核对一次 exact-head M1/M2。双绿后再下载同 SHA M2 Debug artifact、校验 ZIP/EXE SHA256、准备隔离测试包。
+- UI-5 Windows 实机验收 20 项尚未开始；PR #38 保持 Draft，不合并。PR #37 UI-4 仍 Draft / unmerged，用户已确认 21/21 实机通过；不得因验收通过自动合并。
