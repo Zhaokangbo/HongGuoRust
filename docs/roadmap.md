@@ -169,5 +169,5 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 - UI-2：目录信息架构、详情和发现页改造，Draft PR #34；仍按既有堆叠依赖等待前置验收/授权。
 - UI-3：browse-first Netflix 风格首页，Draft PR #36；Windows M1/M2 CI 双绿，用户已确认 Windows 实机验收通过。
 - UI-4：本地媒体、历史和收藏统一体验，Draft PR #37，分支 `feat/ui-4-personal-library`。用户已明确确认隔离 Windows Debug 测试包 **21/21 项实机验收通过**；精确应用代码 HEAD `95bbaca551ce8693d4ae0d39dd57a1cb6e9d4f03` 的 Windows M1/M2 CI 双绿。PR #37 当前 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1`，仍 Open / Draft / 未合并。
-- UI-5：详情页与播放器控制栏深度体验优化，Draft PR #38，分支 `feat/ui-5-detail-player-experience`，当前 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`。前一版 M1/M2 在 `test:detail-episodes` 因 extensionless `recentActivity` runtime import 失败，已移除该运行时依赖；当前 Node 22.16.0 两组纯逻辑测试 8/8 通过。当前 exact HEAD 尚无 Windows M1/M2 workflow run；需用户从 Actions 页面分别手动 dispatch Windows M1/M2，或 push 空提交触发 PR synchronize。20 项 Windows 实机验收待完成。
+- UI-5：详情页与播放器控制栏深度体验优化，Draft PR #38，分支 `feat/ui-5-detail-player-experience`，当前 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`。Windows M1 run `45125244595` 和 M2 Playback run `45125262756` 均在该精确 SHA 上 SUCCESS；M2 Debug artifact `14795486864` 已下载并校验。已制作隔离 Windows 验收包，20 项实机验收待用户完成；PR 保持 Draft / unmerged。
 - 堆叠依赖顺序：#31 → #32 → #33 → #34 → #36 → #37 → #38。所有 Draft PR 均保持未合并，验收通过不构成合并授权；任何合并均需用户明确授权。
