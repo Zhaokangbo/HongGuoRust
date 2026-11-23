@@ -19,11 +19,8 @@ import {
 } from "./player/episodeQueue";
 import "./style.css";
 
-type PlayerCommand = "open_local" | "open_https" | "stop" | "set_paused" | "seek_to"
+type PlayerCommand = "open_local" | "stop" | "set_paused" | "seek_to"
   | "set_rate" | "set_volume" | "set_fullscreen" | "set_catalog_visible" | "catalog_play_episode" | "library_play";
-// Public sample source used for manual streaming checks. External URLs can change.
-const SAMPLE = "https://samplelib.com/lib/preview/mp4/sample-20s.mp4";
-
 function clock(value?: number): string {
   if (value === undefined || !Number.isFinite(value)) return "--:--";
   const seconds = Math.floor(Math.max(0, value));
@@ -35,7 +32,6 @@ function App() {
   const [connectionError, setConnectionError] = useState("");
   const [commandError, setCommandError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [httpsUrl, setHttpsUrl] = useState(SAMPLE);
   const [seekText, setSeekText] = useState("0");
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const [previewHover, setPreviewHover] = useState<{ seconds: number; fraction: number } | null>(null);
@@ -566,11 +562,6 @@ function App() {
     <footer className="player-controls">
       <div className="player-actions" role="group" aria-label="打开与管理媒体">
         <button className="player-action-secondary" disabled={busy || !connected} onClick={() => void playUnqueued("open_local")}>打开本地 MP4</button>
-        <input aria-label="公开 HTTPS MP4 直链" type="url" spellCheck={false}
-          placeholder="粘贴公开 HTTPS MP4 直链" title={`示例：${SAMPLE}`}
-          value={httpsUrl} onChange={e => setHttpsUrl(e.target.value)} />
-        <button className="player-action-primary" disabled={busy || !connected || !httpsUrl.trim()}
-          onClick={() => void playUnqueued("open_https", { url: httpsUrl.trim() })}>播放 HTTPS</button>
         <button className="player-action-secondary" disabled={busy || !connected || snapshot?.state === "Idle"}
           onClick={() => void playUnqueued("stop")}>停止</button>
         <span className="filename" title={snapshot?.filename}>{snapshot?.filename}</span>
@@ -728,27 +719,29 @@ function App() {
           <span className="player-preferences-hint" title="倍速、音量与本地列表自动连播偏好保存在本机">
             {preferencesReady ? "设置自动保存" : "设置未加载"}
           </span>
-          <button type="button" aria-expanded={healthVisible}
-            title="只读诊断：仅含当前进程的会话、缓冲、退出统计，不采集视频路径和 URL"
-            onClick={toggleHealth}>运行诊断</button>
-          {healthVisible && <>
-            <button type="button" disabled={healthBusy || !connected} onClick={() => void refreshHealth()}>
-              {healthBusy ? "读取中…" : "刷新"}
-            </button>
-            {healthReport && <span className="player-health-summary" role="status"
-              title={formatRuntimeHealth(healthReport)}>
-              打开 {healthReport.sessionsOpened} · 缓冲 {healthReport.bufferEvents}
-              /{healthReport.bufferTotalMs}ms · 释放 {healthReport.libmpvReleases}
-              /{healthReport.maxReleaseMs}ms
-            </span>}
-            <button type="button" disabled={!healthReport} onClick={() => void copyHealth()}>
-              复制诊断
-            </button>
-            {healthError && <span role="alert" className="player-health-error"
-              title={healthError}>诊断读取/复制失败</span>}
+          {import.meta.env.DEV && <>
+            <button type="button" aria-expanded={healthVisible}
+              title="只读诊断：仅含当前进程的会话、缓冲、退出统计，不采集视频路径和 URL"
+              onClick={toggleHealth}>运行诊断</button>
+            {healthVisible && <>
+              <button type="button" disabled={healthBusy || !connected} onClick={() => void refreshHealth()}>
+                {healthBusy ? "读取中…" : "刷新"}
+              </button>
+              {healthReport && <span className="player-health-summary" role="status"
+                title={formatRuntimeHealth(healthReport)}>
+                打开 {healthReport.sessionsOpened} · 缓冲 {healthReport.bufferEvents}
+                /{healthReport.bufferTotalMs}ms · 释放 {healthReport.libmpvReleases}
+                /{healthReport.maxReleaseMs}ms
+              </span>}
+              <button type="button" disabled={!healthReport} onClick={() => void copyHealth()}>
+                复制诊断
+              </button>
+              {healthError && <span role="alert" className="player-health-error"
+                title={healthError}>诊断读取/复制失败</span>}
+            </>}
+            <span className="player-status">{snapshot?.state ?? "—"}</span>
+            <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
           </>}
-          <span className="player-status">{snapshot?.state ?? "—"}</span>
-          <span className="player-version">{snapshot?.appVersion ?? "—"}</span>
         </div>
       </div>
     </footer>
