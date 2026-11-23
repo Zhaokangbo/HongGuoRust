@@ -51,6 +51,9 @@ export function filterEpisodes(
     if (validProgress(item, seriesId)) byId.set(item.episodeId, item);
   }
   const term = normalizeQuery(query);
+  const numberQuery = term.match(/^(?:第)?(\d+)(?:集)?$/);
+  const requestedEpisodeNumber = numberQuery && Number.isSafeInteger(Number(numberQuery[1]))
+    ? Number(numberQuery[1]) : null;
   const rows = episodes.map(episode => {
     const saved = byId.get(episode.id) ?? null;
     return {
@@ -66,11 +69,7 @@ export function filterEpisodes(
     if (filter === "incomplete" && saved?.completed) return false;
     if (filter === "unavailable" && episode.playable !== false) return false;
     if (!term) return true;
-    const number = String(episode.number);
-    const numberQuery = term.match(/^(?:第)?(\d+)(?:集)?$/);
-    if (numberQuery && Number.isSafeInteger(Number(numberQuery[1]))) {
-      return episode.number === Number(numberQuery[1]);
-    }
+    if (requestedEpisodeNumber !== null) return episode.number === requestedEpisodeNumber;
     return normalizeQuery(episode.title).includes(term);
   });
   rows.sort((a, b) => {
