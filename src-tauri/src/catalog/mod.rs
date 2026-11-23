@@ -8,10 +8,12 @@ mod local;
 mod manifest;
 pub mod progress;
 mod registry;
+mod sidecar;
 pub(crate) mod request;
 
 pub use manifest::OwnedManifestStore;
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
+pub use sidecar::CommunitySidecar;
 
 use request::RequestContext;
 use serde::Serialize;
