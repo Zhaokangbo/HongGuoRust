@@ -273,6 +273,11 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
             return ui.child_window(title=name,control_type="Text").exists(timeout=.3)
         def button(name):
             return ui.child_window(title=name,control_type="Button").wrapper_object()
+        def idle_controls_ready():
+            # Idle is an internal Rust state, not visible UI copy. Assert its
+            # actual IPC-derived controls instead: Open is enabled and Stop
+            # is disabled. This also proves the WebView received the snapshot.
+            return button("打开本地 MP4").is_enabled() and not button("停止").is_enabled()
         # UI-3 starts in the browse-first Home surface. Verify Home, then use
         # a physical UI click so WebView2 dispatches the same event as a user.
         home = ui.child_window(title="首页", control_type="Button")
@@ -282,7 +287,7 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
               "enabled player surface entry", 90)
         foreground(main)
         player_entry.wrapper_object().click_input()
-        until(lambda: text_visible("Idle"), "IPC Idle after opening player", 90)
+        until(idle_controls_ready, "IPC-derived idle player controls after opening player", 90)
         child = until(lambda: find(main,None,"Static","HongGuoRust video"), "visible video HWND", 30)
         def select(path):
             until(lambda: button("打开本地 MP4").is_enabled(), "available file picker")
@@ -334,7 +339,7 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
             until(lambda: text_visible(second.name) and text_visible("Playing"), "replacement snapshot")
             desktop_checks(main, child)
             button("停止").invoke()
-            until(lambda: text_visible("Idle"), "stopped snapshot")
+            until(idle_controls_ready, "IPC-derived idle controls after stop")
             select(clip)
             select(second)
             frame(child, {"green"})
