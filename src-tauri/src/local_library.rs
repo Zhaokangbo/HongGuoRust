@@ -369,14 +369,21 @@ impl LocalLibrary {
 mod tests {
     use super::LocalLibrary;
     use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEST_DIR_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     fn test_dir() -> std::path::PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("hgr-library-{}-{unique}", std::process::id()))
+        let sequence = TEST_DIR_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "hgr-library-{}-{unique}-{sequence}",
+            std::process::id()
+        ))
     }
 
     #[test]

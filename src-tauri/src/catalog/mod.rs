@@ -1,13 +1,22 @@
 //! Content-provider boundary for M6. No scraping and no third-party credentials.
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
+pub mod favorites;
+mod hgcommunity;
+#[allow(dead_code)]
+mod hongguo;
+pub mod http_client;
 mod local;
 mod manifest;
+pub mod progress;
 mod registry;
 pub(crate) mod request;
+pub mod webdav;
 
-pub use manifest::OwnedManifestStore;
+pub use favorites::{FavoriteSeries, FavoritesStore};
+pub use manifest::{ManifestSubscriptionInfo, OwnedManifestStore};
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
+pub use webdav::{WebDavStatus, WebDavStore};
 
 use request::RequestContext;
 use serde::Serialize;
@@ -23,6 +32,8 @@ pub struct Series {
     pub genre: String,
     pub badge: String,
     pub artwork: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_url: Option<String>,
     pub episode_count: usize,
     pub provider_id: String,
 }
@@ -34,6 +45,7 @@ pub struct Episode {
     pub number: usize,
     pub title: String,
     pub runtime_label: String,
+    pub playable: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,11 +60,30 @@ pub struct SeriesDetail {
 pub enum MediaTarget {
     Https(String),
     LocalLibrary(u64),
+    WebDav {
+        url: String,
+        auth_header: Option<String>,
+    },
 }
 
 pub trait ContentProvider: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
+
+    /// Capabilities are provider-specific and checked again on the native
+    /// playback resolution path, not trusted from UI state alone.
+    fn supports_search(&self) -> bool {
+        true
+    }
+
+    fn supports_detail(&self) -> bool {
+        true
+    }
+
+    fn supports_play(&self) -> bool {
+        true
+    }
+
     fn search(&self, query: &str) -> Result<Vec<Series>, String>;
     fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String>;
     fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String>;
@@ -134,6 +165,7 @@ impl DemoDefinition {
             genre: self.genre.into(),
             badge: self.badge.into(),
             artwork: self.artwork.into(),
+            cover_url: None,
             episode_count: self.episodes,
             provider_id: "demo".into(),
         }
@@ -145,6 +177,7 @@ impl DemoDefinition {
             number: index + 1,
             title: format!("第 {} 集 · 测试片段", index + 1),
             runtime_label: "00:20".into(),
+            playable: true,
         }
     }
 }

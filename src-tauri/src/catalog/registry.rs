@@ -1,8 +1,11 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
+use super::hgcommunity::HgCommunityProvider;
+use super::hongguo::HongGuoUnavailableProvider;
 use super::local::LocalLibraryProvider;
 use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
+use super::webdav::{WebDavProvider, WebDavStore};
 use super::{ContentProvider, LocalDemoProvider, MediaTarget, Series, SeriesDetail};
 use crate::local_library::LocalLibrary;
 use serde::Serialize;
@@ -83,13 +86,39 @@ impl Default for CatalogService {
 }
 
 impl CatalogService {
+    #[allow(dead_code)]
     pub fn new(library: Arc<LocalLibrary>, manifest: Arc<OwnedManifestStore>) -> Self {
-        Self::from_providers(vec![
+        Self::build(library, manifest, None)
+    }
+
+    pub fn with_webdav(
+        library: Arc<LocalLibrary>,
+        manifest: Arc<OwnedManifestStore>,
+        webdav: Arc<WebDavStore>,
+    ) -> Self {
+        Self::build(library, manifest, Some(webdav))
+    }
+
+    fn build(
+        library: Arc<LocalLibrary>,
+        manifest: Arc<OwnedManifestStore>,
+        webdav: Option<Arc<WebDavStore>>,
+    ) -> Self {
+        let mut providers: Vec<Box<dyn ContentProvider>> = vec![
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
             Box::new(OwnedManifestProvider::new(manifest)),
-        ])
-        .expect("built-in provider IDs must be unique and valid")
+            Box::new(HongGuoUnavailableProvider),
+        ];
+        if let Some(webdav) = webdav {
+            providers.push(Box::new(WebDavProvider::new(webdav)));
+        }
+        // The unofficial community SDK is opt-in and debug-build only. Its
+        // failure must never replace or unlock the real HongGuo placeholder.
+        if let Some(experimental) = HgCommunityProvider::from_env() {
+            providers.push(Box::new(experimental));
+        }
+        Self::from_providers(providers).expect("built-in provider IDs must be unique and valid")
     }
 
     fn from_providers(providers: Vec<Box<dyn ContentProvider>>) -> Result<Self, String> {
@@ -111,9 +140,9 @@ impl CatalogService {
             .map(|provider| ProviderInfo {
                 id: provider.id().into(),
                 name: provider.name().into(),
-                supports_search: true,
-                supports_detail: true,
-                supports_play: true,
+                supports_search: provider.supports_search(),
+                supports_detail: provider.supports_detail(),
+                supports_play: provider.supports_play(),
             })
             .collect()
     }
@@ -267,9 +296,13 @@ impl CatalogService {
         {
             return Err("invalid_episode_id: Invalid episode ID".into());
         }
-        let target = self
-            .provider(source)?
-            .resolve_episode(local_id, episode_id)?;
+        let provider = self.provider(source)?;
+        // UI capability flags are informational: native resolution must also
+        // block any source without verified playback rights.
+        if !provider.supports_play() {
+            return Err("provider_not_authorized: 当前内容源没有播放授权".into());
+        }
+        let target = provider.resolve_episode(local_id, episode_id)?;
         match target {
             MediaTarget::Https(url) => {
                 crate::player::source::public_https_url(&url).map(MediaTarget::Https)
@@ -281,6 +314,17 @@ impl CatalogService {
                     return Err("invalid_media_target: Local media does not match provider".into());
                 }
                 Ok(MediaTarget::LocalLibrary(id))
+            }
+            MediaTarget::WebDav { url, auth_header } => {
+                if source != "webdav" {
+                    return Err(
+                        "invalid_media_target: WebDAV target does not match provider".into(),
+                    );
+                }
+                crate::player::source::webdav_media_url(&url).map(|validated| MediaTarget::WebDav {
+                    url: validated,
+                    auth_header,
+                })
             }
         }
     }
@@ -312,6 +356,7 @@ mod tests {
                 genre: String::new(),
                 badge: String::new(),
                 artwork: "studio".into(),
+                cover_url: None,
                 episode_count: 1,
                 provider_id: "spoofed".into(),
             }])
@@ -325,6 +370,7 @@ mod tests {
                     number: 1,
                     title: "Other".into(),
                     runtime_label: "00:20".into(),
+                    playable: true,
                 }],
             }))
         }
@@ -422,6 +468,27 @@ mod tests {
             .is_err());
         let mixed = service.search_page(None, Some("all"), 0, 50).unwrap();
         assert_eq!(mixed.total, 4);
+
+        let hongguo = service
+            .sources()
+            .into_iter()
+            .find(|source| source.id == "hongguo")
+            .expect("gated HongGuo source must be registered");
+        assert!(!hongguo.supports_search);
+        assert!(!hongguo.supports_detail);
+        assert!(!hongguo.supports_play);
+        assert!(hongguo.name.contains("待授权"));
+        assert_eq!(
+            service
+                .search_page(None, Some("hongguo"), 0, 24)
+                .unwrap()
+                .total,
+            0
+        );
+        assert!(service.detail("hongguo:synthetic-1").is_err());
+        assert!(service
+            .resolve_episode("hongguo:synthetic-1", "ep-1")
+            .is_err());
         drop(service);
         drop(library);
         fs::remove_dir_all(dir).unwrap();

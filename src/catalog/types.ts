@@ -5,6 +5,8 @@ export interface Series {
   genre: string;
   badge: string;
   artwork: "forest" | "city" | "studio";
+  /** Optional validated CDN cover from the opt-in community SDK. */
+  coverUrl?: string | null;
   episodeCount: number;
   providerId: string;
 }
@@ -28,6 +30,8 @@ export interface Episode {
   number: number;
   title: string;
   runtimeLabel: string;
+  /** Provider says this episode can be selected, not a guarantee of DRM-free playback. */
+  playable?: boolean;
 }
 
 export interface SeriesDetail {
@@ -45,4 +49,40 @@ export interface LocalMedia {
   lastPlayedMs: number | null;
   completed: boolean;
   favorite: boolean;
+}
+
+export interface ProviderEpisodeProgress {
+  seriesId: string;
+  episodeId: string;
+  positionSec: number;
+  durationSec: number | null;
+  lastPlayedMs: number;
+  completed: boolean;
+}
+
+export interface RecentCatalogEpisode {
+  series: Series;
+  episode: Episode;
+  progress: ProviderEpisodeProgress;
+}
+
+export interface ManifestSubscriptionInfo {
+  url: string | null;
+  seriesCount: number;
+  lastSyncedMs: number | null;
+}
+
+export interface WebDavStatus {
+  configured: boolean;
+  name: string;
+  baseUrl: string;
+  username: string;
+  hasPassword: boolean;
+  seriesCount: number;
+  episodeCount: number;
+  lastSyncedMs: number | null;
+}
+
+export interface FavoriteSeries extends Series {
+  addedAtMs: number;
 }

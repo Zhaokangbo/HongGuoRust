@@ -1,7 +1,13 @@
 pub mod controls;
 pub mod engine;
+pub mod health;
 pub mod history;
+pub mod overlay;
+pub mod preferences;
+pub mod preview;
+pub mod provider_history;
 pub mod service;
 pub mod source;
 pub mod state;
+pub mod tracks;
 pub mod window;

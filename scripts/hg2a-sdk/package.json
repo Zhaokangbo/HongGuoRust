@@ -1,0 +1,14 @@
+{
+  "name": "hongguorust-hg2a-community-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional nonofficial openhongguo SDK integration; never bundled by default",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "openhongguo": "0.4.0",
+    "libheif-js": "1.23.5",
+    "jpeg-js": "0.4.4",
+    "https-proxy-agent": "9.1.0"
+  }
+}

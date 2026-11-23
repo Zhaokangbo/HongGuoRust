@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "series": [
+    {
+      "id": "open-blender-sintel",
+      "title": "Sintel · 龙寻",
+      "description": "Blender Foundation 开源奇幻短片（CC-BY 3.0）。讲述少女 Sintel 跨越荒原寻找幼龙伙伴的奇幻冒险，自带 1080p 高清画质与海报。",
+      "genre": "奇幻动画",
+      "coverUrl": "https://media.w3.org/2010/05/sintel/poster.png",
+      "episodes": [
+        {
+          "id": "ep-01",
+          "title": "第 1 集 · 1080p 高清预告",
+          "url": "https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4"
+        },
+        {
+          "id": "ep-02",
+          "title": "第 2 集 · 720p 剧场版预告",
+          "url": "https://media.w3.org/2010/05/sintel/trailer_hd.mp4"
+        },
+        {
+          "id": "ep-03",
+          "title": "第 3 集 · 标准版片段",
+          "url": "https://media.w3.org/2010/05/sintel/trailer.mp4"
+        }
+      ]
+    },
+    {
+      "id": "open-blender-big-buck-bunny",
+      "title": "Big Buck Bunny · 大雄兔",
+      "description": "Blender Foundation 经典开源 3D 动画喜剧（CC-BY 3.0）。森林里温顺的大兔子面对三只调皮小动物的捉弄，展开了一场幽默的反击。",
+      "genre": "喜剧动画",
+      "coverUrl": "https://media.w3.org/2010/05/bunny/poster.png",
+      "episodes": [
+        {
+          "id": "ep-01",
+          "title": "第 1 集 · 大雄兔完整版",
+          "url": "https://media.w3.org/2010/05/bunny/movie.mp4"
+        },
+        {
+          "id": "ep-02",
+          "title": "第 2 集 · 剧场预告片",
+          "url": "https://media.w3.org/2010/05/bunny/trailer.mp4"
+        }
+      ]
+    },
+    {
+      "id": "open-w3c-shorts",
+      "title": "自然光影 · 精选短片集",
+      "description": "公开授权的多集测试短片合集，用于验证选集切换、自动抽帧封面、悬停缩略图预览与断点续播。",
+      "genre": "精选短片",
+      "episodes": [
+        {
+          "id": "ep-01",
+          "title": "第 1 集 · 海岸晨光（30 秒）",
+          "url": "https://samplelib.com/lib/preview/mp4/sample-30s.mp4"
+        },
+        {
+          "id": "ep-02",
+          "title": "第 2 集 · 城市慢镜头（20 秒）",
+          "url": "https://samplelib.com/lib/preview/mp4/sample-20s.mp4"
+        },
+        {
+          "id": "ep-03",
+          "title": "第 3 集 · 林间微风（15 秒）",
+          "url": "https://samplelib.com/lib/preview/mp4/sample-15s.mp4"
+        }
+      ]
+    },
+    {
+      "id": "open-w3c-cinema",
+      "title": "W3C 经典影像档案",
+      "description": "W3C 公开演示影片，自动从视频帧抽取封面与背景。",
+      "genre": "精选短片",
+      "episodes": [
+        {
+          "id": "ep-01",
+          "title": "第 1 集 · 完整影像",
+          "url": "https://media.w3.org/2010/05/video/movie_300.mp4"
+        }
+      ]
+    }
+  ]
+}

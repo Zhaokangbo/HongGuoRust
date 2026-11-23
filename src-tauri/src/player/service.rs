@@ -1,8 +1,14 @@
 use super::controls::PlayerControl;
 use super::engine::{Engine, Observation};
+use super::health::{RuntimeHealth, RuntimeHealthMeter};
 use super::history::{finish, HistorySession};
+use super::preferences::{PlayerPreferences, PreferencesStore};
+use super::preview::{PreviewFrame, PreviewService};
+use super::provider_history::{finish_provider, ProviderHistorySession};
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
+use super::tracks::{TrackKind, TrackList};
+use crate::catalog::progress::ProviderProgressStore;
 use crate::local_library::LocalLibrary;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -11,6 +17,13 @@ use std::thread::{self, JoinHandle};
 use std::time::Instant;
 use tracing::{error, info};
 
+struct ProviderPlayback {
+    series_id: String,
+    episode_id: String,
+    source: String,
+    resume_at: Option<f64>,
+}
+
 enum Command {
     Open {
         id: u64,
@@ -18,12 +31,23 @@ enum Command {
         accepted: Instant,
         library_id: Option<u64>,
         resume_at: Option<f64>,
+        provider: Option<ProviderPlayback>,
     },
     Stop(Option<u64>),
     Control {
         id: u64,
         request: PlayerControl,
         reply: mpsc::SyncSender<Result<(), String>>,
+    },
+    Tracks {
+        id: u64,
+        reply: mpsc::SyncSender<Result<TrackList, String>>,
+    },
+    SelectTrack {
+        id: u64,
+        kind: TrackKind,
+        track_id: Option<i64>,
+        reply: mpsc::SyncSender<Result<TrackList, String>>,
     },
     Close,
 }
@@ -32,6 +56,7 @@ enum Command {
 struct Shared {
     player: PlayerState,
     closing: bool,
+    preview_source: Option<(u64, MediaSource)>,
 }
 
 pub struct PlayerService {
@@ -39,22 +64,47 @@ pub struct PlayerService {
     tx: Sender<Command>,
     worker: Mutex<Option<JoinHandle<()>>>,
     library: Arc<LocalLibrary>,
+    provider_progress: Arc<ProviderProgressStore>,
+    preview: PreviewService,
+    health: Arc<Mutex<RuntimeHealthMeter>>,
 }
 
 impl PlayerService {
-    pub fn new(host: isize, library: Arc<LocalLibrary>) -> std::io::Result<Self> {
+    pub fn new(
+        host: isize,
+        library: Arc<LocalLibrary>,
+        provider_progress: Arc<ProviderProgressStore>,
+        preferences: Arc<PreferencesStore>,
+    ) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(Shared::default()));
         let shared = Arc::clone(&state);
         let worker_library = Arc::clone(&library);
+        let worker_progress = Arc::clone(&provider_progress);
+        let worker_preferences = Arc::clone(&preferences);
+        let health = Arc::new(Mutex::new(RuntimeHealthMeter::default()));
+        let worker_health = Arc::clone(&health);
         let worker = thread::Builder::new()
             .name("libmpv-player".into())
-            .spawn(move || run(host, rx, shared, worker_library))?;
+            .spawn(move || {
+                run(
+                    host,
+                    rx,
+                    shared,
+                    worker_library,
+                    worker_progress,
+                    worker_preferences,
+                    worker_health,
+                )
+            })?;
         Ok(Self {
             state,
             tx,
             worker: Mutex::new(Some(worker)),
             library,
+            provider_progress,
+            preview: PreviewService::default(),
+            health,
         })
     }
 
@@ -62,18 +112,72 @@ impl PlayerService {
         self.state.lock().unwrap().player.snapshot()
     }
 
+    /// A read-only, URL-free diagnostic report. No native mpv calls or I/O.
+    pub fn runtime_health(&self) -> RuntimeHealth {
+        self.health.lock().unwrap().snapshot(Instant::now())
+    }
+
     pub fn open(&self, path: PathBuf) -> Result<u64, String> {
-        self.open_source(MediaSource::Local(path), None, None)
+        self.open_source(MediaSource::Local(path), None, None, None)
     }
 
     pub fn open_library(&self, id: u64) -> Result<u64, String> {
         let path = self.library.resolve_path(id)?;
         let resume_at = self.library.resume_point(id)?;
-        self.open_source(MediaSource::Local(path), Some(id), resume_at)
+        self.open_source(MediaSource::Local(path), Some(id), resume_at, None)
     }
 
     pub fn open_https(&self, url: String) -> Result<u64, String> {
-        self.open_source(MediaSource::https(url)?, None, None)
+        self.open_source(MediaSource::https(url)?, None, None, None)
+    }
+
+    /// Called only after CatalogService validated the selected episode and URL.
+    pub fn open_catalog_https(
+        &self,
+        url: String,
+        series_id: String,
+        episode_id: String,
+    ) -> Result<u64, String> {
+        let source = MediaSource::https(url.clone())?;
+        let resume_at = self
+            .provider_progress
+            .resume_point(&series_id, &episode_id, &url)?;
+        self.open_source(
+            source,
+            None,
+            None,
+            Some(ProviderPlayback {
+                series_id,
+                episode_id,
+                source: url,
+                resume_at,
+            }),
+        )
+    }
+
+    /// Called only after CatalogService validated the WebDAV target.
+    pub fn open_catalog_webdav(
+        &self,
+        url: String,
+        auth_header: Option<String>,
+        series_id: String,
+        episode_id: String,
+    ) -> Result<u64, String> {
+        let source = MediaSource::webdav(url.clone(), auth_header)?;
+        let resume_at = self
+            .provider_progress
+            .resume_point(&series_id, &episode_id, &url)?;
+        self.open_source(
+            source,
+            None,
+            None,
+            Some(ProviderPlayback {
+                series_id,
+                episode_id,
+                source: url,
+                resume_at,
+            }),
+        )
     }
 
     fn open_source(
@@ -81,6 +185,7 @@ impl PlayerService {
         source: MediaSource,
         library_id: Option<u64>,
         resume_at: Option<f64>,
+        provider: Option<ProviderPlayback>,
     ) -> Result<u64, String> {
         let mut shared = self.state.lock().unwrap();
         if shared.closing {
@@ -89,6 +194,8 @@ impl PlayerService {
         let filename = source.label();
         let kind = source.kind();
         let id = shared.player.begin(filename);
+        self.preview.cancel();
+        shared.preview_source = Some((id, source.clone()));
         let accepted = Instant::now();
         if self
             .tx
@@ -98,9 +205,11 @@ impl PlayerService {
                 accepted,
                 library_id,
                 resume_at,
+                provider,
             })
             .is_err()
         {
+            shared.preview_source = None;
             let failure = Failure {
                 stage: "dispatch",
                 code: "worker_exited".into(),
@@ -116,6 +225,7 @@ impl PlayerService {
     }
 
     pub fn stop(&self) -> Result<(), String> {
+        self.preview.cancel();
         let shared = self.state.lock().unwrap();
         if shared.closing {
             return Err("Window is closing".into());
@@ -149,7 +259,90 @@ impl PlayerService {
             .map_err(|_| "Playback control timed out".to_owned())?
     }
 
+    /// Enumerate metadata via the single owner worker. Never pass a native
+    /// libmpv handle, media URL or filesystem source to the UI.
+    pub fn tracks(&self, id: u64) -> Result<TrackList, String> {
+        let shared = self.state.lock().unwrap();
+        if shared.closing || shared.player.snapshot().session_id != Some(id) {
+            return Err("播放会话已变化".into());
+        }
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::Tracks { id, reply })
+            .map_err(|_| "播放线程已退出")?;
+        drop(shared);
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "读取音轨信息超时".to_owned())?
+    }
+
+    pub fn select_track(
+        &self,
+        id: u64,
+        kind: TrackKind,
+        track_id: Option<i64>,
+    ) -> Result<TrackList, String> {
+        let shared = self.state.lock().unwrap();
+        if shared.closing || shared.player.snapshot().session_id != Some(id) {
+            return Err("播放会话已变化".into());
+        }
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.tx
+            .send(Command::SelectTrack {
+                id,
+                kind,
+                track_id,
+                reply,
+            })
+            .map_err(|_| "播放线程已退出")?;
+        drop(shared);
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|_| "切换轨道超时".to_owned())?
+    }
+
+    /// The preview uses its own Mpv image-output handle on a blocking task.
+    /// Only the active native session can request it; source URLs never enter IPC.
+    pub fn preview_frame(
+        &self,
+        session_id: u64,
+        seconds: f64,
+    ) -> Result<Option<PreviewFrame>, String> {
+        let source = {
+            let shared = self.state.lock().unwrap();
+            if shared.closing {
+                return Ok(None);
+            }
+            let snapshot = shared.player.snapshot();
+            if snapshot.session_id != Some(session_id)
+                || !matches!(
+                    snapshot.state,
+                    PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Buffering
+                )
+            {
+                return Ok(None);
+            }
+            match shared.preview_source.as_ref() {
+                Some((id, source)) if *id == session_id => source.clone(),
+                _ => return Ok(None),
+            }
+        };
+        let frame = self.preview.frame(session_id, seconds, &source)?;
+        let current = self.state.lock().unwrap();
+        if current.closing
+            || current.player.snapshot().session_id != Some(session_id)
+            || !matches!(
+                current.player.snapshot().state,
+                PlaybackState::Playing | PlaybackState::Paused | PlaybackState::Buffering
+            )
+        {
+            return Ok(None);
+        }
+        Ok(frame)
+    }
+
     pub fn begin_close(&self) -> bool {
+        self.preview.cancel();
         let mut shared = self.state.lock().unwrap();
         if shared.closing {
             return false;
@@ -171,16 +364,14 @@ fn stop_targets_active_session(requested: Option<u64>, current: Option<u64>) -> 
     requested.is_some() && requested == current
 }
 
-fn release(engine: &mut Option<Engine>) {
+fn release(engine: &mut Option<Engine>, health: &Mutex<RuntimeHealthMeter>) {
     if let Some(current) = engine.take() {
         let id = current.session;
         let started = Instant::now();
         drop(current);
-        info!(
-            session_id = id,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "libmpv released"
-        );
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        health.lock().unwrap().released(elapsed_ms);
+        info!(session_id = id, elapsed_ms, "libmpv released");
     }
 }
 
@@ -204,10 +395,19 @@ fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) 
     }
 }
 
-fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: Arc<LocalLibrary>) {
+fn run(
+    host: isize,
+    rx: Receiver<Command>,
+    state: Arc<Mutex<Shared>>,
+    library: Arc<LocalLibrary>,
+    provider_progress: Arc<ProviderProgressStore>,
+    preferences: Arc<PreferencesStore>,
+    health: Arc<Mutex<RuntimeHealthMeter>>,
+) {
     let mut engine: Option<Engine> = None;
     let mut cache_since: Option<(u64, Instant)> = None;
     let mut history: Option<HistorySession> = None;
+    let mut provider_history: Option<ProviderHistorySession> = None;
     loop {
         let cmd = if engine.is_some() {
             match rx.try_recv() {
@@ -228,6 +428,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 accepted,
                 library_id,
                 resume_at,
+                provider,
             }) => {
                 {
                     let shared = state.lock().unwrap();
@@ -237,8 +438,14 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 }
                 end_cache_interval(&mut cache_since, "replaced");
                 finish(&mut history, &library, false);
-                release(&mut engine);
-                match Engine::load(host, &source, id, accepted) {
+                finish_provider(&mut provider_history, &provider_progress, false);
+                release(&mut engine, &health);
+                health.lock().unwrap().open(id, accepted, Instant::now());
+                let settings = preferences.snapshot().unwrap_or_else(|error| {
+                    tracing::warn!(error=%error, "invalid settings file; use runtime defaults");
+                    PlayerPreferences::default()
+                });
+                match Engine::load(host, &source, id, accepted, settings) {
                     Ok(player) => {
                         info!(
                             session_id = id,
@@ -247,8 +454,20 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                         );
                         engine = Some(player);
                         history = library_id.map(|key| HistorySession::new(id, key, resume_at));
+                        provider_history = provider.map(|key| {
+                            ProviderHistorySession::new(
+                                id,
+                                key.series_id,
+                                key.episode_id,
+                                key.source,
+                                key.resume_at,
+                            )
+                        });
                     }
-                    Err(e) => failed(&state, id, e),
+                    Err(e) => {
+                        health.lock().unwrap().failed(id, Instant::now());
+                        failed(&state, id, e);
+                    }
                 }
             }
             Some(Command::Stop(id)) => {
@@ -261,7 +480,11 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 }
                 end_cache_interval(&mut cache_since, "stopped");
                 finish(&mut history, &library, false);
-                release(&mut engine);
+                finish_provider(&mut provider_history, &provider_progress, false);
+                release(&mut engine, &health);
+                if let Some(session_id) = id {
+                    health.lock().unwrap().stopped(session_id, Instant::now());
+                }
                 state.lock().unwrap().player.clear(id);
                 info!(session_id=?id, "stopped");
             }
@@ -271,11 +494,45 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                     let _ = reply.send(Err("Playback session changed or is not ready".into()));
                     continue;
                 }
-                let result = engine
+                let mut result = engine
                     .as_mut()
                     .unwrap()
                     .control(request)
                     .map_err(|failure| failure.message);
+                // A native control is only considered successful when its new
+                // user preference was durably saved. On disk failure try to
+                // restore the previous native value and report the error.
+                if result.is_ok() {
+                    let persisted = match request {
+                        PlayerControl::SetRate(rate) => preferences.set_rate(rate).map(|_| ()),
+                        PlayerControl::SetVolume(volume) => {
+                            preferences.set_volume(volume).map(|_| ())
+                        }
+                        _ => Ok(()),
+                    };
+                    if let Err(error) = persisted {
+                        let before = preferences.snapshot().unwrap_or_default();
+                        let rollback = match request {
+                            PlayerControl::SetRate(_) => {
+                                Some(PlayerControl::SetRate(before.playback_rate))
+                            }
+                            PlayerControl::SetVolume(_) => {
+                                Some(PlayerControl::SetVolume(before.volume))
+                            }
+                            _ => None,
+                        };
+                        if let Some(old) = rollback {
+                            if let Err(failure) = engine.as_mut().unwrap().control(old) {
+                                tracing::warn!(
+                                    session_id = id,
+                                    stage = failure.stage,
+                                    "failed to restore native settings after persistence error"
+                                );
+                            }
+                        }
+                        result = Err(format!("播放器设置无法保存：{error}"));
+                    }
+                }
                 if result.is_ok() {
                     let mut shared = state.lock().unwrap();
                     match request {
@@ -296,7 +553,41 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                             _ => {}
                         }
                     }
+                    if let Some(active) = provider_history.as_mut().filter(|h| h.session == id) {
+                        match request {
+                            PlayerControl::SeekAbsolute(sec) => {
+                                active.seeked(&provider_progress, sec)
+                            }
+                            PlayerControl::Pause(true) => active.save(&provider_progress, false),
+                            _ => {}
+                        }
+                    }
                 }
+                let _ = reply.send(result);
+            }
+            Some(Command::Tracks { id, reply }) => {
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                let result =
+                    if current_id == Some(id) && engine.as_ref().map(|e| e.session) == Some(id) {
+                        Ok(engine.as_ref().unwrap().tracks())
+                    } else {
+                        Err("播放会话已变化或未加载完成".into())
+                    };
+                let _ = reply.send(result);
+            }
+            Some(Command::SelectTrack {
+                id,
+                kind,
+                track_id,
+                reply,
+            }) => {
+                let current_id = state.lock().unwrap().player.snapshot().session_id;
+                let result =
+                    if current_id == Some(id) && engine.as_ref().map(|e| e.session) == Some(id) {
+                        engine.as_mut().unwrap().select_track(kind, track_id)
+                    } else {
+                        Err("播放会话已变化或未加载完成".into())
+                    };
                 let _ = reply.send(result);
             }
             Some(Command::Close) => break,
@@ -307,6 +598,7 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                 let ms = current.opened.elapsed().as_millis() as u64;
                 match event {
                     Ok(Some(Observation::Loaded)) => {
+                        health.lock().unwrap().loaded(id, Instant::now());
                         info!(session_id = id, elapsed_ms = ms, "file-loaded");
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             if let Some(sec) = active.resume_at.take() {
@@ -322,15 +614,36 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                                 }
                             }
                         }
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id)
+                        {
+                            if let Some(sec) = active.resume_at.take() {
+                                if let Err(e) = current.control(PlayerControl::SeekAbsolute(sec)) {
+                                    tracing::warn!(session_id = id, error = %e.message, "provider resume seek failed");
+                                } else {
+                                    active.seeked(&provider_progress, sec);
+                                    info!(
+                                        session_id = id,
+                                        position_sec = sec,
+                                        "provider resume seek accepted"
+                                    );
+                                }
+                            }
+                        }
                     }
                     Ok(Some(Observation::Restart)) => {
+                        health.lock().unwrap().restart(id, Instant::now());
                         info!(session_id = id, elapsed_ms = ms, "playback-restart");
                         state.lock().unwrap().player.mark_started(id);
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             active.started(&library);
                         }
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id)
+                        {
+                            active.started(&provider_progress);
+                        }
                     }
                     Ok(Some(Observation::CacheWaiting(waiting))) => {
+                        health.lock().unwrap().buffer(id, waiting, Instant::now());
                         if waiting {
                             if cache_since.is_none() {
                                 cache_since = Some((id, Instant::now()));
@@ -356,7 +669,9 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                     Ok(Some(Observation::End)) => {
                         end_cache_interval(&mut cache_since, "ended");
                         finish(&mut history, &library, true);
-                        release(&mut engine);
+                        finish_provider(&mut provider_history, &provider_progress, true);
+                        health.lock().unwrap().ended(id, Instant::now());
+                        release(&mut engine, &health);
                         state
                             .lock()
                             .unwrap()
@@ -366,7 +681,9 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                     Err(e) => {
                         end_cache_interval(&mut cache_since, "error");
                         finish(&mut history, &library, false);
-                        release(&mut engine);
+                        finish_provider(&mut provider_history, &provider_progress, false);
+                        health.lock().unwrap().failed(id, Instant::now());
+                        release(&mut engine, &health);
                         failed(&state, id, e);
                     }
                     Ok(Some(Observation::Progress { position, duration })) => {
@@ -378,6 +695,10 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
                         if let Some(active) = history.as_mut().filter(|h| h.session == id) {
                             active.progress(&library, position, duration);
                         }
+                        if let Some(active) = provider_history.as_mut().filter(|h| h.session == id)
+                        {
+                            active.progress(&provider_progress, position, duration);
+                        }
                     }
                     Ok(None) => {}
                 }
@@ -386,8 +707,10 @@ fn run(host: isize, rx: Receiver<Command>, state: Arc<Mutex<Shared>>, library: A
     }
     let started = Instant::now();
     end_cache_interval(&mut cache_since, "closed");
+    health.lock().unwrap().closed(Instant::now());
     finish(&mut history, &library, false);
-    release(&mut engine);
+    finish_provider(&mut provider_history, &provider_progress, false);
+    release(&mut engine, &health);
     info!(
         elapsed_ms = started.elapsed().as_millis() as u64,
         "player worker exited"

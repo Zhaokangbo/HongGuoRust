@@ -245,13 +245,22 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
     process = subprocess.Popen([exe])
     try:
         main = until(lambda: owned_window(process.pid), "main HWND", 90)
-        child = until(lambda: find(main,None,"Static","HongGuoRust video"), "video HWND")
         ui = Desktop(backend="uia").window(handle=main)
         def text_visible(name):
             return ui.child_window(title=name,control_type="Text").exists(timeout=.3)
         def button(name):
             return ui.child_window(title=name,control_type="Button").wrapper_object()
-        until(lambda: text_visible("Idle"), "IPC Idle", 90)
+        # UI-3 starts in the browse-first Home surface. Verify Home, then use
+        # a physical UI click so WebView2 dispatches the same event as a user.
+        home = ui.child_window(title="首页", control_type="Button")
+        player_entry = ui.child_window(title="播放器", control_type="Button")
+        until(lambda: home.exists(timeout=.3), "browse-first Home navigation", 90)
+        until(lambda: player_entry.exists(timeout=.3) and player_entry.is_enabled(),
+              "enabled player surface entry", 90)
+        foreground(main)
+        player_entry.wrapper_object().click_input()
+        until(lambda: text_visible("Idle"), "IPC Idle after opening player", 90)
+        child = until(lambda: find(main,None,"Static","HongGuoRust video"), "visible video HWND", 30)
         def select(path):
             until(lambda: button("打开本地 MP4").is_enabled(), "available file picker")
             button("打开本地 MP4").invoke()

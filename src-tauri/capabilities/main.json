@@ -1,6 +1,8 @@
 {
   "identifier": "main",
-  "description": "Local desktop window",
-  "windows": ["main"],
-  "permissions": []
+  "description": "Local desktop windows",
+  "windows": ["main", "overlay"],
+  "permissions": [
+    "core:event:default"
+  ]
 }
