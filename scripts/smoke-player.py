@@ -49,7 +49,8 @@ def wait_for_managed_sidecar(process, timeout=25):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            children = process.children(recursive=True)
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
             node = next((child for child in children
                          if "node" in child.name().lower() and
                          any("server.mjs" in arg.lower() for arg in child.cmdline())), None)
