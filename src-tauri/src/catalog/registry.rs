@@ -108,8 +108,8 @@ impl CatalogService {
         community_token: Option<String>,
     ) -> Self {
         Self::from_providers(vec![
-            Box::new(OwnedManifestProvider::new(manifest)),
             Box::new(HgCommunityProvider::managed(community_token)),
+            Box::new(OwnedManifestProvider::new(manifest)),
         ])
         .expect("desktop provider IDs must be unique and valid")
     }

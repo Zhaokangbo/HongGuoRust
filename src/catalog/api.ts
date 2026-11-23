@@ -64,16 +64,18 @@ export function catalogErrorMessage(reason: unknown): string {
   if (value.includes("hgcommunity_sidecar_offline")) return "本机红果内容服务已断开，请关闭并重新启动 HongGuoRust。";
   if (value.includes("hgcommunity_sdk_RATE_LIMITED")) return "红果上游请求受限，请稍后再试，避免频繁刷新";
   if (value.includes("hgcommunity_sdk_ANONYMOUS_LIMITED")) return "红果上游匿名访问受限，暂时无法获取该作品";
-  if (value.includes("hgcommunity_sdk_AUTHENTICATION_REQUIRED")) return "该作品需要授权登录，当前实验模式不支持";
+  if (value.includes("hgcommunity_sdk_AUTHENTICATION_REQUIRED")) return "该作品需要平台账号授权；本客户端不处理官方登录或授权绕过";
   if (value.includes("hgcommunity_sdk_CONTENT_UNAVAILABLE")) return "该作品暂不可访问，可能已下架或无访问权限";
   if (value.includes("hgcommunity_sdk_TRANSPORT")) return "红果上游网络请求失败，请检查网络和代理配置";
   if (value.includes("hgcommunity_sdk_CHALLENGE_REQUIRED") ||
       value.includes("hgcommunity_sdk_SIGNATURE_REJECTED") ||
       value.includes("hgcommunity_sdk_DEVICE_REJECTED"))
-    return "社区 SDK 访问受到上游验证限制，实验模式不会绕过";
+    return "红果上游要求额外验证；本客户端不会尝试绕过验证";
   if (value.includes("hgcommunity_sdk_") || value.includes("hgcommunity_http_503"))
     return "红果内容服务暂不可用（503），请稍后重试；未自动重复请求";
-  if (value.includes("hgcommunity_timeout")) return "社区 SDK 请求超时，请检查网络，不要反复刷新";
+  if (value.includes("hgcommunity_timeout")) return "红果内容服务请求超时，请检查网络，不要反复刷新";
+  if (value.includes("hgcommunity_play_disabled")) return "当前仅启用真实目录浏览；播放需要用户明确配置媒体域名 allowlist";
+  if (value.includes("hgcommunity_unapproved_media_host")) return "该媒体域名尚未获得本机播放许可";
   if (value.includes("series_not_found:")) return "该内容已不存在，请刷新列表";
   if (value.includes("invalid_query:")) return "搜索内容过长，请缩短关键词";
   if (value.includes("manifest_")) return value.replace(/^.*?(manifest_[a-z]+:)/, "清单错误：");

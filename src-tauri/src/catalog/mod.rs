@@ -1,5 +1,5 @@
-//! Content-provider boundary for M6. No scraping and no third-party credentials.
-//! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
+//! Content-provider boundary. The desktop product uses the managed real community
+//! source and user-owned manifest; LocalDemoProvider remains isolated to tests/legacy.
 
 mod hgcommunity;
 #[allow(dead_code)]

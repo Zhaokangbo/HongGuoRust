@@ -314,7 +314,7 @@ function App() {
     await loadQueuedItem(playlist.ids, targetIndex, playlist.origin);
   }
 
-  async function playUnqueued(name: "open_local" | "open_https" | "stop",
+  async function playUnqueued(name: "open_local" | "stop",
     args?: Record<string, unknown>) {
     if (transitionRef.current) return;
     transitionRef.current = true;

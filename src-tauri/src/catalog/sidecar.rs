@@ -148,14 +148,18 @@ fn valid_ready_token(value: &str) -> bool {
 }
 
 fn log_safe_line(line: &str) {
-    if line.starts_with("HG2B_COVER_DIAG ") || line.starts_with("HG2B_DETAIL_DIAG ") {
-        tracing::info!(target: "community_sidecar", "{}", line);
+    // Never forward arbitrary child output: SDK diagnostics can evolve and
+    // must not accidentally expose signed URLs, identifiers or session data.
+    if line.starts_with("HG2B_COVER_DIAG ") {
+        tracing::info!("community cover diagnostics emitted");
+    } else if line.starts_with("HG2B_DETAIL_DIAG ") {
+        tracing::info!("community detail diagnostics emitted");
     } else if line.starts_with("HG2A_PORT_IN_USE")
         || line.starts_with("HG2A_LISTEN_FAILED")
         || line.starts_with("HG3_STARTUP_ERROR")
         || line.starts_with("HG2A startup failed")
     {
-        tracing::warn!(target: "community_sidecar", "{}", line);
+        tracing::warn!("community SDK sidecar reported a startup error");
     }
 }
 

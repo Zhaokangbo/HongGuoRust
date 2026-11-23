@@ -1,8 +1,7 @@
-//! HG-2A optional community SDK provider, powered by a separate opt-in local
-//! Node bridge. This is NOT an official HongGuo API or a licensed content source.
-//! All traffic from the Tauri client stays on fixed 127.0.0.1:19091; the
-//! optional Node SDK process handles its own upstream API requests.
-//! Production release builds never register this experimental adapter.
+//! Nonofficial openhongguo community provider, hosted by the desktop-managed
+//! Node sidecar. This is NOT an official HongGuo API or a licensed content source.
+//! All Rust traffic stays on fixed 127.0.0.1:19091; the Node SDK process handles
+//! upstream requests. The desktop runtime registers this source by default.
 use super::request::RequestContext;
 use super::{ContentProvider, Episode, MediaTarget, Series, SeriesDetail};
 use serde_json::Value;
@@ -112,14 +111,16 @@ impl HgCommunityProvider {
         (48..=128).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
     }
 
-    fn configured_hosts() -> HashSet<String> {
-        std::env::var("HONGGUORUST_HG3_MEDIA_HOSTS")
-            .or_else(|_| std::env::var("HONGGUORUST_HG2A_MEDIA_HOSTS"))
-            .unwrap_or_default()
+    fn parse_hosts(value: &str) -> HashSet<String> {
+        value
             .split(',')
-            .map(|value| value.trim().to_ascii_lowercase())
-            .filter(|value| is_host(value))
+            .map(|host| host.trim().to_ascii_lowercase())
+            .filter(|host| is_host(host))
             .collect()
+    }
+
+    fn configured_hosts() -> HashSet<String> {
+        Self::parse_hosts(&std::env::var("HONGGUORUST_HG3_MEDIA_HOSTS").unwrap_or_default())
     }
 
     /// Register the personal-use source even when its managed Node process
@@ -139,7 +140,10 @@ impl HgCommunityProvider {
         if !Self::valid_token(&token) {
             return None;
         }
-        Some(Self::managed(Some(token)))
+        let hosts = Self::parse_hosts(
+            &std::env::var("HONGGUORUST_HG2A_MEDIA_HOSTS").unwrap_or_default(),
+        );
+        Some(Self { token: Some(token), hosts })
     }
 
     fn get_json(&self, path: &str, context: Option<&RequestContext>) -> Result<Value, String> {

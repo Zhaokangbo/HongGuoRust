@@ -63,7 +63,7 @@ jobs:
           Copy-Item 'src-tauri/target/debug/hongguorust.exe' -Destination $package
           Copy-Item (Get-Command node.exe -ErrorAction Stop).Source -Destination (Join-Path $package 'node.exe')
           Copy-Item 'scripts/hg2a-sdk' -Destination (Join-Path $package 'hg2a-sdk') -Recurse
-          Copy-Item (Join-Path $env:MPV_RUNTIME_DIR 'libmpv-2.dll') -Destination $package
+          Get-ChildItem -Path $env:MPV_RUNTIME_DIR -Filter '*.dll' -File | Copy-Item -Destination $package
           Copy-Item 'scripts/prepare-mpv-msvc.ps1' -Destination $package
           Copy-Item 'scripts/check-ffmpeg-build.ps1' -Destination $package
           Copy-Item 'docs/acceptance/run-windows.md' -Destination $package
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: HongGuoRust-HG3A-Windows-Debug
-          path: \${{ runner.temp }}/HongGuoRust-HG3A-Windows-x64/
+          path: ${{ runner.temp }}/HongGuoRust-HG3A-Windows-x64/
           if-no-files-found: error
           retention-days: 30
       # Hosted runner cannot apply 150% scaling to its active desktop session.
