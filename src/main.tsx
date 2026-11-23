@@ -27,6 +27,19 @@ function clock(value?: number): string {
   return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
 }
 
+function playerStateLabel(state: PlayerSnapshot["state"] | undefined): string {
+  switch (state) {
+    case "Idle": return "播放器空闲";
+    case "Loading": return "正在加载媒体";
+    case "Playing": return "正在播放";
+    case "Paused": return "已暂停";
+    case "Buffering": return "正在缓冲";
+    case "Ended": return "播放结束";
+    case "Error": return "播放失败";
+    default: return "播放器连接中";
+  }
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState<PlayerSnapshot | null>(null);
   const [connectionError, setConnectionError] = useState("");
@@ -556,6 +569,9 @@ function App() {
         </span>
       </div>
     </header>
+    <span className="player-state-announcer" role="status" aria-live="polite">
+      {playerStateLabel(snapshot?.state)}
+    </span>
     {catalogOpen
       ? <CatalogView onBack={backToPlayer} onPlay={playFromCatalog} onPlayLocal={playFromLocal} playerError={commandError} />
       : <section aria-label="视频画面" />}
