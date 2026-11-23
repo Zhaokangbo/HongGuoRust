@@ -14,6 +14,7 @@ import os
 import json
 import tempfile
 import time
+import socket
 import math
 from array import array
 
@@ -42,6 +43,26 @@ def owned_window(pid):
         if owner.value == pid:
             return hwnd
     return None
+
+def wait_for_managed_sidecar(process, timeout=25):
+    """Fail CI if the desktop did not start its bundled real-content sidecar."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            children = process.children(recursive=True)
+            node = next((child for child in children
+                         if "node" in child.name().lower() and
+                         any("server.mjs" in arg.lower() for arg in child.cmdline())), None)
+            if node and node.is_running():
+                with socket.create_connection(("127.0.0.1", 19091), timeout=0.5):
+                    print("PASS: managed openhongguo sidecar is listening on 127.0.0.1:19091",
+                          flush=True)
+                    return
+        except (OSError, psutil.Error):
+            pass
+        time.sleep(0.15)
+    raise RuntimeError("Managed openhongguo sidecar did not start or listen on 127.0.0.1:19091")
+
 
 def check_output_endpoint():
     # Only sample the isolated hosted runner; do not capture a developer's desktop audio.
@@ -245,6 +266,7 @@ def run(exe, clip, second, corrupt, short_clip, detailed):
     process = subprocess.Popen([exe])
     try:
         main = until(lambda: owned_window(process.pid), "main HWND", 90)
+        wait_for_managed_sidecar(process)
         ui = Desktop(backend="uia").window(handle=main)
         def text_visible(name):
             return ui.child_window(title=name,control_type="Text").exists(timeout=.3)
