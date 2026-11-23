@@ -1,45 +1,71 @@
 # HongGuoRust
 
-面向 Windows 10/11 x64 的开源桌面媒体客户端。React 处理展示与交互，Rust 通过 Tauri 2 IPC 提供播放状态、控制和资源生命周期。项目采用 GPL-3.0-only。
+面向 Windows 10/11 x64 的开源桌面影院与剧集播放客户端。基于 **Rust + Tauri 2 + libmpv + React/TypeScript** 构建，采用暗黑影院风格界面与透明悬浮播放控制层，支持本地视频、WebDAV 媒体库与远程/本地 JSON 剧集订阅清单。项目采用 `GPL-3.0-only` 协议开源。
 
-## 开发状态与路线图
+## 运行截图
 
-| 阶段 | 交付 |
-| --- | --- |
-| M0 | 仓库、许可证和架构基线 |
-| M1 | 单窗口桌面应用，读取 Rust Idle 快照 |
-| M2 | libmpv 本地 MP4、首帧及关闭验证 |
-| M3 | 公开测试视频和播放控制 |
-| M4 | 播放状态、可靠性测试和日志 |
-| M5 | Windows x64 本机安装包验收（源码已合入，公开分发仍受 Issue #7 约束） |
-| M6 | Provider 演示目录与本地 MP4 媒体库（已合入） |
-| M7 | 播放历史、断点续播、收藏夹与进度可视化（已合入） |
-| M8–M14 | 搜索与列表 → 合法 Provider 扩展 → 短剧业务闭环 → 播放体验 → 稳定性 → 发布 → 长期扩展，详见 [产品路线图](docs/roadmap.md) |
+### 首页与片库发现
+![HongGuoRust 首页截图](docs/screenshots/home.jpg)
 
-目前 Windows 客户端由 Rust 独占 libmpv 会话，支持本地 MP4、用户提供的公开 HTTPS MP4、暂停/继续、Seek、倍速、音量和全屏，并具备面向缓冲的七态播放状态机。运行未安装版仍需要配套 `libmpv-2.dll`。M5 源码及本机安装验收已完成，但**仍未完成干净 Windows 10/11 环境验收及第三方依赖对应源码/许可证合规，不发布公开安装器**；公开分发阻断项见 [Issue #7](https://github.com/Zhaokangbo/HongGuoRust/issues/7)。M6–M8 已合入本地媒体库、观看历史、断点续播、收藏、搜索排序及自动连播；M9-A 已完成演示/本地媒体统一 Content Provider 注册与搜索；M9-B1 已完成请求超时、取消与错误恢复；M9-B2 已完成用户自有 JSON 媒体清单 Provider，M9 阶段既定功能均已验收合并。M10-A 首页与分类发现已通过 Windows 11/11 项实机验收并合入 main；M10-B 正在开发显式上一集/下一集切换与自然完播提示。详见 [M4 验收](docs/acceptance/m4.md)、[M5 打包验收](docs/acceptance/m5.md)、[本机启动说明](docs/acceptance/run-windows.md)、[许可证评估](docs/architecture/licensing.md)。
+### 透明悬浮播放控制条
+![HongGuoRust 播放界面截图](docs/screenshots/player.jpg)
 
-## Windows 开发构建
+## 当前功能
 
-准备 VS 2022 的 C++ 桌面开发工具及 Windows SDK、Rust stable MSVC x64、Node.js 24 LTS（也支持 22.12 以上的 22 LTS）和 WebView2 Runtime。项目已提交 npm 和 Cargo 锁文件。在项目根目录执行以下命令。
+- **暗黑影院风格界面**
+  - 原生 Windows 暗色标题栏与自定义应用图标，与 `#141414` 界面无缝融合。
+  - 首页包含焦点大图（Hero Billboard）、横向滚动的「继续观看」与题材海报轨道、来源/题材筛选及全局搜索。
+  - 剧集详情页支持简介展开、全剧观看进度总览、按集数/标题精确搜索、观看状态筛选与正倒序排列。
+- **原生 `libmpv` 播放与透明叠加控制层**
+  - 由 Rust 独占管理 `libmpv` 播放会话，视频铺满主窗口，控制条通过透明从属叠加窗口浮于画面之上。
+  - 播放时鼠标静止自动隐藏控制条与光标；支持单击播放/暂停、双击全屏、悬停进度条实时缩略图预览、`0.5×–2.0×` 倍速、音量与静音记忆、多音轨/字幕切换、右侧滑出式选集抽屉及完整键盘快捷键。
+  - 自动读取 Windows 系统 HTTP 代理用于外网 HTTPS 流媒体播放，局域网与本机地址自动直连。
+- **多来源内容接入**
+  - **本地视频库**：管理本机视频，记录观看历史、断点续播与收藏；支持 **Windows 资源管理器右键「打开方式」** 直接播放（支持 `.mp4`、`.mkv`、`.mov`、`.m4v`、`.webm`、`.avi`、`.flv`、`.ts`）。
+  - **WebDAV 媒体库**：兼容 Alist / OpenList、群晖/飞牛 NAS、Nextcloud、rclone 等标准 WebDAV 服务，支持 Basic 认证，自动将文件夹结构聚合成多集剧集并按自然集数排序，直接流式播放与断点续播。
+  - **远程与本地 JSON 清单**：支持粘贴公开 HTTPS JSON 链接订阅并一键刷新，或导入本地 `.json` 清单（支持 `coverUrl` 海报配置；仓库附带开源电影示例 [open-cinema-manifest.json](docs/fixtures/open-cinema-manifest.json)）。
+- **自动视频帧封面缓存**
+  - 无海报图的本地视频、清单影片与 WebDAV 视频会在后台自动抽取视频帧作为封面和首页背景，并缓存于本机 `%LOCALAPPDATA%\HongGuoRust\thumbnails`。
+- **统一「我的收藏」与「观看历史」**
+  - 支持在首页、片库与详情页一键收藏任意来源剧集与本地视频，集中管理并持久化保存于本机应用数据目录。
+
+## 下载与安装（Windows x64）
+
+前往 [GitHub Releases](https://github.com/Zhaokangbo/HongGuoRust/releases) 下载最新版本（均已内置 `libmpv-2.dll` 与 `vulkan-1.dll` 运行时，安装/解压即可直接使用）：
+
+- **安装版（推荐）**：`HongGuoRust-*-windows-x64-setup.exe` — 双击安装，自动创建开始菜单快捷方式并注册视频文件右键「打开方式」关联。
+- **绿色便携版**：`HongGuoRust-*-windows-x64-portable.zip` — 解压后直接双击 `hongguorust.exe` 运行。
+
+> 提示：应用首次运行时若系统尚未安装 Microsoft Edge WebView2 Runtime，安装程序会自动引导补装。
+
+## Windows 本地开发与构建
+
+环境要求：Visual Studio 2022（C++ 桌面开发工具与 Windows SDK）、Rust stable MSVC x64、Node.js 22.12+ / 24 LTS、WebView2 Runtime。
 
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 cargo install tauri-cli --version 2.11.4 --locked
-.\scripts\check-windows.ps1
+
+# 1. 准备 libmpv 运行时与 MSVC 导入库
 $native = Join-Path $env:TEMP 'HongGuoRust-mpv'
 .\scripts\prepare-mpv-msvc.ps1 -Destination $native
 $env:LIB = "$native;$env:LIB"
 $env:PATH = "$native;$env:PATH"
-npm ci
-npm run tauri -- dev
+
+# 2. 安装前端依赖并启动开发模式
+npm.cmd ci
+cargo tauri dev
 ```
 
-构建并运行桌面可执行文件：
+编译独立桌面版可执行文件：
 
 ```powershell
-npm run tauri -- build --no-bundle -- --locked
+npm.cmd install --prefix .\scripts\hg2a-sdk --ignore-scripts
+cargo tauri build --no-bundle -- --locked
+Copy-Item "$native\libmpv-2.dll" .\src-tauri\target\release\ -Force
 .\src-tauri\target\release\hongguorust.exe
 ```
 
-## 非官方声明
+## 非官方与内容声明
 
-HongGuoRust 为独立开发的非官方项目，与红果及相关平台无隶属或合作关系。输入范围为用户选择的本地媒体和公开测试视频。仓库不分发第三方媒体。
+HongGuoRust 为独立开发的非官方开源桌面播放器，与红果及相关平台无隶属或合作关系。软件本身不内置、不抓取、不解密也不分发第三方受版权保护的媒体内容；所有本地文件、WebDAV 服务与 JSON 订阅清单均由用户自行配置并确认合法使用权限。
