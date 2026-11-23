@@ -458,7 +458,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
         上游可能限流或调整；不提供官方账号登录、付费内容访问或受保护媒体解密。未明确允许的媒体域名不会播放。</p>
     </div>}
 
-    {!detail && mode === "demo" && sourceId !== "hongguo" && <form className="catalog-search" onSubmit={submit}>
+    {!detail && mode === "demo" && <form className="catalog-search" onSubmit={submit}>
       <span className="catalog-search-icon" aria-hidden="true">⌕</span>
       <input type="search" value={input} onChange={event => setInput(event.target.value)}
         placeholder="搜索作品名称、类型或关键词" aria-label="搜索内容" maxLength={128} />
@@ -504,7 +504,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           <CoverImage url={detail.series.coverUrl} diagnostic={detail.series.providerId === "hgcommunity"} eager />
           <span>{detail.series.providerId === "manifest" ? "自有清单"
             : detail.series.providerId === "local" ? "本地媒体"
-              : detail.series.providerId === "hgcommunity" ? "红果短剧" : "演示内容"}</span>
+              : detail.series.providerId === "hgcommunity" ? "红果短剧" : "未知内容源"}</span>
         </div>
         <div className="catalog-detail-body">
           <div className="catalog-detail-kicker">
@@ -652,9 +652,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
           onPlayProvider={playRecentProvider} onPlayLocal={playRecentLocal} />
       : loading ? <p className="catalog-empty" role="status">正在加载内容…</p>
       : items.length === 0 ? <p className="catalog-empty">
-        {sourceId === "hongguo"
-          ? "红果接入接口尚未授权，当前不提供真实作品搜索或播放。已完成可扩展的 Provider 接入入口。"
-          : "没有匹配的内容，试试“城市”或“自然”。"}
+        没有找到符合条件的真实作品。请调整关键词或稍后重试。
       </p>
       : <div className="catalog-results">
         <div className="catalog-results-heading">
@@ -669,7 +667,7 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
                 eager={index < 10} priority={index < 3} />
               <span className="catalog-card-source">{item.providerId === "manifest" ? "自有清单"
                 : item.providerId === "local" ? "本地媒体"
-                  : item.providerId === "hgcommunity" ? "社区 SDK · 实验" : "演示内容"}</span>
+                  : item.providerId === "hgcommunity" ? "红果短剧" : "未知内容源"}</span>
               <span className="catalog-card-hover">查看详情 <i aria-hidden="true">→</i></span>
             </span>
             <strong>{item.title}</strong>
@@ -683,7 +681,6 @@ export function CatalogView({ onBack, onPlay, onPlayLocal, playerError }: Props)
       <button type="button" disabled={working || loadingMore}
         onClick={() => void loadMore()}>{loadingMore ? "正在加载..." : "加载更多"}</button>
     </div>}
-    {mode === "demo" && <p className="catalog-disclaimer">演示内容仅用于功能验证；本地来源只读取你主动添加的 MP4。自有清单仅接收用户选择的 JSON，引用公开 HTTPS MP4，导入前请确认内容使用权限；不会扫描或上传本地视频。</p>}
     </div>
   </section>;
 }
