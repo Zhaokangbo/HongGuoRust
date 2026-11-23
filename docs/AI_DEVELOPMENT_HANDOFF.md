@@ -308,7 +308,7 @@
 - 创建 UI-5 分支 `feat/ui-5-detail-player-experience`，从 UI-4 最终验收 HEAD `505884454f503d21f0e28b9f27a0360cc14939c1` 派生；Draft PR #38 base `main`，HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af`。PR 目标为 main，以满足 Windows M1/M2 PR workflow 触发条件；其变更是包含 UI-4 的 cumulative stacked diff。
 - UI-5 代码已实现详情页简介展开/收起、剧集观看进度摘要、精确集数/标题搜索、未完播/已看完/上游不可播放筛选、正倒序、上次观看集 resume-target 高亮和空结果恢复；播放器控制栏分组、静音/恢复上次非零音量、控件无障碍标签与响应式样式。新增纯逻辑测试 `tests/detail-episodes.test.mjs` 和 `tests/player-volume.test.mjs` 并加入 `npm run build`。新增 20 项 `docs/acceptance/ui-5.md`。
 - UI-5 的前一轮 M1 run `45052537233` / job `137300639793` 与 M2 run `45052537024` / job `137300639209`，均对应已过期 HEAD `a7b3b4854c55985f1e4508b52c4f5bffbdb35452`，失败点相同：`npm run build` 的 `test:detail-episodes` 运行时加载 `detailEpisodes.ts` 时误引入 extensionless `recentActivity`，Node 24 报 `ERR_MODULE_NOT_FOUND`；M1/M2 的 npm ci、typecheck 和此前测试通过，失败发生在 detail-episodes 测试。已在后续代码提交中移除运行时依赖，把进度百分比逻辑内聚到 `detailEpisodes.ts`，并把集数正则解析移到循环外；当前代码树 commit `6e110f19ea56d752673f40401cfddeddc1de352c`。随后创建了空验证提交 `3555bb3733afb28c2bce41dda76f9b602fb2a2af`（树与 `6e110f1` 相同），PR #38 head 已更新到该 SHA。
-- 当前精确 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af` 的 check-runs 为 0、commit workflow runs 为 0；尚无对应 Windows M1/M2 run 或可用 artifact。GitHub connector 不提供 workflow_dispatch 操作；Contents/Git ref 更新后也未观察到新 Actions run。仓库 `.github/workflows/windows.yml`（Windows M1）和 `mpv-probe.yml`（Windows M2 playback）都已启用 `workflow_dispatch`。下一步请用户在 GitHub Actions 页面分别对这两个 workflow 选择 branch `feat/ui-5-detail-player-experience` 并点击 Run workflow，或从本机该分支 push 一个空提交触发 `pull_request:synchronize`；随后用户通知后再一次性核对精确 HEAD。不要把旧 SHA 失败 run 误认为当前 HEAD 结果。
+- 上述“当前精确 HEAD 尚无 workflow run”是 CI 手动触发前的历史状态，已由 2026-11-23 的最新验收记录覆盖；请以本文件末尾的 UI-5 M1/M2 双绿结果为准。
 - 当前代码树的两组新增纯逻辑测试已在 Node 22.16.0 环境重新运行 **8/8 passed**。这是独立测试结果，不代表完整仓库 `npm run build`、TypeScript typecheck、Windows CI 或实机验收通过。20 项 Windows 实机验收 pending；没有生成/交付 UI-5 Debug artifact。保持 PR #31/#32/#33/#34/#36/#37/#38 Draft / unmerged，不合并任何 PR。
 
 
@@ -320,3 +320,11 @@
 - 在 Node `v22.16.0` 容器中，使用 exact current source tree 的 `tests/detail-episodes.test.mjs` 与 `tests/player-volume.test.mjs` 重跑：**8/8 passed**。此结果只覆盖两组纯逻辑测试，不等同于完整 `npm run build`、TypeScript、Windows M1/M2 或 Windows 实机验收。
 - 工作流入口已确认：`.github/workflows/windows.yml` 的 Windows M1 与 `.github/workflows/mpv-probe.yml` 的 Windows M2 playback 都支持 `workflow_dispatch`。GitHub connector 当前没有 dispatch action；下一步由用户在 GitHub Actions 分别手动 Run workflow，branch 选择 `feat/ui-5-detail-player-experience`（当前 head `3555bb3733afb28c2bce41dda76f9b602fb2a2af`），或从本机该分支 push 空提交触发 `pull_request:synchronize`。用户通知 CI 已启动/完成后，仅核对一次 exact-head M1/M2。双绿后再下载同 SHA M2 Debug artifact、校验 ZIP/EXE SHA256、准备隔离测试包。
 - UI-5 Windows 实机验收 20 项尚未开始；PR #38 保持 Draft，不合并。PR #37 UI-4 仍 Draft / unmerged，用户已确认 21/21 实机通过；不得因验收通过自动合并。
+
+
+### 2026-11-23 UI-5 exact-head Windows CI 双绿，Debug 验收包已交付
+
+- 用户完成 GitHub Actions 手动触发后，已对 PR #38 当前精确 HEAD `3555bb3733afb28c2bce41dda76f9b602fb2a2af` 核对：Windows M1 run `45125244595` / job `137527980283` **success**；Windows M2 Playback run `45125262756` / job `137528032674` **success**。两条均为 `workflow_dispatch`，branch `feat/ui-5-detail-player-experience`，head SHA 与 PR 完全一致。M1 的 npm build、cargo fmt/tests、Tauri build、IPC/正常退出、依赖锁文件检查全部通过；M2 的 npm build、两类 npm audit、Rust tests、libmpv runtime/FFmpeg probe、Debug build、pixel/window-close 测试全部通过。条件性 tag jobs skipped 是预期行为，因这不是 main push。
+- M2 artifact `HongGuoRust-M2-debug-x64`，artifact ID `14795486864`，run `45125262756`，有效期至 `2027-02-21T06:36:41Z`。ZIP SHA-256：`0768e248a886f2b2f40547a5318a3ba7498a44b5b289d1c6052f4642ae0bb6c9`；内部 `hongguorust.exe` SHA-256：`e59bb08e962ce069ff90b40ebbce03ab26c40f79ec2004a122e44ee1d4d5928c`。
+- 已生成隔离验收包 `/mnt/data/HongGuoRust-UI5-Windows-x64.zip`，包含 M2 Debug EXE、固定版本并校验 SHA256 的 `get-mpv.ps1`、隔离 `LOCALAPPDATA`/WebView2 profile 的 `Start-UI5-Test.ps1`、中文 20 项验收清单、README 与 SHA256SUMS。最终 ZIP SHA-256：`a6d51f145ee489ac55c4e64e29f345241428193eb0333bd4ca4f9db08ce23c17`。已通过 unzip 列表检查并验证 EXE PE32+ x64。
+- 用户已获得测试包链接；当前待办转为用户在真实 Windows 桌面上完成 `docs/acceptance/ui-5.md` 的 20 项人工验收并反馈结果。CI 通过不替代真实设备/显示缩放验收。PR #38 保持 Open / Draft / unmerged；不自动合并任何堆叠 PR。
