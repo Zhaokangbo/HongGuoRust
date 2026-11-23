@@ -55,6 +55,40 @@ jobs:
           name: HongGuoRust-M2-debug-x64
           path: src-tauri/target/debug/hongguorust.exe
           if-no-files-found: error
+      - name: Stage the self-contained HG-3A Windows debug package
+        shell: pwsh
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'HongGuoRust-HG3A-Windows-x64'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item 'src-tauri/target/debug/hongguorust.exe' -Destination $package
+          Copy-Item (Get-Command node.exe -ErrorAction Stop).Source -Destination (Join-Path $package 'node.exe')
+          Copy-Item 'scripts/hg2a-sdk' -Destination (Join-Path $package 'hg2a-sdk') -Recurse
+          Copy-Item (Join-Path $env:MPV_RUNTIME_DIR 'libmpv-2.dll') -Destination $package
+          Copy-Item 'scripts/prepare-mpv-msvc.ps1' -Destination $package
+          Copy-Item 'scripts/check-ffmpeg-build.ps1' -Destination $package
+          Copy-Item 'docs/acceptance/run-windows.md' -Destination $package
+          Copy-Item 'docs/acceptance/hg3a.md' -Destination $package
+          Copy-Item 'docs/architecture/hg2a-community-sdk-integration.md' -Destination $package
+          @(
+            'HongGuoRust HG-3A Windows x64 debug package',
+            '',
+            'Run hongguorust.exe directly. Do not launch a PowerShell sidecar script.',
+            'The app starts and stops its bundled Node/openhongguo service automatically.',
+            'Keep node.exe, hg2a-sdk, and libmpv-2.dll beside hongguorust.exe.',
+            'The community SDK is unofficial and restricted to personal, non-commercial learning use.',
+            'Only public catalogue metadata and covers are enabled by default.',
+            'Protected media is never decrypted. Playback requires an explicit media-host allowlist.',
+            'See hg3a.md for the Windows acceptance checklist.'
+          ) | Set-Content -Path (Join-Path $package 'README-HG3A.txt') -Encoding utf8
+          Get-FileHash (Join-Path $package 'hongguorust.exe') -Algorithm SHA256
+          Get-FileHash (Join-Path $package 'node.exe') -Algorithm SHA256
+          Get-FileHash (Join-Path $package 'libmpv-2.dll') -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HongGuoRust-HG3A-Windows-Debug
+          path: \${{ runner.temp }}/HongGuoRust-HG3A-Windows-x64/
+          if-no-files-found: error
+          retention-days: 30
       # Hosted runner cannot apply 150% scaling to its active desktop session.
       # The 150% display and restore checks are verified on physical Windows.
       - name: Test embedded pixels and playing-window close

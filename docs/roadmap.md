@@ -274,6 +274,26 @@ HongGuoRust 是面向 Windows 10/11 x64 的开源桌面媒体客户端。React/T
 **M8、M9 和 M10-A 已验收合并 → M10-B 选集切换 → M10-C 续看 → M11 播放体验 → M12 稳定性 → M13 合规发布 → M14 可选扩展**。
 
 
+## HG-3：红果真实内容接入（当前迭代）
+
+### HG-3A：托管真实内容源与移除演示入口（开发中）
+
+- 从 UI-5 精确 HEAD 派生独立 Draft PR；不合并此前任何 Draft PR。
+- Tauri 自动管理本机 Node/openhongguo Sidecar，使用一次性 256-bit token 握手；启动失败时显式报错，不回退到模拟数据。
+- 默认剧库只注册真实社区 SDK Provider 与用户自有 JSON 清单；正式界面隐藏演示内容、旧的待授权占位源和播放器测试直链入口。开发测试夹具继续保留在自动化测试中。
+- Windows Debug 包携带 Node.js 运行时、openhongguo/封面依赖和 libmpv DLL；用户直接启动 EXE，不再运行 PowerShell Sidecar 启动器。
+- 只浏览真实目录与封面；播放仍需用户显式设置媒体主机 allowlist，且仅允许未受保护的 HTTPS MP4。任何受保护内容不解密、不绕过登录或付费限制。
+- 验收前置：同一 HEAD 的 Windows M1/M2 CI 全绿；用户 Windows 实机验证 Sidecar 启停、真实内容加载、海报、详情/选集、无 Mock 回退及旧本地数据完整。
+
+### HG-3B：真实内容首页与分类发现（待 HG-3A 验收）
+
+- 在上游实际提供的频道/榜单/筛选能力范围内实现首页栏目；每个栏目标注真实数据来源与分页状态，不伪造热度、排名或评分。
+- 处理上游限流、空目录、签名变更和封面失败；所有异常保留真实错误，不切换演示内容。
+
+### HG-3C：合法直链播放（待授权与主机策略确认）
+
+- 只对 SDK 返回且明确 protected=false 的直接 HTTPS MP4 提供播放；需要精确域名 allowlist。默认不启用播放，不实现 DRM/CENC 解密、HLS/DASH 保护流、付费墙或账号登录绕过。
+
 ## UI 迭代（独立于 M0–M14 功能里程碑）
 
 - UI-1：桌面壳与发现首页，Draft PR #33，累积依赖 HG-2A/HG-2B。
