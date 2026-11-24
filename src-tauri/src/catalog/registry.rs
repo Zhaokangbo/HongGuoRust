@@ -569,6 +569,12 @@ mod tests {
         let manifest = Arc::new(OwnedManifestStore::from_test_path(
             dir.join("owned-manifest.json"),
         ));
+        let offline_service = CatalogService::from_providers(vec![
+            Box::new(LocalDemoProvider),
+            Box::new(LocalLibraryProvider::new(Arc::clone(&library))),
+            Box::new(OwnedManifestProvider::new(Arc::clone(&manifest))),
+        ])
+        .unwrap();
         let service = CatalogService::new(Arc::clone(&library), manifest);
 
         let local = service
@@ -588,7 +594,9 @@ mod tests {
         assert!(service
             .resolve_episode(&local.items[0].id, "ep-99")
             .is_err());
-        let mixed = service.search_page(None, Some("all"), 0, 50).unwrap();
+        let mixed = offline_service
+            .search_page(None, Some("all"), 0, 50)
+            .unwrap();
         assert_eq!(mixed.total, 4);
 
         let hongguo = service
