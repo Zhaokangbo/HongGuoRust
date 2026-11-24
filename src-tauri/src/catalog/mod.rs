@@ -2,10 +2,10 @@
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
 pub mod favorites;
-mod hg_crypto;
+pub(crate) mod hg_crypto;
 mod hg_danmaku;
-mod hg_media;
-mod hg_signer;
+pub(crate) mod hg_media;
+pub(crate) mod hg_signer;
 mod hg_stream;
 mod hgcommunity;
 mod hongguo;

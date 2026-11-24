@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod account;
 mod catalog;
 mod commands;
 mod local_library;
 mod player;
 
+use account::AccountService;
 use catalog::progress::ProviderProgressStore;
 use catalog::{CatalogService, FavoritesStore, OwnedManifestStore, WebDavStore};
 use local_library::LocalLibrary;
@@ -83,6 +85,7 @@ fn main() {
     ));
     let progress = Arc::new(ProviderProgressStore::new());
     let favorites = Arc::new(FavoritesStore::new());
+    let account = Arc::new(AccountService::new());
     let preferences = Arc::new(PreferencesStore::new());
     let posters = Arc::new(PosterCache::new());
     let startup_media = StartupMedia(Mutex::new(extract_startup_media()));
@@ -91,6 +94,7 @@ fn main() {
         .manage(library)
         .manage(progress)
         .manage(favorites)
+        .manage(account)
         .manage(preferences)
         .manage(posters)
         .manage(manifest)
@@ -111,7 +115,14 @@ fn main() {
             let library = Arc::clone(app.state::<Arc<LocalLibrary>>().inner());
             let progress = Arc::clone(app.state::<Arc<ProviderProgressStore>>().inner());
             let preferences = Arc::clone(app.state::<Arc<PreferencesStore>>().inner());
-            app.manage(PlayerService::new(host, library, progress, preferences)?);
+            let account = Arc::clone(app.state::<Arc<AccountService>>().inner());
+            app.manage(PlayerService::new(
+                host,
+                library,
+                progress,
+                preferences,
+                account,
+            )?);
             tracing::info!("native host, overlay and service ready");
             Ok(())
         })
@@ -201,6 +212,13 @@ fn main() {
             commands::webdav_clear,
             commands::catalog_favorites_list,
             commands::catalog_favorite_set,
+            commands::account_status,
+            commands::account_qr_start,
+            commands::account_qr_poll,
+            commands::account_qr_cancel,
+            commands::account_sync,
+            commands::account_cloud_library,
+            commands::account_logout,
             commands::catalog_detail,
             commands::catalog_play_episode,
             commands::catalog_episode_qualities,

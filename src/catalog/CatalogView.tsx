@@ -17,6 +17,16 @@ import { visibleCatalogProviders, visibleCatalogSeries } from "./discovery";
 import {
   filterEpisodes, summarizeEpisodes, type EpisodeOrder, type EpisodeStatusFilter,
 } from "./detailEpisodes";
+import {
+  accountErrorMessage,
+  getAccountStatus,
+  getCloudLibrary,
+  logoutAccount,
+  syncAccount,
+  type AccountStatusSnapshot,
+  type CloudLibrarySnapshot,
+} from "../account/api";
+import { AccountLoginModal } from "../account/AccountLoginModal";
 
 interface Props {
   onPlay: (seriesId: string, episodeId: string, detail: SeriesDetail) => Promise<boolean>;
@@ -69,6 +79,13 @@ export function CatalogView({
   const [sourceModalTab, setSourceModalTab] = useState<"webdav" | "remote">("webdav");
   const [favorites, setFavorites] = useState<FavoriteSeries[]>([]);
 
+  // HG-5 Cloud Account state
+  const [accountStatus, setAccountStatus] = useState<AccountStatusSnapshot | null>(null);
+  const [cloudLibrary, setCloudLibrary] = useState<CloudLibrarySnapshot | null>(null);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [accountSyncing, setAccountSyncing] = useState(false);
+
   const favoriteIds = useMemo(() => new Set(favorites.map(item => item.id)), [favorites]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -90,8 +107,92 @@ export function CatalogView({
     void listFavoriteSeries().then(result => {
       if (alive) setFavorites(result);
     }).catch(() => {});
+    void getAccountStatus().then(status => {
+      if (alive) setAccountStatus(status);
+    }).catch(() => {});
+    void getCloudLibrary().then(lib => {
+      if (alive) setCloudLibrary(lib);
+    }).catch(() => {});
     return () => { alive = false; };
   }, [combinedRefresh]);
+
+  // On app startup, if a DPAPI-persisted HongGuo session exists, silently sync once.
+  useEffect(() => {
+    let alive = true;
+    void getAccountStatus().then(async status => {
+      if (!alive) return;
+      setAccountStatus(status);
+      if (status.signedIn && status.lastSyncedMs === null) {
+        setAccountSyncing(true);
+        try {
+          const lib = await syncAccount();
+          if (!alive) return;
+          setCloudLibrary(lib);
+          const refreshed = await getAccountStatus().catch(() => status);
+          if (!alive) return;
+          setAccountStatus(refreshed);
+          setRefreshKey(v => v + 1);
+        } catch {
+          // Silent background sync on startup; user can manually retry from menu.
+        } finally {
+          if (alive) setAccountSyncing(false);
+        }
+      }
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  async function handleAccountSync() {
+    if (accountSyncing) return;
+    setAccountMenuOpen(false);
+    setAccountSyncing(true);
+    setError("");
+    try {
+      const lib = await syncAccount();
+      setCloudLibrary(lib);
+      const status = await getAccountStatus().catch(() => accountStatus);
+      if (status) setAccountStatus(status);
+      const resCount = lib.onlineReservations.length + lib.upcomingReservations.length;
+      setToast(`云端同步完成：收藏 ${lib.favorites.length} 部 · 历史 ${lib.history.length} 部 · 预约 ${resCount} 部`);
+      setRefreshKey(v => v + 1);
+    } catch (reason) {
+      setError(accountErrorMessage(reason));
+    } finally {
+      setAccountSyncing(false);
+    }
+  }
+
+  async function handleAccountLogout() {
+    if (accountSyncing) return;
+    setAccountMenuOpen(false);
+    try {
+      const status = await logoutAccount();
+      setAccountStatus(status);
+      setCloudLibrary(null);
+      setToast("已退出红果账号（本地片库与离线收藏已保留）");
+      setRefreshKey(v => v + 1);
+    } catch (reason) {
+      setError(accountErrorMessage(reason));
+    }
+  }
+
+  function handleSignedIn(
+    status: AccountStatusSnapshot,
+    cloud: CloudLibrarySnapshot | null,
+    syncWarning?: string,
+  ) {
+    setAccountStatus(status);
+    setCloudLibrary(cloud);
+    if (syncWarning) {
+      setToast(`已登录 ${status.nickname || "红果用户"}（首次同步失败，可点击手动同步）`);
+    } else if (cloud) {
+      const resCount = cloud.onlineReservations.length + cloud.upcomingReservations.length;
+      setToast(`已登录 ${status.nickname || "红果用户"}：同步收藏 ${cloud.favorites.length} 部、历史 ${cloud.history.length} 部、预约 ${resCount} 部`);
+    } else {
+      setToast(`已登录 ${status.nickname || "红果用户"}`);
+    }
+    setRefreshKey(v => v + 1);
+  }
 
   async function toggleFavoriteSeries(seriesId: string) {
     const next = !favoriteIds.has(seriesId);
@@ -190,6 +291,7 @@ export function CatalogView({
     setMode(next);
     setError("");
     setMenuOpen(false);
+    setAccountMenuOpen(false);
     onClearPlayerError();
     scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
   }
@@ -498,6 +600,82 @@ export function CatalogView({
             打开视频
           </button>
 
+          {/* HG-5 Cloud Account Login / Status Menu */}
+          <div className="nf-nav-menu-anchor">
+            {accountStatus?.signedIn ? (
+              <>
+                <button
+                  type="button"
+                  className={"nf-account-pill" + (accountMenuOpen ? " is-active" : "")}
+                  aria-expanded={accountMenuOpen}
+                  title="红果账号与云端片单同步"
+                  onClick={() => {
+                    setAccountMenuOpen(v => !v);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <span className={"nf-account-dot is-online" + (accountSyncing ? " is-syncing" : "")} aria-hidden="true" />
+                  <span className="nf-account-name">{accountStatus.nickname || "红果用户"}</span>
+                </button>
+                {accountMenuOpen && (
+                  <div className="nf-dropdown nf-account-dropdown" role="menu">
+                    <div className="nf-account-dropdown-head">
+                      <strong>{accountStatus.nickname || "红果用户"}</strong>
+                      <span>
+                        收藏 {accountStatus.favoritesCount} · 历史 {accountStatus.historyCount} · 预约 {accountStatus.reservationsCount}
+                      </span>
+                    </div>
+                    <div className="nf-dropdown-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={accountSyncing}
+                      onClick={() => void handleAccountSync()}
+                    >
+                      {accountSyncing ? "正在同步云端片单…" : "立即同步云端片单"}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => navigateTo("favorites")}
+                    >
+                      查看收藏与 App 预约
+                    </button>
+                    <div className="nf-dropdown-sep" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="is-danger"
+                      disabled={accountSyncing}
+                      onClick={() => void handleAccountLogout()}
+                    >
+                      退出登录
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="nf-account-btn"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setAccountMenuOpen(false);
+                  setAccountModalOpen(true);
+                }}
+                title="使用手机红果 App 扫码登录并同步片单"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 3h7v7H3V3zm2 2v3h3V5H5zm9-2h7v7h-7V3zm2 2v3h3V5h-3zM3 14h7v7H3v-7zm2 2v3h3v-3H5zm10 0h2v2h-2v-2zm3-2h3v3h-3v-3zm-3 5h3v2h-3v-2zm4-1h2v3h-2v-3z"
+                    fill="currentColor"
+                  />
+                </svg>
+                扫码登录
+              </button>
+            )}
+          </div>
+
           <div className="nf-nav-menu-anchor">
             <button
               type="button"
@@ -505,7 +683,7 @@ export function CatalogView({
               aria-label="添加与管理媒体"
               aria-expanded={menuOpen}
               title="添加与管理媒体"
-              onClick={() => { setMenuOpen(v => !v); setConfirmManifestClear(false); }}
+              onClick={() => { setMenuOpen(v => !v); setAccountMenuOpen(false); setConfirmManifestClear(false); }}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -546,7 +724,10 @@ export function CatalogView({
 
       {/* Scrollable Main Canvas */}
       <div className="nf-viewport" ref={scrollRef} onScroll={onScroll}
-        onClick={() => { if (menuOpen) setMenuOpen(false); }}>
+        onClick={() => {
+          if (menuOpen) setMenuOpen(false);
+          if (accountMenuOpen) setAccountMenuOpen(false);
+        }}>
 
         {toast && <div className="nf-toast" role="status">{toast}</div>}
 
@@ -795,6 +976,11 @@ export function CatalogView({
             favorites={favorites}
             busy={working}
             refreshSignal={combinedRefresh}
+            accountStatus={accountStatus}
+            cloudLibrary={cloudLibrary}
+            accountSyncing={accountSyncing}
+            onOpenLogin={() => setAccountModalOpen(true)}
+            onSyncAccount={handleAccountSync}
             onSelectSeries={id => void showDetail(id)}
             onQuickPlaySeries={series => void quickPlaySeries(series)}
             onRemoveFavorite={id => toggleFavoriteSeries(id)}
@@ -816,6 +1002,24 @@ export function CatalogView({
           <div className="nf-page-container">
             <div className="nf-page-header">
               <h1>观看历史</h1>
+              {accountStatus?.signedIn ? (
+                <button
+                  type="button"
+                  className="nf-btn-secondary"
+                  disabled={accountSyncing}
+                  onClick={() => void handleAccountSync()}
+                >
+                  {accountSyncing ? "正在同步…" : "同步云端记录"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="nf-btn-secondary"
+                  onClick={() => setAccountModalOpen(true)}
+                >
+                  扫码同步 App 历史
+                </button>
+              )}
             </div>
             <ContinueWatchingShelf
               includeLocal={false}
@@ -960,6 +1164,11 @@ export function CatalogView({
           setToast(msg);
           setRefreshKey(v => v + 1);
         }}
+      />
+      <AccountLoginModal
+        open={accountModalOpen}
+        onClose={() => setAccountModalOpen(false)}
+        onSignedIn={handleSignedIn}
       />
     </div>
   );

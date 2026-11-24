@@ -255,6 +255,73 @@ impl ProviderProgressStore {
         }))
     }
 
+    /// Merge a cloud watch record into local bookmarks only when the cloud timestamp
+    /// is strictly newer than any existing local record for the same episode.
+    #[allow(clippy::too_many_arguments)]
+    pub fn merge_cloud_bookmark(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        source_key: &str,
+        position_sec: f64,
+        duration_sec: Option<f64>,
+        last_played_ms: u64,
+        completed: bool,
+    ) -> Result<bool, String> {
+        self.ready()?;
+        if !valid_id(series_id, 161) || !valid_id(episode_id, 128) || last_played_ms == 0 {
+            return Ok(false);
+        }
+        let hash = fingerprint(source_key);
+        let mut state = self.state.lock().map_err(|e| e.to_string())?;
+        let mut next = state.clone();
+        if let Some(existing) = next
+            .items
+            .iter_mut()
+            .find(|x| x.series_id == series_id && x.episode_id == episode_id)
+        {
+            if existing.last_played_ms >= last_played_ms {
+                return Ok(false);
+            }
+            existing.source_fingerprint = hash;
+            existing.position_sec = if position_sec.is_finite() && position_sec >= 0.0 {
+                position_sec
+            } else {
+                0.0
+            };
+            existing.duration_sec = duration_sec.filter(|d| d.is_finite() && *d > 0.0);
+            existing.last_played_ms = last_played_ms;
+            existing.completed = completed;
+        } else {
+            if next.items.len() >= MAX_ITEMS {
+                let oldest = next
+                    .items
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, item)| item.last_played_ms)
+                    .map(|(index, _)| index)
+                    .unwrap_or(0);
+                next.items.remove(oldest);
+            }
+            next.items.push(StoredProgress {
+                series_id: series_id.into(),
+                episode_id: episode_id.into(),
+                source_fingerprint: hash,
+                position_sec: if position_sec.is_finite() && position_sec >= 0.0 {
+                    position_sec
+                } else {
+                    0.0
+                },
+                duration_sec: duration_sec.filter(|d| d.is_finite() && *d > 0.0),
+                last_played_ms,
+                completed,
+            });
+        }
+        write_data(&self.path, &next)?;
+        *state = next;
+        Ok(true)
+    }
+
     fn update(
         &self,
         series_id: &str,

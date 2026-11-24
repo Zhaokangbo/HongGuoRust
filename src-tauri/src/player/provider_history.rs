@@ -1,4 +1,6 @@
+use crate::account::AccountService;
 use crate::catalog::progress::ProviderProgressStore;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::warn;
 
@@ -7,8 +9,11 @@ pub struct ProviderHistorySession {
     pub session: u64,
     series_id: String,
     episode_id: String,
+    episode_number: usize,
+    episode_count: usize,
     source: String,
     pub resume_at: Option<f64>,
+    account: Option<Arc<AccountService>>,
     started: bool,
     position: Option<f64>,
     duration: Option<f64>,
@@ -16,19 +21,26 @@ pub struct ProviderHistorySession {
 }
 
 impl ProviderHistorySession {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         session: u64,
         series_id: String,
         episode_id: String,
+        episode_number: usize,
+        episode_count: usize,
         source: String,
         resume_at: Option<f64>,
+        account: Option<Arc<AccountService>>,
     ) -> Self {
         Self {
             session,
             series_id,
             episode_id,
+            episode_number,
+            episode_count,
             source,
             resume_at,
+            account,
             started: false,
             position: None,
             duration: None,
@@ -62,16 +74,16 @@ impl ProviderHistorySession {
             && self.position.is_some()
             && self.last_saved.elapsed() >= Duration::from_secs(5)
         {
-            self.save(store, false);
+            self.save(store, false, false);
         }
     }
 
     pub fn seeked(&mut self, store: &ProviderProgressStore, sec: f64) {
         self.position = Some(sec);
-        self.save(store, false);
+        self.save(store, false, false);
     }
 
-    pub fn save(&mut self, store: &ProviderProgressStore, completed: bool) {
+    pub fn save(&mut self, store: &ProviderProgressStore, completed: bool, force_cloud: bool) {
         if !self.started {
             return;
         }
@@ -85,6 +97,22 @@ impl ProviderHistorySession {
         ) {
             warn!(session_id = self.session, error = %e, "provider checkpoint failed");
         }
+        if let Some(account) = &self.account {
+            let pos = if completed {
+                self.duration.or(self.position).unwrap_or(0.0)
+            } else {
+                self.position.unwrap_or(0.0)
+            };
+            account.schedule_progress_upload(
+                &self.series_id,
+                &self.episode_id,
+                self.episode_number,
+                self.episode_count,
+                pos,
+                self.duration,
+                force_cloud || completed,
+            );
+        }
         self.last_saved = Instant::now();
     }
 }
@@ -95,6 +123,6 @@ pub fn finish_provider(
     completed: bool,
 ) {
     if let Some(mut history) = active.take() {
-        history.save(store, completed);
+        history.save(store, completed, true);
     }
 }

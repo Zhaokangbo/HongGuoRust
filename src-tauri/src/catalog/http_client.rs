@@ -18,6 +18,7 @@ const WINHTTP_ADDREQ_FLAG_ADD: u32 = 0x2000_0000;
 const WINHTTP_ADDREQ_FLAG_REPLACE: u32 = 0x8000_0000;
 const WINHTTP_OPTION_DISABLE_FEATURE: u32 = 63;
 const WINHTTP_DISABLE_COOKIES: u32 = 0x0000_0001;
+const WINHTTP_DISABLE_REDIRECTS: u32 = 0x0000_0002;
 const WINHTTP_OPTION_DECOMPRESSION: u32 = 118;
 const WINHTTP_DECOMPRESSION_FLAG_GZIP: u32 = 0x0000_0001;
 const WINHTTP_DECOMPRESSION_FLAG_DEFLATE: u32 = 0x0000_0002;
@@ -441,19 +442,47 @@ pub fn open_stream(
     body: Option<&[u8]>,
     options: RequestOptions<'_>,
 ) -> Result<HttpStream, String> {
+    open_stream_configured(method, url, headers, body, options, false)
+}
+
+fn open_stream_configured(
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    options: RequestOptions<'_>,
+    disable_redirects: bool,
+) -> Result<HttpStream, String> {
     if should_prefer_direct() {
-        return match open_stream_with_proxy(method, url, headers, body, options, false) {
+        return match open_stream_with_proxy(
+            method,
+            url,
+            headers,
+            body,
+            options,
+            false,
+            disable_redirects,
+        ) {
             Ok(stream) => Ok(stream),
             Err((err, _)) => {
                 clear_prefer_direct();
-                open_stream_with_proxy(method, url, headers, body, options, true).map_err(|_| err)
+                open_stream_with_proxy(method, url, headers, body, options, true, disable_redirects)
+                    .map_err(|_| err)
             }
         };
     }
-    match open_stream_with_proxy(method, url, headers, body, options, true) {
+    match open_stream_with_proxy(method, url, headers, body, options, true, disable_redirects) {
         Ok(stream) => Ok(stream),
         Err((err, retry_direct)) if retry_direct => {
-            match open_stream_with_proxy(method, url, headers, body, options, false) {
+            match open_stream_with_proxy(
+                method,
+                url,
+                headers,
+                body,
+                options,
+                false,
+                disable_redirects,
+            ) {
                 Ok(stream) => {
                     mark_prefer_direct();
                     Ok(stream)
@@ -472,6 +501,7 @@ fn open_stream_with_proxy(
     body: Option<&[u8]>,
     options: RequestOptions<'_>,
     use_system_proxy: bool,
+    disable_redirects: bool,
 ) -> Result<HttpStream, (String, bool)> {
     let parsed = parse_url(url).map_err(|e| (e, false))?;
     let ua_from_headers = headers
@@ -572,13 +602,19 @@ fn open_stream_with_proxy(
         }
     }
 
+    let mut disable_mask: u32 = 0;
     if options.disable_cookies {
-        let disable: u32 = WINHTTP_DISABLE_COOKIES;
+        disable_mask |= WINHTTP_DISABLE_COOKIES;
+    }
+    if disable_redirects {
+        disable_mask |= WINHTTP_DISABLE_REDIRECTS;
+    }
+    if disable_mask != 0 {
         unsafe {
             let _ = WinHttpSetOption(
                 req.0,
                 WINHTTP_OPTION_DISABLE_FEATURE,
-                (&disable as *const u32).cast::<c_void>(),
+                (&disable_mask as *const u32).cast::<c_void>(),
                 std::mem::size_of::<u32>() as u32,
             );
         }
@@ -664,7 +700,30 @@ pub fn request_with_options(
     max_response_bytes: usize,
     options: RequestOptions<'_>,
 ) -> Result<HttpResponse, String> {
-    let stream = open_stream(method, url, headers, body, options)?;
+    read_stream_response(
+        open_stream(method, url, headers, body, options)?,
+        max_response_bytes,
+    )
+}
+
+pub fn request_no_redirects(
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    max_response_bytes: usize,
+    options: RequestOptions<'_>,
+) -> Result<HttpResponse, String> {
+    read_stream_response(
+        open_stream_configured(method, url, headers, body, options, true)?,
+        max_response_bytes,
+    )
+}
+
+fn read_stream_response(
+    stream: HttpStream,
+    max_response_bytes: usize,
+) -> Result<HttpResponse, String> {
     let mut out = Vec::new();
     loop {
         let mut available: u32 = 0;

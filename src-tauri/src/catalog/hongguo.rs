@@ -153,7 +153,7 @@ fn valid_remote_cover(raw: &str) -> Option<String> {
     {
         return None;
     }
-    Some(cleaned)
+    crate::account::cloud::normalize_cover_url(&cleaned)
 }
 
 fn map_ssr_item(item: &Value) -> Option<Series> {
