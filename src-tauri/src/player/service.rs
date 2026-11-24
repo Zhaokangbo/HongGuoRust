@@ -8,6 +8,7 @@ use super::provider_history::{finish_provider, ProviderHistorySession};
 use super::source::MediaSource;
 use super::state::{Failure, PlaybackState, PlayerSnapshot, PlayerState};
 use super::tracks::{TrackKind, TrackList};
+use crate::account::AccountService;
 use crate::catalog::progress::ProviderProgressStore;
 use crate::local_library::LocalLibrary;
 use std::path::PathBuf;
@@ -20,6 +21,8 @@ use tracing::{error, info};
 struct ProviderPlayback {
     series_id: String,
     episode_id: String,
+    episode_number: usize,
+    episode_count: usize,
     source: String,
     resume_at: Option<f64>,
 }
@@ -75,6 +78,7 @@ impl PlayerService {
         library: Arc<LocalLibrary>,
         provider_progress: Arc<ProviderProgressStore>,
         preferences: Arc<PreferencesStore>,
+        account: Arc<AccountService>,
     ) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let state = Arc::new(Mutex::new(Shared::default()));
@@ -82,6 +86,7 @@ impl PlayerService {
         let worker_library = Arc::clone(&library);
         let worker_progress = Arc::clone(&provider_progress);
         let worker_preferences = Arc::clone(&preferences);
+        let worker_account = Arc::clone(&account);
         let health = Arc::new(Mutex::new(RuntimeHealthMeter::default()));
         let worker_health = Arc::clone(&health);
         let worker = thread::Builder::new()
@@ -94,6 +99,7 @@ impl PlayerService {
                     worker_library,
                     worker_progress,
                     worker_preferences,
+                    worker_account,
                     worker_health,
                 )
             })?;
@@ -149,6 +155,8 @@ impl PlayerService {
             Some(ProviderPlayback {
                 series_id,
                 episode_id,
+                episode_number: 1,
+                episode_count: 0,
                 source: url,
                 resume_at,
             }),
@@ -174,6 +182,8 @@ impl PlayerService {
             Some(ProviderPlayback {
                 series_id,
                 episode_id,
+                episode_number: 1,
+                episode_count: 0,
                 source: url,
                 resume_at,
             }),
@@ -182,6 +192,7 @@ impl PlayerService {
 
     /// Called only after CatalogService validated the in-process loopback stream target.
     /// Watch progress binds to `stable_key` rather than the ephemeral loopback URL.
+    #[allow(clippy::too_many_arguments)]
     pub fn open_catalog_local_stream(
         &self,
         url: String,
@@ -189,6 +200,8 @@ impl PlayerService {
         stable_key: String,
         series_id: String,
         episode_id: String,
+        episode_number: usize,
+        episode_count: usize,
         resume_override: Option<f64>,
     ) -> Result<u64, String> {
         let source = MediaSource::local_stream(url, token_header)?;
@@ -204,6 +217,8 @@ impl PlayerService {
             Some(ProviderPlayback {
                 series_id,
                 episode_id,
+                episode_number,
+                episode_count,
                 source: stable_key,
                 resume_at,
             }),
@@ -425,6 +440,7 @@ fn end_cache_interval(since: &mut Option<(u64, Instant)>, reason: &'static str) 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run(
     host: isize,
     rx: Receiver<Command>,
@@ -432,6 +448,7 @@ fn run(
     library: Arc<LocalLibrary>,
     provider_progress: Arc<ProviderProgressStore>,
     preferences: Arc<PreferencesStore>,
+    account: Arc<AccountService>,
     health: Arc<Mutex<RuntimeHealthMeter>>,
 ) {
     let mut engine: Option<Engine> = None;
@@ -489,8 +506,11 @@ fn run(
                                 id,
                                 key.series_id,
                                 key.episode_id,
+                                key.episode_number,
+                                key.episode_count,
                                 key.source,
                                 key.resume_at,
+                                Some(Arc::clone(&account)),
                             )
                         });
                     }
@@ -588,7 +608,9 @@ fn run(
                             PlayerControl::SeekAbsolute(sec) => {
                                 active.seeked(&provider_progress, sec)
                             }
-                            PlayerControl::Pause(true) => active.save(&provider_progress, false),
+                            PlayerControl::Pause(true) => {
+                                active.save(&provider_progress, false, true)
+                            }
                             _ => {}
                         }
                     }

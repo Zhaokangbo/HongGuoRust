@@ -1067,6 +1067,17 @@ impl Signer {
         params: &[(String, String)],
         now_ms: u64,
     ) -> Result<SignedRequest, String> {
+        self.sign_v3_request(base_url, params, None, now_ms)
+    }
+
+    /// Sign a v3 App GET or POST request (used by search and cloud account sync).
+    pub fn sign_v3_request(
+        &self,
+        base_url: &str,
+        params: &[(String, String)],
+        body: Option<&[u8]>,
+        now_ms: u64,
+    ) -> Result<SignedRequest, String> {
         let ts = (now_ms / 1000) as u32;
         let device_id = params
             .iter()
@@ -1085,12 +1096,12 @@ impl Signer {
             full_params.push(("ts".into(), ts.to_string()));
             full_params.push(("_rticket".into(), ticket.to_string()));
             let query = encode_query(&full_params);
-            if self.branch(&query, None, ts) != 0 {
+            if self.branch(&query, body, ts) != 0 {
                 continue;
             }
             let url = format!("{base_url}?{query}");
             let rand16 = (random_u32() & 0xffff) as u16;
-            let headers = vec![
+            let mut headers = vec![
                 ("User-Agent".into(), APP_UA.into()),
                 (
                     "Accept".into(),
@@ -1104,14 +1115,19 @@ impl Signer {
                 ("x-khronos".into(), ts.to_string()),
                 ("x-ladon".into(), base64_encode(&ts.to_be_bytes())),
                 ("x-argus".into(), base64_encode(&ts.to_le_bytes())),
-                ("x-gorgon".into(), Self::gorgon(&query, None, ts, rand16)),
+                ("x-gorgon".into(), Self::gorgon(&query, body, ts, rand16)),
                 ("x-helios".into(), self.helios(ts)),
                 (
                     "x-medusa".into(),
-                    self.medusa_v3(&query, None, ts, device_id, version_name)?,
+                    self.medusa_v3(&query, body, ts, device_id, version_name)?,
                 ),
                 ("x-tt-dt".into(), String::new()),
             ];
+            if let Some(b) = body {
+                if !b.is_empty() {
+                    headers.push(("x-ss-stub".into(), hex_encode_upper(&md5(b))));
+                }
+            }
             return Ok(SignedRequest { url, headers });
         }
         Err("hg_sign_failed: 无法生成 v3 请求签名".into())

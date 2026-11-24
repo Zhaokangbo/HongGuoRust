@@ -1,7 +1,11 @@
+use crate::account::{
+    qr_login::QrLoginStart, AccountService, AccountStatusSnapshot, CloudLibrarySnapshot,
+    QrPollSnapshot,
+};
 use crate::catalog::progress::{ProviderEpisodeProgress, ProviderProgressStore};
 use crate::catalog::request::DEFAULT_TIMEOUT_MS;
 use crate::catalog::{
-    CatalogService, DanmakuItem, FavoriteSeries, FavoritesStore, ManifestSubscriptionInfo,
+    CatalogService, DanmakuItem, Episode, FavoriteSeries, FavoritesStore, ManifestSubscriptionInfo,
     MediaTarget, OwnedManifestStore, ProviderInfo, QualityOption, SearchPage, Series, SeriesDetail,
     WebDavStatus, WebDavStore,
 };
@@ -17,7 +21,7 @@ use crate::player::{
     window,
 };
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
@@ -297,7 +301,15 @@ pub async fn catalog_play_episode(
     tauri::async_runtime::spawn_blocking(move || {
         let catalog = window.state::<Arc<CatalogService>>();
         let player = window.state::<PlayerService>();
-        let scoped_series_id = catalog.detail(&series_id)?.series.id;
+        let detail = catalog.detail(&series_id)?;
+        let scoped_series_id = detail.series.id;
+        let episode_count = detail.series.episode_count.max(detail.episodes.len());
+        let episode_number = detail
+            .episodes
+            .iter()
+            .find(|ep| ep.id == episode_id)
+            .map(|ep| ep.number)
+            .unwrap_or(1);
         match catalog.resolve_episode_with_quality(&series_id, &episode_id, quality)? {
             MediaTarget::Https(url) => player.open_catalog_https(url, scoped_series_id, episode_id),
             MediaTarget::LocalLibrary(id) => player.open_library(id),
@@ -314,6 +326,8 @@ pub async fn catalog_play_episode(
                 stable_key,
                 scoped_series_id,
                 episode_id,
+                episode_number,
+                episode_count,
                 resume_sec,
             ),
         }
@@ -392,6 +406,7 @@ pub struct RecentCatalogEpisode {
 pub async fn catalog_recently_watched(
     catalog: State<'_, Arc<CatalogService>>,
     progress: State<'_, Arc<ProviderProgressStore>>,
+    account: State<'_, Arc<AccountService>>,
     limit: Option<usize>,
 ) -> Result<Vec<RecentCatalogEpisode>, String> {
     let limit = limit.unwrap_or(12);
@@ -400,7 +415,16 @@ pub async fn catalog_recently_watched(
     }
     let catalog = Arc::clone(catalog.inner());
     let progress = Arc::clone(progress.inner());
+    let account = Arc::clone(account.inner());
     tauri::async_runtime::spawn_blocking(move || {
+        let cloud_lib = account.cloud_library();
+        let cloud_by_series: HashMap<String, _> = cloud_lib
+            .history
+            .iter()
+            .cloned()
+            .map(|entry| (entry.series.id.clone(), entry))
+            .collect();
+
         let mut results = Vec::new();
         let mut seen = HashSet::new();
         // A capped scan protects IPC from very large history files.
@@ -408,6 +432,28 @@ pub async fn catalog_recently_watched(
         for record in progress.list_recent()?.into_iter().take(120) {
             if seen.contains(&record.series_id) || record.series_id.starts_with("local:") {
                 continue;
+            }
+            // Fast path: if this record matches a synced cloud history entry, reuse
+            // its cached metadata without issuing per-item network detail requests.
+            if let Some(cloud_entry) = cloud_by_series.get(&record.series_id) {
+                if cloud_entry.episode_id == record.episode_id {
+                    seen.insert(record.series_id.clone());
+                    results.push(RecentCatalogEpisode {
+                        series: cloud_entry.series.clone(),
+                        episode: Episode {
+                            id: cloud_entry.episode_id.clone(),
+                            number: cloud_entry.episode_number,
+                            title: cloud_entry.episode_title.clone(),
+                            runtime_label: "—".into(),
+                            playable: true,
+                        },
+                        progress: record,
+                    });
+                    if results.len() == limit {
+                        break;
+                    }
+                    continue;
+                }
             }
             let detail = match catalog.detail(&record.series_id) {
                 Ok(value) => value,
@@ -440,6 +486,43 @@ pub async fn catalog_recently_watched(
                 break;
             }
         }
+
+        // Fill remaining slots with any synced cloud history items not yet in local store.
+        if results.len() < limit {
+            for entry in cloud_lib.history {
+                if seen.contains(&entry.series.id) {
+                    continue;
+                }
+                seen.insert(entry.series.id.clone());
+                let completed = entry
+                    .duration_sec
+                    .is_some_and(|d| d > 5.0 && entry.position_sec >= d - 5.0);
+                results.push(RecentCatalogEpisode {
+                    series: entry.series.clone(),
+                    episode: Episode {
+                        id: entry.episode_id.clone(),
+                        number: entry.episode_number,
+                        title: entry.episode_title.clone(),
+                        runtime_label: "—".into(),
+                        playable: true,
+                    },
+                    progress: ProviderEpisodeProgress {
+                        series_id: entry.series.id,
+                        episode_id: entry.episode_id,
+                        position_sec: entry.position_sec,
+                        duration_sec: entry.duration_sec,
+                        completed,
+                        last_played_ms: entry.updated_at_ms,
+                    },
+                });
+                if results.len() == limit {
+                    break;
+                }
+            }
+        }
+
+        results.sort_by(|a, b| b.progress.last_played_ms.cmp(&a.progress.last_played_ms));
+        results.truncate(limit);
         Ok(results)
     })
     .await
@@ -527,32 +610,139 @@ pub fn webdav_clear(webdav: State<'_, Arc<WebDavStore>>) -> Result<(), String> {
     webdav.clear()
 }
 
+fn merge_favorites(local: Vec<FavoriteSeries>, account: &AccountService) -> Vec<FavoriteSeries> {
+    let cloud = account.cloud_library().favorites;
+    if cloud.is_empty() {
+        return local;
+    }
+    let mut by_id: HashMap<String, FavoriteSeries> = HashMap::new();
+    for item in local {
+        by_id.insert(item.id.clone(), item);
+    }
+    for cf in cloud {
+        let id = cf.series.id.clone();
+        match by_id.get(&id) {
+            Some(existing) if existing.added_at_ms > cf.added_at_ms => {}
+            _ => {
+                by_id.insert(
+                    id,
+                    FavoriteSeries {
+                        id: cf.series.id,
+                        title: cf.series.title,
+                        description: cf.series.description,
+                        genre: cf.series.genre,
+                        badge: cf.series.badge,
+                        artwork: cf.series.artwork,
+                        cover_url: cf.series.cover_url,
+                        episode_count: cf.series.episode_count,
+                        provider_id: cf.series.provider_id,
+                        added_at_ms: cf.added_at_ms,
+                    },
+                );
+            }
+        }
+    }
+    let mut merged: Vec<FavoriteSeries> = by_id.into_values().collect();
+    merged.sort_by(|a, b| {
+        b.added_at_ms
+            .cmp(&a.added_at_ms)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    merged
+}
+
 #[tauri::command]
 pub fn catalog_favorites_list(
     favorites: State<'_, Arc<FavoritesStore>>,
+    account: State<'_, Arc<AccountService>>,
 ) -> Result<Vec<FavoriteSeries>, String> {
-    favorites.list()
+    let local = favorites.list()?;
+    Ok(merge_favorites(local, account.inner()))
 }
 
 #[tauri::command]
 pub async fn catalog_favorite_set(
     catalog: State<'_, Arc<CatalogService>>,
     favorites: State<'_, Arc<FavoritesStore>>,
+    account: State<'_, Arc<AccountService>>,
     series_id: String,
     favorite: bool,
 ) -> Result<Vec<FavoriteSeries>, String> {
     let catalog = Arc::clone(catalog.inner());
     let favorites = Arc::clone(favorites.inner());
+    let account = Arc::clone(account.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        if favorite {
+        let (scoped_id, local) = if favorite {
             let detail = catalog.detail(&series_id)?;
-            favorites.add(detail.series)
+            let id = detail.series.id.clone();
+            let list = favorites.add(detail.series)?;
+            (id, list)
         } else {
-            favorites.remove(&series_id)
+            let list = favorites.remove(&series_id)?;
+            (series_id.clone(), list)
+        };
+        if let Err(err) = account.set_cloud_favorite(&scoped_id, favorite) {
+            tracing::warn!(error = %err, "cloud favorite write failed; local favorite preserved");
         }
+        Ok(merge_favorites(local, &account))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn account_status(account: State<'_, Arc<AccountService>>) -> AccountStatusSnapshot {
+    account.status()
+}
+
+#[tauri::command]
+pub async fn account_qr_start(
+    account: State<'_, Arc<AccountService>>,
+) -> Result<QrLoginStart, String> {
+    let account = Arc::clone(account.inner());
+    tauri::async_runtime::spawn_blocking(move || account.start_qr())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn account_qr_poll(
+    account: State<'_, Arc<AccountService>>,
+    session_id: u64,
+) -> Result<QrPollSnapshot, String> {
+    let account = Arc::clone(account.inner());
+    tauri::async_runtime::spawn_blocking(move || account.poll_qr(session_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn account_qr_cancel(account: State<'_, Arc<AccountService>>) {
+    account.cancel_qr();
+}
+
+#[tauri::command]
+pub async fn account_sync(
+    account: State<'_, Arc<AccountService>>,
+    progress: State<'_, Arc<ProviderProgressStore>>,
+) -> Result<CloudLibrarySnapshot, String> {
+    let account = Arc::clone(account.inner());
+    let progress = Arc::clone(progress.inner());
+    tauri::async_runtime::spawn_blocking(move || account.sync_now(&progress))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn account_cloud_library(account: State<'_, Arc<AccountService>>) -> CloudLibrarySnapshot {
+    account.cloud_library()
+}
+
+#[tauri::command]
+pub fn account_logout(
+    account: State<'_, Arc<AccountService>>,
+) -> Result<AccountStatusSnapshot, String> {
+    account.logout()
 }
 
 #[tauri::command]
