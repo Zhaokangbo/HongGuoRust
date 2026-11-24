@@ -26,9 +26,9 @@ pub const OVERLAY: &str = "overlay";
 pub const EVENT_CONTEXT: &str = "player://context";
 pub const EVENT_DISMISSED: &str = "player://dismissed";
 
-/// Upper bound for the serialized UI context (episode lists are capped at 200
-/// episodes by the providers, so this is generous).
-const MAX_CONTEXT_BYTES: usize = 256 * 1024;
+/// Upper bound for the serialized UI context (supports long-running series with
+/// thousands of episodes in the overlay episode drawer).
+const MAX_CONTEXT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct PlayerUi {

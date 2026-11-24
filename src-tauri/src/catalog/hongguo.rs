@@ -48,7 +48,7 @@ const MAX_CACHED_DETAILS: usize = 24;
 const MAX_CACHED_SEARCHES: usize = 20;
 const MAX_CACHED_RENDITIONS: usize = 16;
 const RENDITION_CACHE_TTL: Duration = Duration::from_secs(300);
-const MAX_REAL_EPISODES: usize = 300;
+const MAX_REAL_EPISODES: usize = 5_000;
 const MAX_UPSTREAM_PAGES: usize = 100;
 const MAX_FETCH_PAGES_PER_CALL: usize = 3;
 

@@ -14,8 +14,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 const SCHEMA: u32 = 1;
-const MAX_ITEMS: usize = 2000;
-const MAX_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_ITEMS: usize = 5_000;
+const MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
