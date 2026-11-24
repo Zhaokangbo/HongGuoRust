@@ -5,13 +5,13 @@
 ## 运行截图
 
 ### 首页推荐与继续观看
-![HongGuoRust 首页截图](docs/screenshots/home.jpg)
+![HongGuoRust 首页截图](docs/screenshots/home-v0.2.jpg)
 
 ### 1080P 播放、原站滚动弹幕与清晰度切换
-![HongGuoRust 播放与弹幕界面截图](docs/screenshots/player.jpg)
+![HongGuoRust 播放与弹幕界面截图](docs/screenshots/player-v0.2.jpg)
 
 ### 剧集详情与分集进度管理
-![HongGuoRust 剧集详情截图](docs/screenshots/detail.jpg)
+![HongGuoRust 剧集详情截图](docs/screenshots/detail-v0.2.jpg)
 
 ## 当前已完成功能（v0.2.0）
 
