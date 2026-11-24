@@ -137,11 +137,12 @@ jobs:
             "- **Portable ZIP**: ``HongGuoRust-$version-windows-x64-portable.zip`` - Extract and double-click ``hongguorust.exe`` directly."
             ""
             "### Highlights"
-            "- Netflix dark cinema UI: Hero billboard, horizontal poster rails, series detail, local library & unified Favorites page"
-            "- Transparent owned overlay player controls (auto-hide HUD, scrub thumbnail preview, speed, audio/subtitle tracks, slide-over episode drawer, keyboard shortcuts)"
-            "- Dark native Windows titlebar and custom crimson app icon"
-            "- Automatic video frame cover extraction with local disk cache"
-            "- WebDAV media library (Alist / NAS), remote HTTPS JSON manifest subscriptions, Windows right-click Open With playback, and automatic Windows system proxy detection for libmpv"
+            "- Real HongGuo short drama catalog discovery (multi-page infinite scroll up to 800 dramas + multi-page search)"
+            "- Pure-Rust Android v5 playback signing, anonymous device registration, multi-path fallback & codec negotiation"
+            "- In-process authenticated loopback Range proxy with on-the-fly MP4 CENC AES-128-CTR decryption & CDN failover"
+            "- Live quality switching (1080P / 720P / 540P / 480P / 360P, highest compatible by default) with seamless position resume"
+            "- Official timed danmaku (8-lane rolling stage, pause/seek/speed sync, toggle & opacity controls)"
+            "- Netflix dark cinema UI, native dark titlebar, transparent overlay player controls, WebDAV (Alist/NAS), JSON manifests & local video library"
           ) -join "`n"
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           Set-Content -Encoding utf8 -Path $notesFile -Value $notes

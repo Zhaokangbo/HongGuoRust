@@ -19,9 +19,18 @@ import {
   dismissPlayerOverlay, fetchPlayerOverlayContext, isOverlayContext,
   PLAYER_CONTEXT_EVENT, updatePlayerOverlayContext, type PlayerOverlayContext,
 } from "./player/overlayContext";
+import {
+  DANMAKU_LANES, fetchEpisodeDanmaku, fetchEpisodeQualities, pickDanmakuLane,
+  type ActiveDanmaku, type DanmakuItem, type QualityOption,
+} from "./player/danmaku";
 import "./overlay.css";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const DANMAKU_OPACITIES = [
+  { label: "清晰 (95%)", value: 0.95 },
+  { label: "适中 (75%)", value: 0.75 },
+  { label: "柔和 (50%)", value: 0.5 },
+];
 
 function formatClock(value?: number): string {
   if (value === undefined || !Number.isFinite(value)) return "00:00";
@@ -35,7 +44,7 @@ function formatClock(value?: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-type PopoverKind = "none" | "speed" | "tracks" | "shortcuts";
+type PopoverKind = "none" | "speed" | "tracks" | "quality" | "danmaku" | "shortcuts";
 type PulseKind = "play" | "pause" | "back" | "forward" | "mute" | "volume";
 
 interface PulseState {
@@ -73,6 +82,34 @@ function OverlayApp() {
   const trackGenerationRef = useRef(0);
   const trackFlightRef = useRef(false);
   const nativeSessionRef = useRef<number | null>(null);
+
+  // Quality options (HongGuo CDN streams)
+  const [qualities, setQualities] = useState<QualityOption[]>([]);
+  const [qualityBusy, setQualityBusy] = useState(false);
+
+  // Official timed danmaku
+  const [danmakuEnabled, setDanmakuEnabled] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("hgr_danmaku_enabled") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [danmakuOpacity, setDanmakuOpacity] = useState<number>(() => {
+    try {
+      const saved = Number(window.localStorage.getItem("hgr_danmaku_opacity"));
+      return Number.isFinite(saved) && saved >= 0.3 && saved <= 1 ? saved : 0.95;
+    } catch {
+      return 0.95;
+    }
+  });
+  const [danmakuItems, setDanmakuItems] = useState<DanmakuItem[]>([]);
+  const [danmakuStatus, setDanmakuStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [activeDanmaku, setActiveDanmaku] = useState<ActiveDanmaku[]>([]);
+  const danmakuCursorRef = useRef(0);
+  const danmakuLastPosRef = useRef<number | null>(null);
+  const danmakuLaneFreeRef = useRef<number[]>(Array(DANMAKU_LANES).fill(0));
+  const danmakuSeqRef = useRef(0);
 
   // Chrome & panels
   const [hudVisible, setHudVisible] = useState(true);
@@ -265,6 +302,147 @@ function OverlayApp() {
     });
     return () => { trackGenerationRef.current++; };
   }, [connected, context, snapshot?.sessionId, snapshot?.state]);
+
+  const activeSeriesId = context?.kind === "series" ? context.seriesId : null;
+  const activeEpisodeId = context?.kind === "series" ? context.episodes[context.index]?.id ?? null : null;
+
+  // Load available quality tiers for active series episode.
+  useEffect(() => {
+    let alive = true;
+    setQualities([]);
+    if (!activeSeriesId || !activeEpisodeId) return;
+    void fetchEpisodeQualities(activeSeriesId, activeEpisodeId).then(rows => {
+      if (alive) setQualities(rows);
+    }).catch(() => {
+      if (alive) setQualities([]);
+    });
+    return () => { alive = false; };
+  }, [activeSeriesId, activeEpisodeId, context?.sessionId]);
+
+  // Load official timed danmaku for active series episode.
+  useEffect(() => {
+    let alive = true;
+    setDanmakuItems([]);
+    setActiveDanmaku([]);
+    danmakuCursorRef.current = 0;
+    danmakuLastPosRef.current = null;
+    danmakuLaneFreeRef.current = Array(DANMAKU_LANES).fill(0);
+    if (!activeSeriesId || !activeEpisodeId || !activeSeriesId.startsWith("hongguo:")) {
+      setDanmakuStatus("idle");
+      return;
+    }
+    setDanmakuStatus("loading");
+    void fetchEpisodeDanmaku(activeSeriesId, activeEpisodeId).then(rows => {
+      if (!alive) return;
+      setDanmakuItems(rows);
+      setDanmakuStatus("ready");
+      danmakuCursorRef.current = 0;
+      danmakuLastPosRef.current = null;
+    }).catch(() => {
+      if (alive) setDanmakuStatus("error");
+    });
+    return () => { alive = false; };
+  }, [activeSeriesId, activeEpisodeId]);
+
+  // Schedule rolling danmaku synced to playback position, seek, and pause state.
+  useEffect(() => {
+    if (!danmakuEnabled || danmakuItems.length === 0 || snapshot?.state !== "Playing") {
+      if (!danmakuEnabled) setActiveDanmaku([]);
+      return;
+    }
+    const pos = snapshot.positionSec ?? 0;
+    const prev = danmakuLastPosRef.current;
+    // Reset cursor when starting playback or after a seek jump.
+    if (prev === null || pos < prev - 0.5 || pos > prev + 2.5) {
+      let idx = 0;
+      while (idx < danmakuItems.length && danmakuItems[idx].timeSec < Math.max(0, pos - 0.4)) {
+        idx++;
+      }
+      danmakuCursorRef.current = idx;
+      danmakuLaneFreeRef.current = Array(DANMAKU_LANES).fill(0);
+      if (prev !== null) setActiveDanmaku([]);
+    }
+    danmakuLastPosRef.current = pos;
+
+    const toEmit: ActiveDanmaku[] = [];
+    const nowMs = performance.now();
+    const speedFactor = Math.max(0.5, Math.min(2.0, rate || 1));
+    let cursor = danmakuCursorRef.current;
+    while (cursor < danmakuItems.length && danmakuItems[cursor].timeSec <= pos + 0.15) {
+      const item = danmakuItems[cursor];
+      cursor++;
+      if (item.timeSec < pos - 1.5) continue;
+      if (toEmit.length >= 4) continue;
+      const lane = pickDanmakuLane(danmakuLaneFreeRef.current, nowMs);
+      const durationSec = Number(((8.5 + Math.min(4, item.text.length * 0.08)) / speedFactor).toFixed(2));
+      danmakuLaneFreeRef.current[lane] = nowMs + Math.max(2200, (durationSec * 1000) * 0.36);
+      toEmit.push({
+        key: `${++danmakuSeqRef.current}-${item.id}`,
+        text: item.text,
+        color: item.color || "#FFFFFF",
+        lane,
+        durationSec,
+      });
+    }
+    danmakuCursorRef.current = cursor;
+    if (toEmit.length > 0) {
+      setActiveDanmaku(current => [...current.slice(-48), ...toEmit]);
+    }
+  }, [danmakuEnabled, danmakuItems, snapshot?.positionSec, snapshot?.state, rate]);
+
+  const toggleDanmaku = useCallback((next: boolean) => {
+    setDanmakuEnabled(next);
+    if (!next) setActiveDanmaku([]);
+    try {
+      window.localStorage.setItem("hgr_danmaku_enabled", next ? "1" : "0");
+    } catch {}
+  }, []);
+
+  const updateDanmakuOpacity = useCallback((value: number) => {
+    setDanmakuOpacity(value);
+    try {
+      window.localStorage.setItem("hgr_danmaku_opacity", String(value));
+    } catch {}
+  }, []);
+
+  const switchQuality = useCallback(async (quality: number) => {
+    if (context?.kind !== "series" || transitionRef.current || busy || qualityBusy) return;
+    const episode = context.episodes[context.index];
+    if (!episode) return;
+    transitionRef.current = true;
+    setQualityBusy(true);
+    setBusy(true);
+    setCommandError("");
+    setPopover("none");
+    const resumeAt = Number.isFinite(position) && position >= 0.5 ? position : undefined;
+    try {
+      const core = window.__TAURI__?.core;
+      if (!core) throw new Error("桌面桥接不可用");
+      const sessionId = await core.invoke<number>("catalog_play_episode", {
+        seriesId: context.seriesId,
+        episodeId: episode.id,
+        quality,
+        resumeSec: resumeAt,
+      });
+      if (!Number.isSafeInteger(sessionId) || sessionId <= 0) {
+        throw new Error("切换清晰度失败");
+      }
+      const nextContext: PlayerOverlayContext = {
+        ...context,
+        sessionId,
+      };
+      setContext(nextContext);
+      await updatePlayerOverlayContext(nextContext);
+      setQualities(prev => prev.map(q => ({ ...q, selected: q.quality === quality })));
+      revealHud();
+    } catch (reason) {
+      setCommandError(String(reason));
+    } finally {
+      transitionRef.current = false;
+      setQualityBusy(false);
+      setBusy(false);
+    }
+  }, [context, busy, qualityBusy, position, revealHud]);
 
   // Thumbnail hover preview fetch.
   const previewEnabled = seekable;
@@ -595,13 +773,22 @@ function OverlayApp() {
       : ((context?.title && context.title !== "本地视频" ? context.title : snapshot?.filename) || "本地视频");
 
   const headingSubtitle = context?.kind === "series"
-    ? `第 ${context.episodes[context.index].number} 集 · ${context.episodes[context.index].title}`
+    ? (() => {
+        const ep = context.episodes[context.index];
+        if (!ep) return "";
+        if (ep.title.includes(`第 ${ep.number} 集`) || ep.title.includes(`第${ep.number}集`)) {
+          return ep.title;
+        }
+        return `第 ${ep.number} 集 · ${ep.title}`;
+      })()
     : context?.kind === "local" && context.ids.length > 1
       ? `${context.origin} · ${context.index + 1} / ${context.ids.length}`
       : "";
 
   const displayVolume = volumeDraft ?? volume;
   const hasTracks = Boolean(mediaTracks && (mediaTracks.audio.length > 1 || mediaTracks.subtitles.length > 0));
+  const activeQuality = qualities.find(q => q.selected) ?? qualities[0] ?? null;
+  const isHongGuoSeries = Boolean(activeSeriesId && activeSeriesId.startsWith("hongguo:"));
 
   return (
     <div
@@ -615,6 +802,32 @@ function OverlayApp() {
         onClick={onStageClick}
         onDoubleClick={onStageDoubleClick}
       />
+
+      {/* Rolling Official Danmaku Layer */}
+      {isHongGuoSeries && danmakuEnabled && activeDanmaku.length > 0 && (
+        <div
+          className={"nf-danmaku-stage" + (snapshot?.state !== "Playing" ? " is-paused" : "")}
+          style={{ opacity: danmakuOpacity }}
+          aria-hidden="true"
+        >
+          {activeDanmaku.map(item => (
+            <span
+              key={item.key}
+              className="nf-danmaku-item"
+              style={{
+                top: `${8 + item.lane * 6.5}%`,
+                color: item.color,
+                animationDuration: `${item.durationSec}s`,
+              }}
+              onAnimationEnd={() => {
+                setActiveDanmaku(curr => curr.filter(d => d.key !== item.key));
+              }}
+            >
+              {item.text}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Center transient HUD pulse */}
       {pulse && (
@@ -968,6 +1181,96 @@ function OverlayApp() {
                 />
                 <span>自动连播</span>
               </label>
+            )}
+
+            {/* Official Timed Danmaku Controls */}
+            {isHongGuoSeries && (
+              <div className="nf-popover-anchor">
+                <button
+                  type="button"
+                  className={
+                    "nf-text-btn"
+                    + (popover === "danmaku" ? " is-active" : "")
+                    + (danmakuEnabled ? " is-danmaku-on" : "")
+                  }
+                  onClick={() => setPopover(p => (p === "danmaku" ? "none" : "danmaku"))}
+                  title={danmakuEnabled ? "弹幕已开启" : "弹幕已关闭"}
+                >
+                  {danmakuEnabled
+                    ? (danmakuStatus === "loading" ? "弹幕…" : `弹幕${danmakuItems.length > 0 ? ` (${danmakuItems.length})` : ""}`)
+                    : "弹幕 关"}
+                </button>
+                {popover === "danmaku" && (
+                  <div className="nf-popover nf-danmaku-popover" role="dialog" aria-label="弹幕设置">
+                    <div className="nf-popover-title">
+                      原站弹幕
+                      {danmakuStatus === "ready" && ` · ${danmakuItems.length} 条`}
+                      {danmakuStatus === "loading" && " · 加载中"}
+                      {danmakuStatus === "error" && " · 暂不可用"}
+                    </div>
+                    <button
+                      type="button"
+                      className={"nf-menu-item" + (danmakuEnabled ? " is-selected" : "")}
+                      onClick={() => toggleDanmaku(!danmakuEnabled)}
+                    >
+                      <span>{danmakuEnabled ? "开启弹幕" : "已关闭弹幕"}</span>
+                      <span className="nf-check">{danmakuEnabled ? "开" : "关"}</span>
+                    </button>
+                    <div className="nf-popover-sep" />
+                    <div className="nf-popover-title">弹幕透明度</div>
+                    {DANMAKU_OPACITIES.map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={"nf-menu-item" + (Math.abs(danmakuOpacity - opt.value) < 0.02 ? " is-selected" : "")}
+                        onClick={() => updateDanmakuOpacity(opt.value)}
+                      >
+                        <span>{opt.label}</span>
+                        {Math.abs(danmakuOpacity - opt.value) < 0.02 && <span className="nf-check">●</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Video Quality Selector */}
+            {qualities.length > 0 && (
+              <div className="nf-popover-anchor">
+                <button
+                  type="button"
+                  className={"nf-text-btn" + (popover === "quality" ? " is-active" : "")}
+                  disabled={!controllable || qualityBusy}
+                  onClick={() => setPopover(p => (p === "quality" ? "none" : "quality"))}
+                >
+                  {qualityBusy ? "切换中…" : (activeQuality?.label || "画质")}
+                </button>
+                {popover === "quality" && (
+                  <div className="nf-popover nf-quality-popover" role="menu" aria-label="视频清晰度">
+                    <div className="nf-popover-title">清晰度（默认最高）</div>
+                    {qualities.map(q => (
+                      <button
+                        key={q.quality}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={q.selected}
+                        className={"nf-menu-item" + (q.selected ? " is-selected" : "")}
+                        disabled={qualityBusy}
+                        onClick={() => {
+                          if (!q.selected) void switchQuality(q.quality);
+                          else setPopover("none");
+                        }}
+                      >
+                        <span>
+                          {q.label}
+                          <small className="nf-quality-codec"> {q.codec}</small>
+                        </span>
+                        {q.selected && <span className="nf-check">●</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Playback Speed */}

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-/// A local MP4, a public HTTPS MP4, or a user-configured WebDAV media stream.
+/// A local video, a public HTTPS MP4, a WebDAV stream, or an authenticated loopback stream.
 #[derive(Clone, Debug)]
 pub enum MediaSource {
     Local(PathBuf),
@@ -9,6 +9,36 @@ pub enum MediaSource {
         url: String,
         auth_header: Option<String>,
     },
+    LocalStream {
+        url: String,
+        token_header: String,
+    },
+}
+
+pub fn local_stream_url(value: &str) -> Result<String, String> {
+    if value.len() > 256
+        || !value.starts_with("http://127.0.0.1:")
+        || value
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
+        || value.contains('#')
+    {
+        return Err("无效的本机流媒体代理地址".into());
+    }
+    let after = &value["http://127.0.0.1:".len()..];
+    let (port_str, path) = after.split_once('/').ok_or("无效的本机流媒体代理端口")?;
+    let port: u16 = port_str.parse().map_err(|_| "无效的本机流媒体代理端口")?;
+    if port == 0 {
+        return Err("无效的本机流媒体代理端口".into());
+    }
+    let id = path
+        .strip_prefix("stream/")
+        .and_then(|s| s.strip_suffix(".mp4"))
+        .ok_or("无效的本机流媒体路径")?;
+    if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("无效的本机流媒体标识".into());
+    }
+    Ok(value.to_owned())
 }
 
 pub fn webdav_media_url(value: &str) -> Result<String, String> {
@@ -103,6 +133,16 @@ impl MediaSource {
         })
     }
 
+    pub fn local_stream(url: String, token_header: String) -> Result<Self, String> {
+        if token_header.is_empty() || token_header.chars().any(char::is_control) {
+            return Err("无效的本机流媒体令牌".into());
+        }
+        Ok(Self::LocalStream {
+            url: local_stream_url(&url)?,
+            token_header,
+        })
+    }
+
     pub fn label(&self) -> String {
         match self {
             Self::Local(path) => path
@@ -120,6 +160,7 @@ impl MediaSource {
                     .unwrap_or("webdav");
                 format!("WebDAV · {host}")
             }
+            Self::LocalStream { .. } => "红果短剧 · CDN 流媒体".into(),
         }
     }
 
@@ -128,6 +169,7 @@ impl MediaSource {
             Self::Local(_) => "local",
             Self::Https(_) => "https",
             Self::WebDav { .. } => "webdav",
+            Self::LocalStream { .. } => "local-stream",
         }
     }
 }

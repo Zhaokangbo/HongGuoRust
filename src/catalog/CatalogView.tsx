@@ -166,8 +166,20 @@ export function CatalogView({
   }, [detail, combinedRefresh]);
 
   function onScroll() {
-    const top = scrollRef.current?.scrollTop ?? 0;
-    setScrolled(top > 28);
+    const el = scrollRef.current;
+    if (!el) return;
+    setScrolled(el.scrollTop > 28);
+    if (
+      mode === "browse" &&
+      !detail &&
+      nextOffset !== null &&
+      !loading &&
+      !loadingMore &&
+      !working &&
+      el.scrollHeight - el.scrollTop - el.clientHeight < 420
+    ) {
+      void loadMore();
+    }
   }
 
   function navigateTo(next: NavMode) {
@@ -267,7 +279,11 @@ export function CatalogView({
         signal: controller.signal,
       });
       if (version !== requestVersion.current || controller.signal.aborted) return;
-      setItems(previous => [...previous, ...visibleCatalogSeries(page.items)]);
+      setItems(previous => {
+        const seen = new Set(previous.map(item => item.id));
+        const fresh = visibleCatalogSeries(page.items).filter(item => !seen.has(item.id));
+        return [...previous, ...fresh];
+      });
       setNextOffset(page.nextOffset);
     } catch (reason) {
       if (version === requestVersion.current && !isCatalogCancellation(reason)) {
@@ -706,7 +722,7 @@ export function CatalogView({
                           ? "已看完"
                           : saved
                             ? `看到 ${formatEpisodePosition(saved.positionSec)}`
-                            : episode.runtimeLabel;
+                            : (episode.runtimeLabel && episode.runtimeLabel !== "—" ? episode.runtimeLabel : "");
                     return (
                       <button
                         key={episode.id}

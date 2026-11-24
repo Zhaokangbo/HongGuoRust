@@ -1,12 +1,15 @@
 //! Provider registry: namespaced IDs, capability discovery and bounded search.
 //! This layer NEVER opens media; it returns validated targets to PlayerService.
 use super::hgcommunity::HgCommunityProvider;
-use super::hongguo::HongGuoUnavailableProvider;
+use super::hongguo::HongGuoRealProvider;
 use super::local::LocalLibraryProvider;
 use super::manifest::{OwnedManifestProvider, OwnedManifestStore};
 use super::request::{RequestContext, RequestRegistry};
 use super::webdav::{WebDavProvider, WebDavStore};
-use super::{ContentProvider, LocalDemoProvider, MediaTarget, Series, SeriesDetail};
+use super::{
+    ContentProvider, DanmakuItem, LocalDemoProvider, MediaTarget, QualityOption, Series,
+    SeriesDetail,
+};
 use crate::local_library::LocalLibrary;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -108,7 +111,7 @@ impl CatalogService {
             Box::new(LocalDemoProvider),
             Box::new(LocalLibraryProvider::new(library)),
             Box::new(OwnedManifestProvider::new(manifest)),
-            Box::new(HongGuoUnavailableProvider),
+            Box::new(HongGuoRealProvider::new()),
         ];
         if let Some(webdav) = webdav {
             providers.push(Box::new(WebDavProvider::new(webdav)));
@@ -224,20 +227,46 @@ impl CatalogService {
         if source != "all" {
             self.provider(source)?;
         }
+        let needed = offset.saturating_add(limit);
         let mut all = Vec::new();
+        let mut any_has_more = false;
+        let mut succeeded_any = false;
+        let mut first_err: Option<String> = None;
         for provider in &self.providers {
             if source != "all" && provider.id() != source {
                 continue;
             }
-            let matches = match request {
-                Some(ctx) => provider.search_with_request(query, ctx)?,
-                None => provider.search(query)?,
+            let result = provider.search_until_with_request(query, needed, request);
+            let (matches, has_more) = match result {
+                Ok(pair) => {
+                    succeeded_any = true;
+                    pair
+                }
+                Err(err) => {
+                    if source != "all"
+                        || err.starts_with("provider_cancelled:")
+                        || err.starts_with("provider_timeout:")
+                    {
+                        return Err(err);
+                    }
+                    tracing::warn!(provider = provider.id(), error = %err, "provider search failed during aggregate query");
+                    if first_err.is_none() {
+                        first_err = Some(err);
+                    }
+                    continue;
+                }
             };
+            any_has_more |= has_more;
             for item in matches {
                 if let Some(ctx) = request {
                     ctx.check()?;
                 }
                 all.push(scope_series(provider.as_ref(), item)?);
+            }
+        }
+        if !succeeded_any {
+            if let Some(err) = first_err {
+                return Err(err);
             }
         }
         if let Some(ctx) = request {
@@ -250,7 +279,11 @@ impl CatalogService {
         } else {
             all.into_iter().skip(offset).take(limit).collect()
         };
-        let next_offset = if end < total { Some(end) } else { None };
+        let next_offset = if end < total || (any_has_more && end < MAX_OFFSET) {
+            Some(end)
+        } else {
+            None
+        };
         Ok(SearchPage {
             items,
             total,
@@ -289,6 +322,15 @@ impl CatalogService {
         series_id: &str,
         episode_id: &str,
     ) -> Result<MediaTarget, String> {
+        self.resolve_episode_with_quality(series_id, episode_id, None)
+    }
+
+    pub fn resolve_episode_with_quality(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        quality: Option<u32>,
+    ) -> Result<MediaTarget, String> {
         let (source, local_id) = split_series_id(series_id)?;
         if episode_id.is_empty()
             || episode_id.len() > MAX_ID_BYTES
@@ -302,7 +344,7 @@ impl CatalogService {
         if !provider.supports_play() {
             return Err("provider_not_authorized: 当前内容源没有播放授权".into());
         }
-        let target = provider.resolve_episode(local_id, episode_id)?;
+        let target = provider.resolve_episode_with_quality(local_id, episode_id, quality)?;
         match target {
             MediaTarget::Https(url) => {
                 crate::player::source::public_https_url(&url).map(MediaTarget::Https)
@@ -326,7 +368,87 @@ impl CatalogService {
                     auth_header,
                 })
             }
+            MediaTarget::LocalStream {
+                url,
+                token_header,
+                stable_key,
+            } => {
+                if source != "hongguo" || token_header.is_empty() || stable_key.is_empty() {
+                    return Err(
+                        "invalid_media_target: LocalStream target does not match provider".into(),
+                    );
+                }
+                crate::player::source::local_stream_url(&url).map(|validated| {
+                    MediaTarget::LocalStream {
+                        url: validated,
+                        token_header,
+                        stable_key,
+                    }
+                })
+            }
         }
+    }
+
+    pub fn episode_qualities(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+    ) -> Result<Vec<QualityOption>, String> {
+        let (source, local_id) = split_series_id(series_id)?;
+        if episode_id.is_empty()
+            || episode_id.len() > MAX_ID_BYTES
+            || episode_id.chars().any(char::is_control)
+        {
+            return Err("invalid_episode_id: Invalid episode ID".into());
+        }
+        let provider = self.provider(source)?;
+        provider.episode_qualities(local_id, episode_id)
+    }
+
+    pub fn episode_danmaku(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        duration_ms: Option<u64>,
+    ) -> Result<Vec<DanmakuItem>, String> {
+        let (source, local_id) = split_series_id(series_id)?;
+        if episode_id.is_empty()
+            || episode_id.len() > MAX_ID_BYTES
+            || episode_id.chars().any(char::is_control)
+        {
+            return Err("invalid_episode_id: Invalid episode ID".into());
+        }
+        let provider = self.provider(source)?;
+        provider.episode_danmaku(local_id, episode_id, duration_ms)
+    }
+
+    /// Resolve a stable bookmark fingerprint source for watch-progress lookups.
+    /// Dynamic CDN providers return a stable canonical key with ZERO network calls;
+    /// static providers continue verifying against their resolved media URL.
+    pub fn progress_source_key(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+    ) -> Result<Option<String>, String> {
+        let (source, local_id) = split_series_id(series_id)?;
+        let provider = self.provider(source)?;
+        if let Some(key) = provider.stable_progress_key(local_id, episode_id) {
+            return Ok(Some(key));
+        }
+        match self.resolve_episode(series_id, episode_id) {
+            Ok(MediaTarget::Https(url)) | Ok(MediaTarget::WebDav { url, .. }) => Ok(Some(url)),
+            Ok(MediaTarget::LocalStream { stable_key, .. }) => Ok(Some(stable_key)),
+            Ok(MediaTarget::LocalLibrary(_)) => Ok(None),
+            Err(_) => Ok(None),
+        }
+    }
+
+    pub fn supports_poster_extract(&self, series_id: &str) -> bool {
+        let Ok((source, _)) = split_series_id(series_id) else {
+            return false;
+        };
+        self.provider(source)
+            .is_ok_and(ContentProvider::supports_poster_extract)
     }
 }
 
@@ -473,22 +595,21 @@ mod tests {
             .sources()
             .into_iter()
             .find(|source| source.id == "hongguo")
-            .expect("gated HongGuo source must be registered");
-        assert!(!hongguo.supports_search);
-        assert!(!hongguo.supports_detail);
-        assert!(!hongguo.supports_play);
-        assert!(hongguo.name.contains("待授权"));
+            .expect("HongGuo provider must be registered");
+        assert!(hongguo.supports_search);
+        assert!(hongguo.supports_detail);
+        assert!(hongguo.supports_play);
+        assert_eq!(hongguo.name, "红果短剧");
+        assert!(service.detail("hongguo:invalid-non-numeric").is_err());
+        assert!(service
+            .resolve_episode("hongguo:invalid-non-numeric", "ep-1")
+            .is_err());
         assert_eq!(
             service
-                .search_page(None, Some("hongguo"), 0, 24)
-                .unwrap()
-                .total,
-            0
+                .progress_source_key("hongguo:123456", "987654")
+                .unwrap(),
+            Some("hongguo:123456:987654".into())
         );
-        assert!(service.detail("hongguo:synthetic-1").is_err());
-        assert!(service
-            .resolve_episode("hongguo:synthetic-1", "ep-1")
-            .is_err());
         drop(service);
         drop(library);
         fs::remove_dir_all(dir).unwrap();

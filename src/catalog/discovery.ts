@@ -1,6 +1,6 @@
 import type { CatalogProvider, Series } from "./types";
 
-const HIDDEN_TEST_PROVIDERS = new Set(["demo", "hongguo"]);
+const HIDDEN_TEST_PROVIDERS = new Set(["demo"]);
 
 export function isVisibleProvider(providerId: string): boolean {
   return !HIDDEN_TEST_PROVIDERS.has(providerId);
@@ -34,8 +34,9 @@ export function discoveryHero(items: readonly Series[]): Series | null {
 }
 
 export function discoverySourceLabel(id: string, names: ReadonlyMap<string, string>): string {
-  return names.get(id) ?? (id === "manifest" ? "自有媒体清单"
-    : id === "local" ? "本地媒体"
-      : id === "webdav" ? "WebDAV 片库"
-        : id === "demo" ? "演示内容" : "其他来源");
+  return names.get(id) ?? (id === "hongguo" ? "红果短剧"
+    : id === "manifest" ? "自有媒体清单"
+      : id === "local" ? "本地媒体"
+        : id === "webdav" ? "WebDAV 片库"
+          : id === "demo" ? "演示内容" : "其他来源");
 }

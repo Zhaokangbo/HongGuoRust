@@ -195,7 +195,11 @@ export function DiscoveryHome({
         signal: controller.signal,
       });
       if (version !== requestVersion.current || controller.signal.aborted) return;
-      setItems(previous => [...previous, ...visibleCatalogSeries(page.items)]);
+      setItems(previous => {
+        const seen = new Set(previous.map(item => item.id));
+        const fresh = visibleCatalogSeries(page.items).filter(item => !seen.has(item.id));
+        return [...previous, ...fresh];
+      });
       setNextOffset(page.nextOffset);
     } catch (reason) {
       if (version === requestVersion.current && !isCatalogCancellation(reason)) {

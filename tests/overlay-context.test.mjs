@@ -36,9 +36,9 @@ test("overlay context validator accepts series, local and single payloads only",
   }), false);
 });
 
-test("test and placeholder providers are hidden from production browse surfaces", () => {
+test("test demo provider is hidden while real providers stay visible on browse surfaces", () => {
   assert.equal(isVisibleProvider("demo"), false);
-  assert.equal(isVisibleProvider("hongguo"), false);
+  assert.equal(isVisibleProvider("hongguo"), true);
   assert.equal(isVisibleProvider("local"), true);
   assert.equal(isVisibleProvider("manifest"), true);
   assert.equal(isVisibleProvider("hgcommunity"), true);
@@ -47,6 +47,7 @@ test("test and placeholder providers are hidden from production browse surfaces"
     { id: "demo:a", providerId: "demo", title: "A", description: "", genre: "", badge: "", artwork: "forest", episodeCount: 1 },
     { id: "local:1", providerId: "local", title: "B", description: "", genre: "", badge: "", artwork: "studio", episodeCount: 1 },
     { id: "manifest:m1", providerId: "manifest", title: "C", description: "", genre: "", badge: "", artwork: "city", episodeCount: 2 },
+    { id: "hongguo:7703065438208412697", providerId: "hongguo", title: "D", description: "", genre: "短剧", badge: "全 60 集", artwork: "studio", episodeCount: 60 },
   ]);
-  assert.deepEqual(filtered.map(item => item.id), ["local:1", "manifest:m1"]);
+  assert.deepEqual(filtered.map(item => item.id), ["local:1", "manifest:m1", "hongguo:7703065438208412697"]);
 });

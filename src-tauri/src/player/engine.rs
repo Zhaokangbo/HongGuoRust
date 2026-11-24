@@ -157,7 +157,7 @@ impl Engine {
         opened: Instant,
         preferences: PlayerPreferences,
     ) -> Result<Self, Failure> {
-        let (name, auth_header, mov_only) = match source {
+        let (name, custom_header, mov_only) = match source {
             MediaSource::Local(path) => (
                 local_video(path)
                     .map(str::to_owned)
@@ -170,10 +170,21 @@ impl Engine {
                 is_mov_container(path),
             ),
             MediaSource::Https(url) => (url.clone(), None, false),
-            MediaSource::WebDav { url, auth_header } => (url.clone(), auth_header.clone(), false),
+            MediaSource::WebDav { url, auth_header } => (
+                url.clone(),
+                auth_header
+                    .as_deref()
+                    .map(|auth| format!("Authorization: {auth}")),
+                false,
+            ),
+            MediaSource::LocalStream { url, token_header } => (
+                url.clone(),
+                Some(format!("X-HGR-Stream-Token: {token_header}")),
+                false,
+            ),
         };
         let local = matches!(source, MediaSource::Local(_));
-        let proxy = if local {
+        let proxy = if local || matches!(source, MediaSource::LocalStream { .. }) {
             None
         } else {
             crate::catalog::http_client::system_http_proxy(&name)
@@ -197,9 +208,8 @@ impl Engine {
                 if let Some(proxy_url) = proxy.as_deref() {
                     let _ = init.set_option("http-proxy", proxy_url);
                 }
-                if let Some(auth) = auth_header.as_deref() {
-                    let header = format!("Authorization: {auth}");
-                    init.set_option("http-header-fields", header.as_str())?;
+                if let Some(header) = custom_header.as_deref() {
+                    init.set_option("http-header-fields", header)?;
                 }
             }
             init.set_option("sub-auto", "no")?;

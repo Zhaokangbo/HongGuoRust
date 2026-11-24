@@ -193,12 +193,21 @@ fn render_image(
         }),
         _ => false,
     };
-    let (name, auth_header) = match source {
+    let (name, custom_header) = match source {
         MediaSource::Local(path) => (path.to_str()?.to_owned(), None),
         MediaSource::Https(url) => (url.clone(), None),
-        MediaSource::WebDav { url, auth_header } => (url.clone(), auth_header.clone()),
+        MediaSource::WebDav { url, auth_header } => (
+            url.clone(),
+            auth_header
+                .as_deref()
+                .map(|auth| format!("Authorization: {auth}")),
+        ),
+        MediaSource::LocalStream { url, token_header } => (
+            url.clone(),
+            Some(format!("X-HGR-Stream-Token: {token_header}")),
+        ),
     };
-    let proxy = if local {
+    let proxy = if local || matches!(source, MediaSource::LocalStream { .. }) {
         None
     } else {
         crate::catalog::http_client::system_http_proxy(&name)
@@ -217,9 +226,8 @@ fn render_image(
             if let Some(proxy_url) = proxy.as_deref() {
                 let _ = init.set_option("http-proxy", proxy_url);
             }
-            if let Some(auth) = auth_header.as_deref() {
-                let header = format!("Authorization: {auth}");
-                init.set_option("http-header-fields", header.as_str())?;
+            if let Some(header) = custom_header.as_deref() {
+                init.set_option("http-header-fields", header)?;
             }
         }
         init.set_option("aid", "no")?;
@@ -341,6 +349,7 @@ fn poster_cache_key(source: &MediaSource) -> Option<String> {
         }
         MediaSource::Https(url) => Some(format!("https-{}", fnv1a_hex(&[url.as_bytes()]))),
         MediaSource::WebDav { url, .. } => Some(format!("webdav-{}", fnv1a_hex(&[url.as_bytes()]))),
+        MediaSource::LocalStream { .. } => None,
     }
 }
 
@@ -357,12 +366,21 @@ fn render_poster_jpeg(source: &MediaSource, start_sec: f64) -> Option<Vec<u8>> {
         }),
         _ => false,
     };
-    let (name, auth_header) = match source {
+    let (name, custom_header) = match source {
         MediaSource::Local(path) => (path.to_str()?.to_owned(), None),
         MediaSource::Https(url) => (url.clone(), None),
-        MediaSource::WebDav { url, auth_header } => (url.clone(), auth_header.clone()),
+        MediaSource::WebDav { url, auth_header } => (
+            url.clone(),
+            auth_header
+                .as_deref()
+                .map(|auth| format!("Authorization: {auth}")),
+        ),
+        MediaSource::LocalStream { url, token_header } => (
+            url.clone(),
+            Some(format!("X-HGR-Stream-Token: {token_header}")),
+        ),
     };
-    let proxy = if local {
+    let proxy = if local || matches!(source, MediaSource::LocalStream { .. }) {
         None
     } else {
         crate::catalog::http_client::system_http_proxy(&name)
@@ -381,9 +399,8 @@ fn render_poster_jpeg(source: &MediaSource, start_sec: f64) -> Option<Vec<u8>> {
             if let Some(proxy_url) = proxy.as_deref() {
                 let _ = init.set_option("http-proxy", proxy_url);
             }
-            if let Some(auth) = auth_header.as_deref() {
-                let header = format!("Authorization: {auth}");
-                init.set_option("http-header-fields", header.as_str())?;
+            if let Some(header) = custom_header.as_deref() {
+                init.set_option("http-header-fields", header)?;
             }
         }
         init.set_option("aid", "no")?;

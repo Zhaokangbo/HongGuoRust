@@ -1,15 +1,27 @@
 //! Native Windows WinHTTP client (zero external crates).
 //! Uses system TLS trust store and automatic Windows proxy/VPN settings.
+use std::collections::HashMap;
 use std::ffi::c_void;
+use std::io::{self, Read};
 use std::ptr::{null, null_mut};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const WINHTTP_ACCESS_TYPE_DEFAULT_PROXY: u32 = 0;
+const WINHTTP_ACCESS_TYPE_NO_PROXY: u32 = 1;
 const WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY: u32 = 4;
 const WINHTTP_FLAG_SECURE: u32 = 0x0080_0000;
 const WINHTTP_QUERY_STATUS_CODE: u32 = 19;
+const WINHTTP_QUERY_RAW_HEADERS_CRLF: u32 = 22;
 const WINHTTP_QUERY_FLAG_NUMBER: u32 = 0x2000_0000;
 const WINHTTP_ADDREQ_FLAG_ADD: u32 = 0x2000_0000;
 const WINHTTP_ADDREQ_FLAG_REPLACE: u32 = 0x8000_0000;
+const WINHTTP_OPTION_DISABLE_FEATURE: u32 = 63;
+const WINHTTP_DISABLE_COOKIES: u32 = 0x0000_0001;
+const WINHTTP_OPTION_DECOMPRESSION: u32 = 118;
+const WINHTTP_DECOMPRESSION_FLAG_GZIP: u32 = 0x0000_0001;
+const WINHTTP_DECOMPRESSION_FLAG_DEFLATE: u32 = 0x0000_0002;
+const MAX_URL_LEN: usize = 8192;
 
 type Hinternet = *mut c_void;
 
@@ -44,6 +56,12 @@ extern "system" {
         connect_timeout: i32,
         send_timeout: i32,
         receive_timeout: i32,
+    ) -> i32;
+    fn WinHttpSetOption(
+        handle: Hinternet,
+        option: u32,
+        buffer: *const c_void,
+        buffer_len: u32,
     ) -> i32;
     fn WinHttpConnect(
         session: Hinternet,
@@ -96,6 +114,9 @@ extern "system" {
 
 struct Handle(Hinternet);
 
+// WinHTTP handles are safe to transfer between threads when owned exclusively.
+unsafe impl Send for Handle {}
+
 impl Drop for Handle {
     fn drop(&mut self) {
         if !self.0.is_null() {
@@ -118,7 +139,7 @@ pub struct ParsedUrl {
 }
 
 pub fn parse_url(raw: &str) -> Result<ParsedUrl, String> {
-    if raw.len() > 2048 || raw.chars().any(|c| c.is_control() || c.is_whitespace()) {
+    if raw.len() > MAX_URL_LEN || raw.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return Err("http_url: URL 格式无效".into());
     }
     let (secure, rest) = if let Some(rest) = raw.strip_prefix("https://") {
@@ -206,50 +227,313 @@ pub fn encode_basic_auth(username: &str, password: &str) -> String {
 
 pub struct HttpResponse {
     pub status: u32,
+    pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
 
-pub fn request(
+impl HttpResponse {
+    #[allow(dead_code)]
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    pub fn set_cookies(&self) -> Vec<String> {
+        self.headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie"))
+            .map(|(_, v)| v.clone())
+            .collect()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct RequestOptions<'a> {
+    pub user_agent: Option<&'a str>,
+    pub timeout_ms: i32,
+    pub decompress: bool,
+    pub disable_cookies: bool,
+}
+
+impl Default for RequestOptions<'_> {
+    fn default() -> Self {
+        Self {
+            user_agent: None,
+            timeout_ms: 15_000,
+            decompress: false,
+            disable_cookies: true,
+        }
+    }
+}
+
+/// In-memory per-host cookie jar (used for website SSR `ttwid` cookies, never for
+/// anonymous playback model endpoints).
+#[derive(Default)]
+pub struct MemoryCookies {
+    store: Mutex<HashMap<String, Vec<(String, String)>>>,
+}
+
+impl MemoryCookies {
+    pub fn save_from_headers(&self, host: &str, set_cookies: &[String]) {
+        if set_cookies.is_empty() {
+            return;
+        }
+        let host_key = host.to_ascii_lowercase();
+        let Ok(mut map) = self.store.lock() else {
+            return;
+        };
+        let entry = map.entry(host_key).or_default();
+        for raw in set_cookies {
+            let Some(pair) = raw.split(';').next().map(str::trim) else {
+                continue;
+            };
+            let Some((name, value)) = pair.split_once('=') else {
+                continue;
+            };
+            let name = name.trim();
+            let value = value.trim();
+            if name.is_empty()
+                || name.chars().any(char::is_control)
+                || value.chars().any(char::is_control)
+            {
+                continue;
+            }
+            if let Some(existing) = entry.iter_mut().find(|(k, _)| k == name) {
+                existing.1 = value.to_owned();
+            } else if entry.len() < 32 {
+                entry.push((name.to_owned(), value.to_owned()));
+            }
+        }
+    }
+
+    pub fn cookie_header(&self, host: &str) -> Option<String> {
+        let host_key = host.to_ascii_lowercase();
+        let map = self.store.lock().ok()?;
+        let items = map.get(&host_key)?;
+        if items.is_empty() {
+            return None;
+        }
+        Some(
+            items
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("; "),
+        )
+    }
+}
+
+pub struct HttpStream {
+    pub status: u32,
+    pub headers: Vec<(String, String)>,
+    req: Handle,
+    _conn: Handle,
+    _session: Handle,
+}
+
+impl HttpStream {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+impl Read for HttpStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let to_read = buf.len().min(64 * 1024) as u32;
+        let mut read_bytes: u32 = 0;
+        let ok = unsafe {
+            WinHttpReadData(
+                self.req.0,
+                buf.as_mut_ptr().cast::<c_void>(),
+                to_read,
+                &mut read_bytes,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(read_bytes as usize)
+    }
+}
+
+fn query_raw_headers(req: Hinternet) -> Vec<(String, String)> {
+    let mut bytes_needed: u32 = 0;
+    unsafe {
+        WinHttpQueryHeaders(
+            req,
+            WINHTTP_QUERY_RAW_HEADERS_CRLF,
+            null(),
+            null_mut(),
+            &mut bytes_needed,
+            null_mut(),
+        );
+    }
+    if bytes_needed < 4 || bytes_needed > 128 * 1024 {
+        return Vec::new();
+    }
+    let mut wide_buf = vec![0u16; (bytes_needed as usize).div_ceil(2)];
+    let mut buf_len = (wide_buf.len() * 2) as u32;
+    let ok = unsafe {
+        WinHttpQueryHeaders(
+            req,
+            WINHTTP_QUERY_RAW_HEADERS_CRLF,
+            null(),
+            wide_buf.as_mut_ptr().cast::<c_void>(),
+            &mut buf_len,
+            null_mut(),
+        )
+    };
+    if ok == 0 {
+        return Vec::new();
+    }
+    let units = (buf_len as usize) / 2;
+    let text = String::from_utf16_lossy(&wide_buf[..units.min(wide_buf.len())]);
+    let mut out = Vec::new();
+    for line in text.split("\r\n").skip(1) {
+        if let Some((k, v)) = line.split_once(':') {
+            let key = k.trim();
+            let val = v.trim();
+            if !key.is_empty() {
+                out.push((key.to_owned(), val.to_owned()));
+            }
+        }
+    }
+    out
+}
+
+fn prefer_direct_slot() -> &'static Mutex<Option<Instant>> {
+    static SLOT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+fn should_prefer_direct() -> bool {
+    prefer_direct_slot()
+        .lock()
+        .ok()
+        .and_then(|g| *g)
+        .is_some_and(|until| Instant::now() < until)
+}
+
+fn mark_prefer_direct() {
+    if let Ok(mut g) = prefer_direct_slot().lock() {
+        *g = Some(Instant::now() + Duration::from_secs(120));
+    }
+}
+
+fn clear_prefer_direct() {
+    if let Ok(mut g) = prefer_direct_slot().lock() {
+        *g = None;
+    }
+}
+
+pub fn open_stream(
     method: &str,
     url: &str,
     headers: &[(&str, &str)],
     body: Option<&[u8]>,
-    max_response_bytes: usize,
-) -> Result<HttpResponse, String> {
-    let parsed = parse_url(url)?;
-    let agent = wide("HongGuoRust/1.0");
+    options: RequestOptions<'_>,
+) -> Result<HttpStream, String> {
+    if should_prefer_direct() {
+        return match open_stream_with_proxy(method, url, headers, body, options, false) {
+            Ok(stream) => Ok(stream),
+            Err((err, _)) => {
+                clear_prefer_direct();
+                open_stream_with_proxy(method, url, headers, body, options, true).map_err(|_| err)
+            }
+        };
+    }
+    match open_stream_with_proxy(method, url, headers, body, options, true) {
+        Ok(stream) => Ok(stream),
+        Err((err, retry_direct)) if retry_direct => {
+            match open_stream_with_proxy(method, url, headers, body, options, false) {
+                Ok(stream) => {
+                    mark_prefer_direct();
+                    Ok(stream)
+                }
+                Err(_) => Err(err),
+            }
+        }
+        Err((err, _)) => Err(err),
+    }
+}
+
+fn open_stream_with_proxy(
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    options: RequestOptions<'_>,
+    use_system_proxy: bool,
+) -> Result<HttpStream, (String, bool)> {
+    let parsed = parse_url(url).map_err(|e| (e, false))?;
+    let ua_from_headers = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+        .map(|(_, v)| *v);
+    let agent = wide(
+        options
+            .user_agent
+            .or(ua_from_headers)
+            .unwrap_or("HongGuoRust/1.0"),
+    );
     let session = unsafe {
-        let h = WinHttpOpen(
-            agent.as_ptr(),
-            WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-            null(),
-            null(),
-            0,
-        );
-        if h.is_null() {
+        if use_system_proxy {
+            let h = WinHttpOpen(
+                agent.as_ptr(),
+                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                null(),
+                null(),
+                0,
+            );
+            if h.is_null() {
+                WinHttpOpen(
+                    agent.as_ptr(),
+                    WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                    null(),
+                    null(),
+                    0,
+                )
+            } else {
+                h
+            }
+        } else {
             WinHttpOpen(
                 agent.as_ptr(),
-                WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                WINHTTP_ACCESS_TYPE_NO_PROXY,
                 null(),
                 null(),
                 0,
             )
-        } else {
-            h
         }
     };
     if session.is_null() {
-        return Err("http_init: 无法初始化网络会话".into());
+        return Err(("http_init: 无法初始化网络会话".into(), false));
     }
     let session = Handle(session);
+    let timeout = options.timeout_ms.clamp(1_000, 60_000);
+    let connect_timeout = timeout.min(8_000);
     unsafe {
-        WinHttpSetTimeouts(session.0, 6_000, 6_000, 8_000, 15_000);
+        WinHttpSetTimeouts(
+            session.0,
+            connect_timeout,
+            connect_timeout,
+            timeout,
+            timeout,
+        );
     }
 
     let host_w = wide(&parsed.host);
     let conn = unsafe { WinHttpConnect(session.0, host_w.as_ptr(), parsed.port, 0) };
     if conn.is_null() {
-        return Err("http_connect: 无法连接目标服务器".into());
+        return Err(("http_connect: 无法连接目标服务器".into(), use_system_proxy));
     }
     let conn = Handle(conn);
 
@@ -272,13 +556,42 @@ pub fn request(
         )
     };
     if req.is_null() {
-        return Err("http_request: 创建网络请求失败".into());
+        return Err(("http_request: 创建网络请求失败".into(), false));
     }
     let req = Handle(req);
 
+    if options.decompress {
+        let flags: u32 = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
+        unsafe {
+            let _ = WinHttpSetOption(
+                req.0,
+                WINHTTP_OPTION_DECOMPRESSION,
+                (&flags as *const u32).cast::<c_void>(),
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+
+    if options.disable_cookies {
+        let disable: u32 = WINHTTP_DISABLE_COOKIES;
+        unsafe {
+            let _ = WinHttpSetOption(
+                req.0,
+                WINHTTP_OPTION_DISABLE_FEATURE,
+                (&disable as *const u32).cast::<c_void>(),
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+
     for (name, value) in headers {
         if name.chars().any(char::is_control) || value.chars().any(char::is_control) {
-            return Err("http_header: 请求头包含非法字符".into());
+            return Err(("http_header: 请求头包含非法字符".into(), false));
+        }
+        // WinHTTP treats "Header:\r\n" with ADDREQ_FLAG_REPLACE as a delete operation and fails
+        // with ERROR_WINHTTP_HEADER_NOT_FOUND when the header is not yet present.
+        if value.is_empty() {
+            continue;
         }
         let line = wide(&format!("{name}: {value}\r\n"));
         let ok = unsafe {
@@ -290,7 +603,7 @@ pub fn request(
             )
         };
         if ok == 0 {
-            return Err("http_header: 设置请求头失败".into());
+            return Err(("http_header: 设置请求头失败".into(), false));
         }
     }
 
@@ -299,17 +612,21 @@ pub fn request(
         _ => (null(), 0),
     };
     if unsafe { WinHttpSendRequest(req.0, null(), 0, body_ptr, body_len, body_len, 0) } == 0 {
-        let err = std::io::Error::last_os_error();
-        return Err(format!(
-            "http_send: 请求发送失败（请检查地址、代理或网络，错误码 {:?}）",
-            err.raw_os_error().unwrap_or(0)
+        let code = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        let retry_direct =
+            use_system_proxy && matches!(code, 12002 | 12029 | 12030 | 12152 | 12175);
+        return Err((
+            format!("http_send: 请求发送失败（请检查地址、代理或网络，错误码 {code}）"),
+            retry_direct,
         ));
     }
     if unsafe { WinHttpReceiveResponse(req.0, null_mut()) } == 0 {
-        let err = std::io::Error::last_os_error();
-        return Err(format!(
-            "http_receive: 服务器无响应或连接超时（错误码 {:?}）",
-            err.raw_os_error().unwrap_or(0)
+        let code = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+        let retry_direct =
+            use_system_proxy && matches!(code, 12002 | 12029 | 12030 | 12152 | 12175);
+        return Err((
+            format!("http_receive: 服务器无响应或连接超时（错误码 {code}）"),
+            retry_direct,
         ));
     }
 
@@ -326,13 +643,32 @@ pub fn request(
         )
     };
     if ok == 0 {
-        return Err("http_status: 无法读取 HTTP 状态码".into());
+        return Err(("http_status: 无法读取 HTTP 状态码".into(), false));
     }
 
+    let resp_headers = query_raw_headers(req.0);
+    Ok(HttpStream {
+        status,
+        headers: resp_headers,
+        req,
+        _conn: conn,
+        _session: session,
+    })
+}
+
+pub fn request_with_options(
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    max_response_bytes: usize,
+    options: RequestOptions<'_>,
+) -> Result<HttpResponse, String> {
+    let stream = open_stream(method, url, headers, body, options)?;
     let mut out = Vec::new();
     loop {
         let mut available: u32 = 0;
-        if unsafe { WinHttpQueryDataAvailable(req.0, &mut available) } == 0 {
+        if unsafe { WinHttpQueryDataAvailable(stream.req.0, &mut available) } == 0 {
             return Err("http_read: 读取响应数据失败".into());
         }
         if available == 0 {
@@ -347,7 +683,7 @@ pub fn request(
         let mut read: u32 = 0;
         if unsafe {
             WinHttpReadData(
-                req.0,
+                stream.req.0,
                 out[start..].as_mut_ptr().cast::<c_void>(),
                 chunk_len as u32,
                 &mut read,
@@ -361,8 +697,28 @@ pub fn request(
             break;
         }
     }
+    Ok(HttpResponse {
+        status: stream.status,
+        headers: stream.headers,
+        body: out,
+    })
+}
 
-    Ok(HttpResponse { status, body: out })
+pub fn request(
+    method: &str,
+    url: &str,
+    headers: &[(&str, &str)],
+    body: Option<&[u8]>,
+    max_response_bytes: usize,
+) -> Result<HttpResponse, String> {
+    request_with_options(
+        method,
+        url,
+        headers,
+        body,
+        max_response_bytes,
+        RequestOptions::default(),
+    )
 }
 
 pub fn get_bytes(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {

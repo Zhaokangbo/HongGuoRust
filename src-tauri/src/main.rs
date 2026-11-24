@@ -76,11 +76,11 @@ fn main() {
     let library = Arc::new(LocalLibrary::new());
     let manifest = Arc::new(OwnedManifestStore::new());
     let webdav = Arc::new(WebDavStore::new());
-    let catalog = CatalogService::with_webdav(
+    let catalog = Arc::new(CatalogService::with_webdav(
         Arc::clone(&library),
         Arc::clone(&manifest),
         Arc::clone(&webdav),
-    );
+    ));
     let progress = Arc::new(ProviderProgressStore::new());
     let favorites = Arc::new(FavoritesStore::new());
     let preferences = Arc::new(PreferencesStore::new());
@@ -203,6 +203,8 @@ fn main() {
             commands::catalog_favorite_set,
             commands::catalog_detail,
             commands::catalog_play_episode,
+            commands::catalog_episode_qualities,
+            commands::catalog_episode_danmaku,
             commands::catalog_episode_progress,
             commands::catalog_recently_watched,
             commands::library_list,

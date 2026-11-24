@@ -28,7 +28,7 @@ function trackedInvoke<T>(
     return Promise.reject(new Error("provider_cancelled: 已取消内容源请求"));
   }
   const requestId = ++nextCatalogRequestId;
-  const timeoutMs = Math.min(30_000, Math.max(50, options.timeoutMs ?? 8_000));
+  const timeoutMs = Math.min(30_000, Math.max(50, options.timeoutMs ?? 15_000));
   let interrupted = false;
   let rejectWait: (reason: Error) => void = () => {};
   const interruptedPromise = new Promise<never>((_resolve, reject) => {
@@ -79,6 +79,7 @@ export function catalogErrorMessage(reason: unknown): string {
   if (value.includes("invalid_query:")) return "搜索内容过长，请缩短关键词";
   if (value.includes("manifest_")) return value.replace(/^.*?(manifest_[a-z]+:)/, "").trim();
   if (value.includes("webdav_")) return value.replace(/^.*?(webdav_[a-z_]+:)/, "").trim();
+  if (value.includes("hg_")) return value.replace(/^.*?(hg_[a-z_]+:)/, "").trim();
   if (value.includes("http_")) return value.replace(/^.*?(http_[a-z_]+:)/, "").trim();
   return value;
 }

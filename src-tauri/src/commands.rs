@@ -1,8 +1,9 @@
 use crate::catalog::progress::{ProviderEpisodeProgress, ProviderProgressStore};
 use crate::catalog::request::DEFAULT_TIMEOUT_MS;
 use crate::catalog::{
-    CatalogService, FavoriteSeries, FavoritesStore, ManifestSubscriptionInfo, MediaTarget,
-    OwnedManifestStore, ProviderInfo, SearchPage, Series, SeriesDetail, WebDavStatus, WebDavStore,
+    CatalogService, DanmakuItem, FavoriteSeries, FavoritesStore, ManifestSubscriptionInfo,
+    MediaTarget, OwnedManifestStore, ProviderInfo, QualityOption, SearchPage, Series, SeriesDetail,
+    WebDavStatus, WebDavStore,
 };
 use crate::local_library::{LocalLibrary, LocalMedia};
 use crate::player::{
@@ -215,20 +216,20 @@ pub fn set_player_auto_next(
 
 #[tauri::command]
 pub fn catalog_search(
-    catalog: State<'_, CatalogService>,
+    catalog: State<'_, Arc<CatalogService>>,
     query: Option<String>,
 ) -> Result<Vec<Series>, String> {
     catalog.search(query.as_deref())
 }
 
 #[tauri::command]
-pub fn catalog_sources(catalog: State<'_, CatalogService>) -> Vec<ProviderInfo> {
+pub fn catalog_sources(catalog: State<'_, Arc<CatalogService>>) -> Vec<ProviderInfo> {
     catalog.sources()
 }
 
 #[tauri::command]
-pub fn catalog_search_page(
-    catalog: State<'_, CatalogService>,
+pub async fn catalog_search_page(
+    catalog: State<'_, Arc<CatalogService>>,
     query: Option<String>,
     source_id: Option<String>,
     offset: Option<usize>,
@@ -236,84 +237,144 @@ pub fn catalog_search_page(
     request_id: Option<u64>,
     timeout_ms: Option<u64>,
 ) -> Result<SearchPage, String> {
+    let catalog = Arc::clone(catalog.inner());
     let offset = offset.unwrap_or(0);
     let limit = limit.unwrap_or(24);
-    if let Some(request_id) = request_id {
-        catalog.search_page_with_request(
-            query.as_deref(),
-            source_id.as_deref(),
-            offset,
-            limit,
-            request_id,
-            timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
-        )
-    } else {
-        catalog.search_page(query.as_deref(), source_id.as_deref(), offset, limit)
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(request_id) = request_id {
+            catalog.search_page_with_request(
+                query.as_deref(),
+                source_id.as_deref(),
+                offset,
+                limit,
+                request_id,
+                timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+            )
+        } else {
+            catalog.search_page(query.as_deref(), source_id.as_deref(), offset, limit)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn catalog_detail(
-    catalog: State<'_, CatalogService>,
+pub async fn catalog_detail(
+    catalog: State<'_, Arc<CatalogService>>,
     series_id: String,
     request_id: Option<u64>,
     timeout_ms: Option<u64>,
 ) -> Result<SeriesDetail, String> {
-    if let Some(request_id) = request_id {
-        catalog.detail_with_request(
-            &series_id,
-            request_id,
-            timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
-        )
-    } else {
-        catalog.detail(&series_id)
-    }
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(request_id) = request_id {
+            catalog.detail_with_request(
+                &series_id,
+                request_id,
+                timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+            )
+        } else {
+            catalog.detail(&series_id)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn catalog_cancel_request(catalog: State<'_, CatalogService>, request_id: u64) -> bool {
+pub fn catalog_cancel_request(catalog: State<'_, Arc<CatalogService>>, request_id: u64) -> bool {
     catalog.cancel_request(request_id)
 }
 
 #[tauri::command]
-pub fn catalog_play_episode(
-    catalog: State<'_, CatalogService>,
-    player: State<'_, PlayerService>,
+pub async fn catalog_play_episode(
+    window: WebviewWindow,
     series_id: String,
     episode_id: String,
+    quality: Option<u32>,
+    resume_sec: Option<f64>,
 ) -> Result<u64, String> {
-    let scoped_series_id = catalog.detail(&series_id)?.series.id;
-    match catalog.resolve_episode(&series_id, &episode_id)? {
-        MediaTarget::Https(url) => player.open_catalog_https(url, scoped_series_id, episode_id),
-        MediaTarget::LocalLibrary(id) => player.open_library(id),
-        MediaTarget::WebDav { url, auth_header } => {
-            player.open_catalog_webdav(url, auth_header, scoped_series_id, episode_id)
+    tauri::async_runtime::spawn_blocking(move || {
+        let catalog = window.state::<Arc<CatalogService>>();
+        let player = window.state::<PlayerService>();
+        let scoped_series_id = catalog.detail(&series_id)?.series.id;
+        match catalog.resolve_episode_with_quality(&series_id, &episode_id, quality)? {
+            MediaTarget::Https(url) => player.open_catalog_https(url, scoped_series_id, episode_id),
+            MediaTarget::LocalLibrary(id) => player.open_library(id),
+            MediaTarget::WebDav { url, auth_header } => {
+                player.open_catalog_webdav(url, auth_header, scoped_series_id, episode_id)
+            }
+            MediaTarget::LocalStream {
+                url,
+                token_header,
+                stable_key,
+            } => player.open_catalog_local_stream(
+                url,
+                token_header,
+                stable_key,
+                scoped_series_id,
+                episode_id,
+                resume_sec,
+            ),
         }
-    }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn catalog_episode_qualities(
+    catalog: State<'_, Arc<CatalogService>>,
+    series_id: String,
+    episode_id: String,
+) -> Result<Vec<QualityOption>, String> {
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || catalog.episode_qualities(&series_id, &episode_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn catalog_episode_danmaku(
+    catalog: State<'_, Arc<CatalogService>>,
+    series_id: String,
+    episode_id: String,
+    duration_ms: Option<u64>,
+) -> Result<Vec<DanmakuItem>, String> {
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        catalog.episode_danmaku(&series_id, &episode_id, duration_ms)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Only return bookmarks whose provider target still resolves to the same media.
 /// The frontend never receives the media source URL or its fingerprint.
 #[tauri::command]
-pub fn catalog_episode_progress(
-    catalog: State<'_, CatalogService>,
+pub async fn catalog_episode_progress(
+    catalog: State<'_, Arc<CatalogService>>,
     progress: State<'_, Arc<ProviderProgressStore>>,
     series_id: String,
 ) -> Result<Vec<ProviderEpisodeProgress>, String> {
-    let detail = catalog.detail(&series_id)?;
-    let mut result = Vec::new();
-    for episode in &detail.episodes {
-        match catalog.resolve_episode(&detail.series.id, &episode.id) {
-            Ok(MediaTarget::Https(url)) | Ok(MediaTarget::WebDav { url, .. }) => {
-                if let Some(record) = progress.get(&detail.series.id, &episode.id, &url)? {
+    let catalog = Arc::clone(catalog.inner());
+    let progress = Arc::clone(progress.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let detail = catalog.detail(&series_id)?;
+        let mut result = Vec::new();
+        for episode in &detail.episodes {
+            if let Ok(Some(source_key)) =
+                catalog.progress_source_key(&detail.series.id, &episode.id)
+            {
+                if let Some(record) = progress.get(&detail.series.id, &episode.id, &source_key)? {
                     result.push(record);
                 }
             }
-            Ok(MediaTarget::LocalLibrary(_)) => {}
-            Err(_) => { /* missing or invalid source cannot return a stale bookmark */ }
         }
-    }
-    Ok(result)
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Metadata-only recent series entries. Only media currently resolving to
@@ -328,8 +389,8 @@ pub struct RecentCatalogEpisode {
 }
 
 #[tauri::command]
-pub fn catalog_recently_watched(
-    catalog: State<'_, CatalogService>,
+pub async fn catalog_recently_watched(
+    catalog: State<'_, Arc<CatalogService>>,
     progress: State<'_, Arc<ProviderProgressStore>>,
     limit: Option<usize>,
 ) -> Result<Vec<RecentCatalogEpisode>, String> {
@@ -337,43 +398,52 @@ pub fn catalog_recently_watched(
     if limit == 0 || limit > 24 {
         return Err("invalid_page: Recent history limit must be 1..24".into());
     }
-    let mut results = Vec::new();
-    let mut seen = HashSet::new();
-    // A capped scan protects synchronous IPC from very large history files.
-    // The oldest records beyond this window are still retained on disk.
-    for record in progress.list_recent()?.into_iter().take(120) {
-        if seen.contains(&record.series_id) || record.series_id.starts_with("local:") {
-            continue;
+    let catalog = Arc::clone(catalog.inner());
+    let progress = Arc::clone(progress.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut results = Vec::new();
+        let mut seen = HashSet::new();
+        // A capped scan protects IPC from very large history files.
+        // The oldest records beyond this window are still retained on disk.
+        for record in progress.list_recent()?.into_iter().take(120) {
+            if seen.contains(&record.series_id) || record.series_id.starts_with("local:") {
+                continue;
+            }
+            let detail = match catalog.detail(&record.series_id) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            let episode = match detail.episodes.iter().find(|ep| ep.id == record.episode_id) {
+                Some(value) => value.clone(),
+                None => continue,
+            };
+            let Some(source_key) = catalog
+                .progress_source_key(&detail.series.id, &record.episode_id)
+                .ok()
+                .flatten()
+            else {
+                continue;
+            };
+            if progress
+                .get(&detail.series.id, &record.episode_id, &source_key)?
+                .is_none()
+            {
+                continue;
+            }
+            seen.insert(record.series_id.clone());
+            results.push(RecentCatalogEpisode {
+                series: detail.series,
+                episode,
+                progress: record,
+            });
+            if results.len() == limit {
+                break;
+            }
         }
-        let detail = match catalog.detail(&record.series_id) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let episode = match detail.episodes.iter().find(|ep| ep.id == record.episode_id) {
-            Some(value) => value.clone(),
-            None => continue,
-        };
-        let url = match catalog.resolve_episode(&detail.series.id, &record.episode_id) {
-            Ok(MediaTarget::Https(url)) | Ok(MediaTarget::WebDav { url, .. }) => url,
-            _ => continue,
-        };
-        if progress
-            .get(&detail.series.id, &record.episode_id, &url)?
-            .is_none()
-        {
-            continue;
-        }
-        seen.insert(record.series_id.clone());
-        results.push(RecentCatalogEpisode {
-            series: detail.series,
-            episode,
-            progress: record,
-        });
-        if results.len() == limit {
-            break;
-        }
-    }
-    Ok(results)
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -465,18 +535,24 @@ pub fn catalog_favorites_list(
 }
 
 #[tauri::command]
-pub fn catalog_favorite_set(
-    catalog: State<'_, CatalogService>,
+pub async fn catalog_favorite_set(
+    catalog: State<'_, Arc<CatalogService>>,
     favorites: State<'_, Arc<FavoritesStore>>,
     series_id: String,
     favorite: bool,
 ) -> Result<Vec<FavoriteSeries>, String> {
-    if favorite {
-        let detail = catalog.detail(&series_id)?;
-        favorites.add(detail.series)
-    } else {
-        favorites.remove(&series_id)
-    }
+    let catalog = Arc::clone(catalog.inner());
+    let favorites = Arc::clone(favorites.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        if favorite {
+            let detail = catalog.detail(&series_id)?;
+            favorites.add(detail.series)
+        } else {
+            favorites.remove(&series_id)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -582,29 +658,38 @@ pub async fn local_poster_frame(
 /// Extract (or load cached) cover frame from the first playable episode of a series.
 #[tauri::command]
 pub async fn catalog_poster_frame(
-    catalog: State<'_, CatalogService>,
+    catalog: State<'_, Arc<CatalogService>>,
     library: State<'_, Arc<LocalLibrary>>,
     posters: State<'_, Arc<PosterCache>>,
     series_id: String,
 ) -> Result<Option<String>, String> {
-    let detail = match catalog.detail(&series_id) {
-        Ok(detail) => detail,
-        Err(_) => return Ok(None),
-    };
-    let Some(first_ep) = detail.episodes.iter().find(|ep| ep.playable) else {
+    if !catalog.supports_poster_extract(&series_id) {
         return Ok(None);
-    };
-    let source = match catalog.resolve_episode(&detail.series.id, &first_ep.id) {
-        Ok(MediaTarget::LocalLibrary(id)) => match library.resolve_path(id) {
-            Ok(path) => MediaSource::Local(path),
-            Err(_) => return Ok(None),
-        },
-        Ok(MediaTarget::Https(url)) => MediaSource::Https(url),
-        Ok(MediaTarget::WebDav { url, auth_header }) => MediaSource::WebDav { url, auth_header },
-        Err(_) => return Ok(None),
-    };
+    }
+    let catalog = Arc::clone(catalog.inner());
+    let library = Arc::clone(library.inner());
     let posters = Arc::clone(posters.inner());
-    tauri::async_runtime::spawn_blocking(move || posters.poster_frame(&source))
-        .await
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let detail = match catalog.detail(&series_id) {
+            Ok(detail) => detail,
+            Err(_) => return Ok(None),
+        };
+        let Some(first_ep) = detail.episodes.iter().find(|ep| ep.playable) else {
+            return Ok(None);
+        };
+        let source = match catalog.resolve_episode(&detail.series.id, &first_ep.id) {
+            Ok(MediaTarget::LocalLibrary(id)) => match library.resolve_path(id) {
+                Ok(path) => MediaSource::Local(path),
+                Err(_) => return Ok(None),
+            },
+            Ok(MediaTarget::Https(url)) => MediaSource::Https(url),
+            Ok(MediaTarget::WebDav { url, auth_header }) => {
+                MediaSource::WebDav { url, auth_header }
+            }
+            Ok(MediaTarget::LocalStream { .. }) | Err(_) => return Ok(None),
+        };
+        Ok(posters.poster_frame(&source))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

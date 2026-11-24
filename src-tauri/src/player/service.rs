@@ -180,6 +180,36 @@ impl PlayerService {
         )
     }
 
+    /// Called only after CatalogService validated the in-process loopback stream target.
+    /// Watch progress binds to `stable_key` rather than the ephemeral loopback URL.
+    pub fn open_catalog_local_stream(
+        &self,
+        url: String,
+        token_header: String,
+        stable_key: String,
+        series_id: String,
+        episode_id: String,
+        resume_override: Option<f64>,
+    ) -> Result<u64, String> {
+        let source = MediaSource::local_stream(url, token_header)?;
+        let resume_at = resume_override
+            .filter(|sec| sec.is_finite() && *sec >= 0.5)
+            .or(self
+                .provider_progress
+                .resume_point(&series_id, &episode_id, &stable_key)?);
+        self.open_source(
+            source,
+            None,
+            None,
+            Some(ProviderPlayback {
+                series_id,
+                episode_id,
+                source: stable_key,
+                resume_at,
+            }),
+        )
+    }
+
     fn open_source(
         &self,
         source: MediaSource,

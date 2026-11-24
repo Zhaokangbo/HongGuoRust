@@ -2,8 +2,12 @@
 //! LocalDemoProvider uses one known public 20-second test MP4 for every episode.
 
 pub mod favorites;
+mod hg_crypto;
+mod hg_danmaku;
+mod hg_media;
+mod hg_signer;
+mod hg_stream;
 mod hgcommunity;
-#[allow(dead_code)]
 mod hongguo;
 pub mod http_client;
 mod local;
@@ -14,6 +18,7 @@ pub(crate) mod request;
 pub mod webdav;
 
 pub use favorites::{FavoriteSeries, FavoritesStore};
+pub use hg_danmaku::DanmakuItem;
 pub use manifest::{ManifestSubscriptionInfo, OwnedManifestStore};
 pub use registry::{CatalogService, ProviderInfo, SearchPage};
 pub use webdav::{WebDavStatus, WebDavStore};
@@ -50,6 +55,15 @@ pub struct Episode {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QualityOption {
+    pub quality: u32,
+    pub label: String,
+    pub codec: String,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SeriesDetail {
     pub series: Series,
     pub episodes: Vec<Episode>,
@@ -63,6 +77,12 @@ pub enum MediaTarget {
     WebDav {
         url: String,
         auth_header: Option<String>,
+    },
+    /// In-process authenticated loopback media stream (used by HongGuo CDN decrypting proxy).
+    LocalStream {
+        url: String,
+        token_header: String,
+        stable_key: String,
     },
 }
 
@@ -84,9 +104,50 @@ pub trait ContentProvider: Send + Sync {
         true
     }
 
+    /// Stable bookmark key for dynamic/expiring stream providers so watch progress
+    /// survives URL expiration without calling `resolve_episode` on every episode.
+    fn stable_progress_key(&self, _series_id: &str, _episode_id: &str) -> Option<String> {
+        None
+    }
+
+    /// Whether background libmpv poster frame extraction should resolve episodes.
+    fn supports_poster_extract(&self) -> bool {
+        true
+    }
+
     fn search(&self, query: &str) -> Result<Vec<Series>, String>;
     fn detail(&self, series_id: &str) -> Result<Option<SeriesDetail>, String>;
     fn resolve_episode(&self, series_id: &str, episode_id: &str) -> Result<MediaTarget, String>;
+
+    /// Resolve episode with an optional explicit quality tier (e.g. 1080, 720, 540, 360).
+    /// `None` selects the highest available compatible quality (or remembered session preference).
+    fn resolve_episode_with_quality(
+        &self,
+        series_id: &str,
+        episode_id: &str,
+        _quality: Option<u32>,
+    ) -> Result<MediaTarget, String> {
+        self.resolve_episode(series_id, episode_id)
+    }
+
+    /// Available compatible quality options for a resolved episode (no URLs or keys).
+    fn episode_qualities(
+        &self,
+        _series_id: &str,
+        _episode_id: &str,
+    ) -> Result<Vec<QualityOption>, String> {
+        Ok(Vec::new())
+    }
+
+    /// Official timed danmaku items for an episode, if supported by the provider.
+    fn episode_danmaku(
+        &self,
+        _series_id: &str,
+        _episode_id: &str,
+        _duration_ms: Option<u64>,
+    ) -> Result<Vec<DanmakuItem>, String> {
+        Ok(Vec::new())
+    }
 
     /// Future I/O providers can override this method to poll cancellation
     /// between network reads. Built-in synchronous providers finish quickly.
@@ -99,6 +160,21 @@ pub trait ContentProvider: Send + Sync {
         let items = self.search(query)?;
         request.check()?;
         Ok(items)
+    }
+
+    /// Paginated search/discovery for dynamic remote providers.
+    /// Returns `(loaded_items_covering_needed, has_more_upstream)`.
+    fn search_until_with_request(
+        &self,
+        query: &str,
+        _needed: usize,
+        request: Option<&RequestContext>,
+    ) -> Result<(Vec<Series>, bool), String> {
+        let items = match request {
+            Some(ctx) => self.search_with_request(query, ctx)?,
+            None => self.search(query)?,
+        };
+        Ok((items, false))
     }
 
     fn detail_with_request(
