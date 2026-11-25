@@ -357,25 +357,44 @@ pub struct SignedRequest {
 pub struct Signer {
     mobile_v5: bool,
     process_nonce: String,
+    device_token: String,
     process_started_ms: u64,
+}
+
+fn make_device_token(process_nonce: &str) -> String {
+    if process_nonce.len() == 25 && process_nonce.starts_with('A') {
+        process_nonce.to_owned()
+    } else {
+        let mut out = String::with_capacity(25);
+        out.push('A');
+        for ch in process_nonce.chars().chain(std::iter::repeat('A')).take(24) {
+            out.push(ch);
+        }
+        out
+    }
 }
 
 impl Signer {
     pub fn new(mobile_v5: bool) -> Self {
         let mut nonce_bytes = [0u8; 18];
         fill_random_bytes(&mut nonce_bytes);
+        let process_nonce = base64_url_encode_nopad(&nonce_bytes);
+        let device_token = make_device_token(&process_nonce);
         Self {
             mobile_v5,
-            process_nonce: base64_url_encode_nopad(&nonce_bytes),
+            process_nonce,
+            device_token,
             process_started_ms: now_millis(),
         }
     }
 
     #[cfg(test)]
     pub fn with_fixed(mobile_v5: bool, process_nonce: &str, process_started_ms: u64) -> Self {
+        let device_token = make_device_token(process_nonce);
         Self {
             mobile_v5,
             process_nonce: process_nonce.to_owned(),
+            device_token,
             process_started_ms,
         }
     }
@@ -692,26 +711,35 @@ impl Signer {
         base64_encode(&output)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn medusa_v5(
         &self,
         query_str: &str,
         body: Option<&[u8]>,
         ts: u32,
+        now_ms: u64,
         device_id: &str,
         version_name: &str,
         channel: &str,
         os_version: &str,
         device_type: &str,
+        device_brand: &str,
     ) -> Result<String, String> {
+        let env_launch = ((random_u32() % 21) + 100) as i64;
+        let env_pid = ((random_u32() % 2000) + 10001) as i64;
         self.medusa_v5_with_rands(
             query_str,
             body,
             ts,
+            now_ms,
             device_id,
             version_name,
             channel,
             os_version,
             device_type,
+            device_brand,
+            env_launch,
+            env_pid,
             [random_u32(), random_u32(), random_u32()],
         )
     }
@@ -722,44 +750,87 @@ impl Signer {
         query_str: &str,
         body: Option<&[u8]>,
         ts: u32,
+        now_ms: u64,
         device_id: &str,
         version_name: &str,
         channel: &str,
         os_version: &str,
         device_type: &str,
+        device_brand: &str,
+        env_launch: i64,
+        env_pid: i64,
         rands: [u32; 3],
     ) -> Result<String, String> {
         let query_sm3 = sm3(query_str.as_bytes());
         let body_md5 = body.map(md5).unwrap_or([0u8; 16]);
         let f13 = self.hash_f13(&query_sm3, &body_md5, ts)?;
-        let flags = [0u8; 8];
+        // 0.16.15 (#122): complete v04.10.03 Medusa v5 device envelope & flags.
+        let flags: [u8; 8] = [0x44, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let brand = if device_brand.is_empty() {
+            "HONOR"
+        } else {
+            device_brand
+        };
         let device_info = encode_proto(&[
             (1, ProtoVal::Sint(1)),
             (2, ProtoVal::Sint(2)),
             (3, ProtoVal::Str("8662")),
             (4, ProtoVal::Str(device_id)),
-            (5, ProtoVal::Str(&self.process_nonce)),
+            (5, ProtoVal::Str(&self.device_token)),
             (6, ProtoVal::Str("!noperm!")),
+            (7, ProtoVal::Sint(-888_888)),
+            (8, ProtoVal::Sint(-888_888)),
+            (9, ProtoVal::Sint(3)),
+            (10, ProtoVal::Sint(-888_888)),
+            (11, ProtoVal::Str("!notset!")),
             (12, ProtoVal::Str("Asia/Shanghai,8")),
             (13, ProtoVal::Str("zh_CN")),
+            (14, ProtoVal::Sint(4)),
+            (16, ProtoVal::Float(0.0)),
+            (17, ProtoVal::Float(0.0)),
+            (18, ProtoVal::Float(0.0)),
+            (19, ProtoVal::Float(0.0)),
+            (20, ProtoVal::Float(0.0)),
+            (21, ProtoVal::Float(0.0)),
             (22, ProtoVal::Str(os_version)),
+            (23, ProtoVal::Sint(41)),
+            (24, ProtoVal::Sint(36)),
             (25, ProtoVal::Sint(self.process_started_ms as i64)),
+            (26, ProtoVal::Sint(self.process_started_ms as i64)),
+            (27, ProtoVal::Sint(self.process_started_ms as i64)),
+            (28, ProtoVal::Sint(now_ms as i64)),
+            (29, ProtoVal::Sint(-1)),
             (30, ProtoVal::Str(device_type)),
-            (31, ProtoVal::Str("HONOR")),
+            (31, ProtoVal::Str(brand)),
             (32, ProtoVal::Str(device_type)),
-            (34, ProtoVal::Str("HONOR")),
+            (33, ProtoVal::Str(device_type)),
+            (34, ProtoVal::Str(brand)),
+            (35, ProtoVal::Str(brand)),
+            (36, ProtoVal::Str(brand)),
+            (38, ProtoVal::Sint(31)),
+        ]);
+        let env13 = encode_proto(&[
+            (1, ProtoVal::Sint(i64::from(ts))),
+            (2, ProtoVal::Sint(-2)),
+            (4, ProtoVal::Sint(200)),
         ]);
         let env = encode_proto(&[
+            (1, ProtoVal::Sint(env_launch)),
+            (2, ProtoVal::Sint(247_235_599)),
+            (3, ProtoVal::Sint(247_235_596)),
+            (5, ProtoVal::Sint(7)),
             (6, ProtoVal::Str("v04.10.03.04-bugfix")),
+            (7, ProtoVal::Sint(env_pid)),
             (8, ProtoVal::Str(channel)),
             (12, ProtoVal::Bytes(&device_info)),
+            (13, ProtoVal::Bytes(&env13)),
             (14, ProtoVal::Str(version_name)),
         ]);
         let nested = encode_proto(&[
-            (1, ProtoVal::Sint(1)),
-            (2, ProtoVal::Sint(1)),
-            (3, ProtoVal::Sint(1)),
-            (5, ProtoVal::Sint(1)),
+            (1, ProtoVal::Sint(305)),
+            (2, ProtoVal::Sint(4)),
+            (3, ProtoVal::Sint(694_367)),
+            (5, ProtoVal::Sint(1_621_072_674)),
         ]);
         let magic = hex_decode(V5_MAGIC_HEX)?;
         let msg_rand = i64::from(rands[0]);
@@ -778,6 +849,7 @@ impl Signer {
             (13, ProtoVal::Bytes(&f13)),
             (14, ProtoVal::Bytes(&query_sm3[..6])),
             (15, ProtoVal::Bytes(&nested)),
+            (16, ProtoVal::Str(&self.device_token)),
             (17, ProtoVal::Sint(i64::from(ts))),
             (20, ProtoVal::Str("none")),
             (21, ProtoVal::Sint(V5_FIELD21)),
@@ -1021,6 +1093,7 @@ impl Signer {
         let channel = find_val("channel");
         let os_version = find_val("os_version");
         let device_type = find_val("device_type");
+        let device_brand = find_val("device_brand");
 
         for offset in 0..1024u64 {
             let ticket = now_ms + offset;
@@ -1039,11 +1112,13 @@ impl Signer {
                 &query,
                 body,
                 ts,
+                now_ms,
                 &device_id,
                 &version_name,
                 &channel,
                 &os_version,
                 &device_type,
+                &device_brand,
             )?;
             let mut headers = vec![
                 ("x-khronos".into(), ts.to_string()),
@@ -1588,20 +1663,22 @@ mod tests {
                 query,
                 Some(&[]),
                 1_800_000_000,
+                1_800_000_000_000,
                 "1234567890123456789",
                 "7.4.3.32",
                 "vivo_8662_64",
                 "12",
                 "PGT-AN10",
+                "",
+                110,
+                11001,
                 [0x8080_8080, 0x8080_8080, 0x8080_8080],
             )
             .unwrap();
         let expected_medusa_377 = "BdJJay2ZBqFJp0QoP2fnRyK/hT2AgAABMYqggJCEAWcFGOJgh22qozz+26uXSKBhiGx/eWX33mGLsl8jibKbqei0wqKjsKKx13g9lnv4rLZcLBnGvh3tkS6SOmxCEEklfmzOYTmt5aQN/scqDuqMDTMdhZEK7LqexpFf/IEMTApJTvJrvDxfJGT3LQauOjvi//B3bh9u+Rl5LF30e2zdnqHfMK0wcWATcSVKGnuAFv+W8c+X1+p6BvUYUf8SaoTD1hwJwVCeUv40YtJ+h8vTbfPogICBZXYQD8Ak2kQ42VoBesfM/P3emRXBuSS0ehjIgVZbqLzPN0elfdibubfTpt9MwoNcMSBudoj6t/zc9d4FD4cSJ6yI6BgOnsfstVYD9mdnscI1oDxN4eRXAin4gihgfRK5P8fuYyvUzPlwKKPQmTnGyFiRtYIGDeB107t33nuJ1VCGSQz9hB4JPhaKINLmvkDZHX0pZvJN93FknjvjVw2iFoiFFW6cSNNEHfY6hCXnvCqPJgUlYHljTbxFf/8+k+YMeds2ngp6hg7moPlgYp3gNukCHMNqTax834vP1GFJN6w8avIsEf9mg4ooMUzidv+oE60m/khZjlwcldsrHL/IBwDATK+ouYbribiUfOe3SC2ddzcW+//7//v/+/+AgA==";
-        // Issue #102 updated wire field 21 from 377 to 312, so medusa differs from the old 377 vector
-        // while keeping the exact v5 prefix (version=5 + V5_MAGIC XOR ts).
         assert_ne!(medusa, expected_medusa_377);
         let decoded = base64_decode(&medusa).unwrap();
-        assert!(decoded.len() > 260);
+        assert!(decoded.len() > 380);
         let ts_le = 1_800_000_000u32.to_le_bytes();
         let mut prefix = decoded[..20].to_vec();
         for (i, b) in prefix.iter_mut().enumerate() {
@@ -1609,5 +1686,56 @@ mod tests {
         }
         assert_eq!(&prefix[..4], &5u32.to_le_bytes());
         assert_eq!(hex_encode(&prefix[4..20]), V5_MAGIC_HEX);
+
+        // Byte-for-byte verification against N3urda/hongguoTV 0.16.15 (#122) golden envelope vector.
+        let envelope_signer = Signer::with_fixed(true, "synthetic", 1_800_000_000_000);
+        let envelope_params = vec![
+            ("device_id".into(), "123".into()),
+            ("iid".into(), "456".into()),
+            ("cdid".into(), "synthetic".into()),
+            ("version_name".into(), "7.4.5.32".into()),
+            ("channel".into(), "update_64".into()),
+            ("os_version".into(), "16".into()),
+            ("device_type".into(), "TestTV".into()),
+        ];
+        let envelope_body = base64_decode("H4sIAAECAwQ=").unwrap();
+        let envelope_signed = envelope_signer
+            .sign_v5_playback(
+                "https://example.test/model",
+                &envelope_params,
+                Some(&envelope_body),
+                1_800_000_000_000,
+            )
+            .unwrap();
+        assert_eq!(
+            envelope_signed.url,
+            "https://example.test/model?device_id=123&iid=456&cdid=synthetic&version_name=7.4.5.32&channel=update_64&os_version=16&device_type=TestTV&_rticket=1800000000003"
+        );
+        let envelope_query = envelope_signed.url.split_once('?').unwrap().1;
+        let envelope_medusa = envelope_signer
+            .medusa_v5_with_rands(
+                envelope_query,
+                Some(&envelope_body),
+                1_800_000_000,
+                1_800_000_000_000,
+                "123",
+                "7.4.5.32",
+                "update_64",
+                "16",
+                "TestTV",
+                "",
+                110,
+                11001,
+                [0x8000_0000, 0x8000_0000, 0x8000_0000],
+            )
+            .unwrap();
+        assert_eq!(
+            envelope_medusa,
+            "BdJJay2ZBqFJp0QoP2fnRyK/hT0AAAABAIogCBCAgc4GGADttDq1C6PIE9PwcDTWVJfFSTMWQiwMsfYBKGbVJ9pZTOhWGMCypQcv+wBR5j7hJUL+mHLQTMCCXYPx3HkSQtfd2dierHJ2YuAgen51bgbETv/zcbxd11lZC/vyfbwuV4RRvM195YN/UuCMl2i+iSPK04zG6fx0JIPN5WSYlK6hh+tS8l8YrMtIiabOIzOVgotm/JqqYnAGQSTAc+MZUE7idIENn47ND7Ids3FGspufTBJqvOlYZfb2+Dj734kpFwOdwVdEhsJvTFiXAA4DqerQ8wnaU3xHv2OjHl27maVXudst3jvgYIIW1RKTFArBdI1fpMvWzLfUE56hY4HRxfoa8hNcy8HOcxYN198HIQ6XtmSdzcNIoiKZMhA/V/xvOm4RR9KP14bSuEeTQUebQWCIBKuIkqJ+ivJWzrvYOThQJnRQinJTUobfxrlmJH1mnC5VOsjP78I5fyC9fv81+yyWp4tNry1TclC7Nyzi8tcWh6kzuZdM52GSUi5vMqfgaWdtot7gGK4vP13qA6xfVEgqKRUo5cqgvtHQvpsZ2nygBZBg1b1dRJrk7dTXEdZk7H+PUlWbFPy2RA/zd9BnIFE5Fmryzl6uiXOQKO6KBUoAqLcA0hoNZexgxrlt3DDQPL5eFSyKOyYOIYzWBACfcVCOO57y5w/TB+8DHYX1rcbByOBvVRihizrrLId2Ov8kfHYXThb/OUIOeYOb9QK0MY4+loU0QoYCj0WRLzIgKovV/q70JT5GGI/IbNJGlgg+ce2rw8EGGwryaylKdjVXU2cD0lL3qjTfp4QNXMf0knPJ/P//f/////+7AIA="
+        );
+        assert_eq!(
+            envelope_signer.helios_with_rand(1_800_000_000, 0x8000_0000),
+            "AAAAgOldh6XkgPCcSOD+1hk6geYVwA9oX+NbtYeS3DNddvJe"
+        );
     }
 }
