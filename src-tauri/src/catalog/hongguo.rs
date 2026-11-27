@@ -40,6 +40,10 @@ const ALT_MODEL_HOSTS: [&str; 3] = [
 const PRELOAD_UA: &str = "okhttp/4.12.0";
 const APP_SEARCH_URL: &str =
     "https://api5-normal-sinfonlinea.fqnovel.com/reading/bookapi/search/tab/v";
+const APP_DIRECTORY_HOSTS: [&str; 2] = [
+    "api5-normal-sinfonlinea.fqnovel.com",
+    "api5-normal-sinfonlineb.fqnovel.com",
+];
 const MAX_HTTP_BYTES: usize = 8 * 1024 * 1024;
 const MAX_MODEL_BYTES: usize = 2 * 1024 * 1024;
 const CATALOG_CACHE_TTL: Duration = Duration::from_secs(300);
@@ -335,6 +339,55 @@ fn parse_app_search_items(root: &Value, tab_type: i64) -> Vec<Series> {
         }
     }
     dedup_series(out)
+}
+
+fn format_episode_title(series_title: &str, num: usize, raw_ep_title: Option<&str>) -> String {
+    let generic_compact = format!("第{num}集");
+    let generic_spaced = format!("第 {num} 集");
+    match raw_ep_title.map(str::trim).filter(|s| !s.is_empty()) {
+        None => format!("{series_title} · 第 {num} 集"),
+        Some(t) if t == generic_compact || t == generic_spaced => {
+            format!("{series_title} · 第 {num} 集")
+        }
+        Some(t) if t.contains(&generic_compact) || t.contains(&generic_spaced) => t.to_owned(),
+        Some(t) => format!("第 {num} 集 · {t}"),
+    }
+}
+
+fn parse_app_directory_episodes(root: &Value, series_title: &str) -> Vec<Episode> {
+    let Some(items) = root
+        .get("data")
+        .and_then(|d| d.get("item_data_list"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    let mut episodes = Vec::with_capacity(items.len().min(MAX_REAL_EPISODES));
+    for item in items.iter().take(MAX_REAL_EPISODES) {
+        let vid = ["item_id", "vid", "video_id"]
+            .iter()
+            .map(|k| json_str(item, k))
+            .find(|v| is_numeric_id(v));
+        let Some(vid) = vid else { continue };
+        if !seen.insert(vid.clone()) {
+            continue;
+        }
+        let num = episodes.len() + 1;
+        let raw_title = ["title", "item_title", "episode_title", "name"]
+            .iter()
+            .map(|k| sanitize_text(&json_str(item, k), 80))
+            .find(|s| !s.is_empty());
+        let title = format_episode_title(series_title, num, raw_title.as_deref());
+        episodes.push(Episode {
+            id: vid,
+            number: num,
+            title,
+            runtime_label: String::new(),
+            playable: true,
+        });
+    }
+    episodes
 }
 
 // ---------- Multi-Path v5 Playback Model Fetcher ----------
@@ -854,6 +907,177 @@ impl HongGuoRealProvider {
         Ok((cache.items, cache.has_more))
     }
 
+    fn v3_base_params() -> Vec<(String, String)> {
+        vec![
+            ("iid".into(), "1905892595382586".into()),
+            ("device_id".into(), "1905892595378490".into()),
+            ("ac".into(), "wifi".into()),
+            ("channel".into(), "update_64".into()),
+            ("aid".into(), "8662".into()),
+            ("app_name".into(), "novelread".into()),
+            ("version_code".into(), "72232".into()),
+            ("version_name".into(), "7.2.2.32".into()),
+            ("device_platform".into(), "android".into()),
+            ("os".into(), "android".into()),
+            ("ssmix".into(), "a".into()),
+            ("device_type".into(), "25053RT47C".into()),
+            ("device_brand".into(), "Redmi".into()),
+            ("language".into(), "zh".into()),
+            ("os_api".into(), "36".into()),
+            ("os_version".into(), "16".into()),
+            ("manifest_version_code".into(), "72232".into()),
+            ("resolution".into(), "1280*2772".into()),
+            ("dpi".into(), "520".into()),
+            ("update_version_code".into(), "72232".into()),
+            ("host_abi".into(), "arm64-v8a".into()),
+            ("dragon_device_type".into(), "phone".into()),
+            ("pv_player".into(), "72232".into()),
+        ]
+    }
+
+    fn fetch_app_directory_episodes(
+        &self,
+        series_id: &str,
+        series_title: &str,
+    ) -> Result<Vec<Episode>, String> {
+        let mut last_err = "hg_detail: App 剧集目录接口不可用".to_owned();
+        for host in APP_DIRECTORY_HOSTS {
+            let url = format!("https://{host}/reading/bookapi/directory/all_items/v");
+            let mut params = Self::v3_base_params();
+            params.push(("book_id".into(), series_id.to_owned()));
+            params.push(("book_type".into(), "2".into()));
+            params.push(("need_version".into(), "true".into()));
+            let signed = match self.v3_signer.sign_v3_get(&url, &params, now_millis()) {
+                Ok(s) => s,
+                Err(e) => {
+                    last_err = e;
+                    continue;
+                }
+            };
+            let hdrs: Vec<(&str, &str)> = signed
+                .headers
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            let resp = match request_with_options(
+                "GET",
+                &signed.url,
+                &hdrs,
+                None,
+                MAX_HTTP_BYTES,
+                RequestOptions {
+                    user_agent: Some(APP_UA),
+                    timeout_ms: 8_000,
+                    decompress: true,
+                    disable_cookies: true,
+                },
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = e;
+                    continue;
+                }
+            };
+            if !(200..300).contains(&resp.status) {
+                last_err = format!("hg_detail: 目录请求失败（HTTP {}）", resp.status);
+                continue;
+            }
+            let Ok(root) = serde_json::from_slice::<Value>(&resp.body) else {
+                last_err = "hg_detail: 目录响应格式异常".into();
+                continue;
+            };
+            if let Err(e) = check_upstream_code(&root) {
+                last_err = e;
+                continue;
+            }
+            let episodes = parse_app_directory_episodes(&root, series_title);
+            if !episodes.is_empty() {
+                return Ok(episodes);
+            }
+            last_err = "hg_detail: 分集列表为空".into();
+        }
+        Err(last_err)
+    }
+
+    fn fetch_app_series_metadata(&self, series_id: &str) -> Result<Option<Series>, String> {
+        let url = format!(
+            "https://{}/reading/bookapi/multi-detail/v1/",
+            APP_DIRECTORY_HOSTS[0]
+        );
+        let mut params = Self::v3_base_params();
+        params.push(("book_id".into(), series_id.to_owned()));
+        params.push(("book_type".into(), "2".into()));
+        let signed = self.v3_signer.sign_v3_get(&url, &params, now_millis())?;
+        let hdrs: Vec<(&str, &str)> = signed
+            .headers
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let resp = request_with_options(
+            "GET",
+            &signed.url,
+            &hdrs,
+            None,
+            MAX_MODEL_BYTES,
+            RequestOptions {
+                user_agent: Some(APP_UA),
+                timeout_ms: 8_000,
+                decompress: true,
+                disable_cookies: true,
+            },
+        )?;
+        if !(200..300).contains(&resp.status) {
+            return Err(format!(
+                "hg_detail: 剧集元数据请求失败（HTTP {}）",
+                resp.status
+            ));
+        }
+        let root: Value = serde_json::from_slice(&resp.body)
+            .map_err(|_| "hg_detail: 剧集元数据格式异常".to_string())?;
+        check_upstream_code(&root)?;
+        let Some(row) = root
+            .get("data")
+            .and_then(Value::as_array)
+            .and_then(|arr| arr.first())
+            .filter(|v| v.is_object())
+        else {
+            return Ok(None);
+        };
+        let title = sanitize_text(&json_str(row, "book_name"), 100);
+        if title.is_empty() {
+            return Ok(None);
+        }
+        let count = json_usize(row, "episode_cnt")
+            .max(json_usize(row, "episode_count"))
+            .max(json_usize(row, "drama_chapter_number"));
+        let genre = {
+            let c = sanitize_text(&json_str(row, "category"), 40);
+            if c.is_empty() {
+                "短剧".into()
+            } else {
+                c
+            }
+        };
+        let badge = if count > 0 {
+            format!("全 {count} 集")
+        } else {
+            "红果短剧".into()
+        };
+        let description = sanitize_text(&json_str(row, "abstract"), 400);
+        let cover_url = valid_remote_cover(&json_str(row, "thumb_url"));
+        Ok(Some(Series {
+            id: series_id.to_owned(),
+            title,
+            description,
+            genre,
+            badge,
+            artwork: "studio".into(),
+            cover_url,
+            episode_count: count.clamp(1, MAX_REAL_EPISODES),
+            provider_id: "hongguo".into(),
+        }))
+    }
+
     fn fetch_series_detail(
         &self,
         series_id: &str,
@@ -872,90 +1096,123 @@ impl HongGuoRealProvider {
                 }
             }
         }
-        let html = self.fetch_site_text(&format!("{SITE}/detail?series_id={series_id}"), false)?;
+
+        // 1. Prefer public SSR detail for rich metadata (tags, intro, JPEG cover).
+        //    Fall back to signed App `multi-detail/v1/` if SSR is unavailable.
+        let mut ssr_series_json: Option<Value> = None;
+        let mut series = match self
+            .fetch_site_text(&format!("{SITE}/detail?series_id={series_id}"), false)
+            .and_then(|html| extract_router_data(&html))
+        {
+            Ok(router) => {
+                let detail_obj = router
+                    .get("loaderData")
+                    .and_then(|l| l.get("detail_page"))
+                    .and_then(|d| d.get("seriesDetail"))
+                    .filter(|v| v.is_object())
+                    .cloned();
+                if let Some(obj) = detail_obj {
+                    let mapped = map_ssr_item(&obj);
+                    ssr_series_json = Some(obj);
+                    mapped
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        };
         if let Some(ctx) = request {
             ctx.check()?;
         }
-        let router = extract_router_data(&html)?;
-        let Some(series_json) = router
-            .get("loaderData")
-            .and_then(|l| l.get("detail_page"))
-            .and_then(|d| d.get("seriesDetail"))
-            .filter(|v| v.is_object())
-        else {
+        if series.is_none() {
+            series = self.fetch_app_series_metadata(series_id)?;
+        }
+        let Some(mut series) = series else {
             return Ok(None);
         };
-        let Some(vid_list) = series_json.get("vid_list").and_then(Value::as_array) else {
-            return Err("hg_detail: 该剧集暂无可用分集".into());
-        };
-
-        let mut series = map_ssr_item(series_json).ok_or("hg_detail: 剧集元数据解析失败")?;
         series.id = series_id.to_owned();
+        let expected_count = series.episode_count;
 
-        // Parse optional per-episode metadata if upstream ever supplies it alongside `vid_list`.
-        let mut ep_meta: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
-        for key in ["episode_list", "item_list", "video_list"] {
-            if let Some(arr) = series_json.get(key).and_then(Value::as_array) {
-                for item in arr {
-                    let Some(vid) = ["vid", "video_id", "item_id"]
-                        .iter()
-                        .map(|k| json_str(item, k))
-                        .find(|v| is_numeric_id(v))
-                    else {
-                        continue;
-                    };
-                    let title = ["episode_title", "item_title", "title", "name"]
-                        .iter()
-                        .map(|k| sanitize_text(&json_str(item, k), 80))
-                        .find(|s| !s.is_empty());
-                    let dur_sec = item
-                        .get("duration")
-                        .or_else(|| item.get("video_duration"))
-                        .and_then(Value::as_f64)
-                        .filter(|d| d.is_finite() && *d > 0.0)
-                        .map(|d| {
-                            let secs = if d > 36_000.0 {
-                                (d / 1000.0).round() as u64
-                            } else {
-                                d.round() as u64
-                            };
-                            format!("{:02}:{:02}", secs / 60, secs % 60)
-                        });
-                    ep_meta.insert(vid, (title, dur_sec));
-                }
-            }
-        }
-
-        let mut seen = HashSet::new();
+        // 2. Parse numeric episodes from SSR `vid_list` when present.
         let mut episodes = Vec::new();
-        for (idx, vid_val) in vid_list.iter().take(MAX_REAL_EPISODES).enumerate() {
-            let vid = match vid_val {
-                Value::String(s) => s.trim().to_owned(),
-                Value::Number(n) => n.to_string(),
-                _ => continue,
-            };
-            if !is_numeric_id(&vid) || !seen.insert(vid.clone()) {
-                continue;
-            }
-            let num = idx + 1;
-            let (raw_ep_title, dur) = ep_meta.remove(&vid).unwrap_or((None, None));
-            let title = match raw_ep_title {
-                Some(t)
-                    if t.contains(&format!("第{num}集")) || t.contains(&format!("第 {num} 集")) =>
-                {
-                    t
+        if let Some(ref series_json) = ssr_series_json {
+            let mut ep_meta: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+            for key in ["episode_list", "item_list", "video_list"] {
+                if let Some(arr) = series_json.get(key).and_then(Value::as_array) {
+                    for item in arr {
+                        let Some(vid) = ["vid", "video_id", "item_id"]
+                            .iter()
+                            .map(|k| json_str(item, k))
+                            .find(|v| is_numeric_id(v))
+                        else {
+                            continue;
+                        };
+                        let title = ["episode_title", "item_title", "title", "name"]
+                            .iter()
+                            .map(|k| sanitize_text(&json_str(item, k), 80))
+                            .find(|s| !s.is_empty());
+                        let dur_sec = item
+                            .get("duration")
+                            .or_else(|| item.get("video_duration"))
+                            .and_then(Value::as_f64)
+                            .filter(|d| d.is_finite() && *d > 0.0)
+                            .map(|d| {
+                                let secs = if d > 36_000.0 {
+                                    (d / 1000.0).round() as u64
+                                } else {
+                                    d.round() as u64
+                                };
+                                format!("{:02}:{:02}", secs / 60, secs % 60)
+                            });
+                        ep_meta.insert(vid, (title, dur_sec));
+                    }
                 }
-                Some(t) => format!("第 {num} 集 · {t}"),
-                None => format!("{} · 第 {num} 集", series.title),
-            };
-            episodes.push(Episode {
-                id: vid,
-                number: num,
-                title,
-                runtime_label: dur.unwrap_or_default(),
-                playable: true,
-            });
+            }
+            if let Some(vid_list) = series_json.get("vid_list").and_then(Value::as_array) {
+                let mut seen = HashSet::new();
+                for (idx, vid_val) in vid_list.iter().take(MAX_REAL_EPISODES).enumerate() {
+                    let vid = match vid_val {
+                        Value::String(s) => s.trim().to_owned(),
+                        Value::Number(n) => n.to_string(),
+                        _ => continue,
+                    };
+                    if !is_numeric_id(&vid) || !seen.insert(vid.clone()) {
+                        continue;
+                    }
+                    let num = idx + 1;
+                    let (raw_ep_title, dur) = ep_meta.remove(&vid).unwrap_or((None, None));
+                    let title = format_episode_title(&series.title, num, raw_ep_title.as_deref());
+                    episodes.push(Episode {
+                        id: vid,
+                        number: num,
+                        title,
+                        runtime_label: dur.unwrap_or_default(),
+                        playable: true,
+                    });
+                }
+            }
         }
+
+        // 3. Since 2026-11-27, website SSR truncates `vid_list` to 3-5 preview items and
+        //    obfuscates IDs as `v1_...`. Fetch the complete numeric directory from the
+        //    signed App endpoint whenever SSR episodes are empty or truncated.
+        if episodes.is_empty() || episodes.len() < expected_count {
+            if let Some(ctx) = request {
+                ctx.check()?;
+            }
+            match self.fetch_app_directory_episodes(series_id, &series.title) {
+                Ok(app_eps) if app_eps.len() > episodes.len() => {
+                    episodes = app_eps;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    if episodes.is_empty() {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
         if episodes.is_empty() {
             return Err("hg_detail: 分集列表为空".into());
         }
@@ -1964,5 +2221,28 @@ mod tests {
             session.total,
             head.len()
         );
+    }
+
+    #[test]
+    fn app_directory_parser_extracts_numeric_items_and_formats_titles() {
+        let payload = serde_json::json!({
+            "code": 0,
+            "data": {
+                "item_data_list": [
+                    { "item_id": "7710505458045291545", "title": "第1集" },
+                    { "item_id": "7710505735989251097", "title": "重逢" },
+                    { "item_id": "v1_obfuscated_token", "title": "ignored" },
+                    { "item_id": "7710505458045291545", "title": "duplicate" }
+                ]
+            }
+        });
+        let eps = parse_app_directory_episodes(&payload, "温夜潮湿");
+        assert_eq!(eps.len(), 2);
+        assert_eq!(eps[0].id, "7710505458045291545");
+        assert_eq!(eps[0].number, 1);
+        assert_eq!(eps[0].title, "温夜潮湿 · 第 1 集");
+        assert_eq!(eps[1].id, "7710505735989251097");
+        assert_eq!(eps[1].number, 2);
+        assert_eq!(eps[1].title, "第 2 集 · 重逢");
     }
 }
