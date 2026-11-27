@@ -2,13 +2,12 @@ name: Windows Release Installer
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v0.2.0; defaults to v<Cargo version>)'
+        description: 'Release tag (e.g. v0.3.2; defaults to v<Cargo version>)'
         required: false
         default: ''
 
@@ -123,32 +122,56 @@ jobs:
           Get-ChildItem $outDir.FullName | Format-Table Name, Length -AutoSize
 
       - name: Publish GitHub Release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:RELEASE_TAG
           $version = $env:APP_VERSION
-          $title = "HongGuoRust $tag (Windows x64)"
+          $title = "HongGuoRust $tag — 红果短剧 Windows x64 桌面客户端 (Installer & Portable)"
           $notes = @(
-            "## HongGuoRust $tag - Windows x64 Installer & Portable"
+            "## 中文说明 · HongGuoRust $tag（Windows 10/11 x64）"
             ""
-            "### Download (Ready to use, includes libmpv-2.dll & vulkan-1.dll)"
-            "- **Installer (Recommended)**: ``HongGuoRust-$version-windows-x64-setup.exe`` - One-click Windows installer with Start Menu shortcut and video right-click Open With associations."
-            "- **Portable ZIP**: ``HongGuoRust-$version-windows-x64-portable.zip`` - Extract and double-click ``hongguorust.exe`` directly."
+            "### 下载与安装（开箱即用，已内置 ``libmpv-2.dll`` 与 ``vulkan-1.dll``）"
+            "- **安装版（推荐）**：``HongGuoRust-$version-windows-x64-setup.exe`` — 双击一键安装，自动创建开始菜单快捷方式并注册视频文件右键「打开方式」关联。"
+            "- **绿色便携版**：``HongGuoRust-$version-windows-x64-portable.zip`` — 免安装，解压后直接双击 ``hongguorust.exe`` 运行。"
+            "- **校验文件**：``SHA256SUMS.txt`` — 用于核验安装包与便携版的 SHA-256 哈希。"
+            ""
+            "> **关于浏览器 / Windows SmartScreen 提示**：个人开源项目暂未购买商业代码签名证书，Edge 提示「通常不会下载」或 Windows 弹出 SmartScreen 保护属于未签名新版本的正常现象。本发布包由本仓库公开的 GitHub Actions 自动从源码编译生成，下载时点击「**保留 → 仍然保留**」、安装时点击「**更多信息 → 仍要运行**」即可。"
+            ""
+            "### 核心功能亮点"
+            "- **官方扫码登录与安全持久化**：支持手机端「红果免费短剧」App 扫一扫登录，登录态通过 Windows 原生 DPAPI 加密存储（Cookie 严格隔离在 Rust 后端，不暴露给前端与视频 CDN）"
+            "- **双向云端同步**：同步手机 App 追剧收藏、观看历史（按时间戳与本地合并）、播放/暂停/切集实时回传进度，以及 App 预约片单（已上线可直接播 / 待上线显示预告）"
+            "- **封面自动兼容**：自动将云端签名 ``.heic`` 封面归一化为公开 JPEG 在桌面端完整展示"
+            "- **红果短剧真实片库**：支持多页无限加载（800 部推荐短剧）与关键词多页搜索"
+            "- **纯 Rust 协议与流式解密**：纯 Rust 实现 Android v5 签名、匿名设备注册、多路径回退与编码协商；内置本机鉴权回环 Range 代理，支持在线 MP4 CENC AES-128-CTR 解密与主/备 CDN 容灾"
+            "- **清晰度无缝切换**：支持 1080P / 720P / 540P / 480P / 360P 实时切换（默认最高兼容画质）并保留当前秒数续播"
+            "- **原站时间轴弹幕**：8 轨道平滑滚动弹幕，自动同步倍速、暂停与拖拽定位，支持开关与透明度调节"
+            "- **暗黑影院与多源媒体库**：Netflix 暗黑界面、原生暗色标题栏、透明悬浮播控，支持 WebDAV（Alist / 飞牛 / 群晖 NAS）、JSON 片单与本地视频库"
+            ""
+            "---"
+            ""
+            "## English Release Notes · HongGuoRust $tag (Windows x64)"
+            ""
+            "### Download (Ready to use, bundled with ``libmpv-2.dll`` & ``vulkan-1.dll``)"
+            "- **Installer (Recommended)**: ``HongGuoRust-$version-windows-x64-setup.exe`` — One-click Windows installer with Start Menu shortcut and video right-click **Open With** associations."
+            "- **Portable ZIP**: ``HongGuoRust-$version-windows-x64-portable.zip`` — No installation required; extract and double-click ``hongguorust.exe`` directly."
+            "- **Checksums**: ``SHA256SUMS.txt`` — SHA-256 hashes for verifying release integrity."
+            ""
+            "> **Note on Browser / Windows SmartScreen**: As an independent open-source build without a commercial code-signing certificate, Edge (*`"isn't commonly downloaded`"*) or Windows SmartScreen may warn on new releases. All binaries are built transparently from source via GitHub Actions — choose **Keep → Keep anyway** in Edge and **More info → Run anyway** in Windows if prompted."
             ""
             "### Highlights"
-            "- Official HongGuo App QR-code login with Windows native DPAPI encrypted session persistence (cookies strictly isolated from WebView2 & playback/CDN endpoints)"
-            "- Bidirectional cloud sync: sync App favorites, watch history (merged by timestamp), live progress upload on play/pause/switch, and App reservations (online & upcoming)"
-            "- Automatic signed HEIC-to-JPEG cover normalization for cloud favorites, history & reservations"
-            "- Real HongGuo short drama catalog discovery (multi-page infinite scroll up to 800 dramas + multi-page search)"
-            "- Pure-Rust Android v5 playback signing, anonymous device registration, multi-path fallback & codec negotiation"
-            "- In-process authenticated loopback Range proxy with on-the-fly MP4 CENC AES-128-CTR decryption & CDN failover"
-            "- Live quality switching (1080P / 720P / 540P / 480P / 360P, highest compatible by default) with seamless position resume"
-            "- Official timed danmaku (8-lane rolling stage, pause/seek/speed sync, toggle & opacity controls)"
-            "- Netflix dark cinema UI, native dark titlebar, transparent overlay player controls, WebDAV (Alist/NAS), JSON manifests & local video library"
+            "- **Official QR Login & DPAPI Storage**: Sign in with the official HongGuo App; sessions are encrypted via Windows native DPAPI with cookies strictly isolated from WebView2 and playback/CDN requests"
+            "- **Bidirectional Cloud Sync**: Sync App favorites, watch history (merged by timestamp), live progress reporting on play/pause/switch, and App reservations (online & upcoming)"
+            "- **Cover Compatibility**: Automatic signed HEIC-to-JPEG cover normalization for cloud favorites, history, and reservations"
+            "- **Short Drama Discovery**: Multi-page infinite catalog loading (up to 800 recommended dramas) plus multi-page search"
+            "- **Pure-Rust Playback Pipeline**: Pure-Rust Android v5 signing, anonymous device registration, multi-path fallback, codec negotiation, and an authenticated loopback Range proxy with on-the-fly MP4 CENC AES-128-CTR decryption & CDN failover"
+            "- **Seamless Quality Switching**: Switch between 1080P / 720P / 540P / 480P / 360P (highest compatible by default) while preserving playback position"
+            "- **Official Timed Danmaku**: 8-lane rolling danmaku stage synced with playback speed, pause, and seek, with toggle and opacity controls"
+            "- **Dark Cinema & Multi-Source Media**: Netflix-inspired dark UI, native dark titlebar, transparent overlay controls, WebDAV (Alist / NAS), JSON manifests, and local video library"
           ) -join "`n"
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          Set-Content -Encoding utf8 -Path $notesFile -Value $notes
+          [System.IO.File]::WriteAllText($notesFile, $notes, [System.Text.UTF8Encoding]::new($false))
 
           $files = @(Get-ChildItem 'release-assets' -File | ForEach-Object { $_.FullName })
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
