@@ -1,0 +1,33 @@
+name: Bug 反馈 / Bug Report
+description: 反馈播放异常、扫码同步失败、界面问题或崩溃
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本 / App Version
+      placeholder: 例如 v0.3.2（安装版 / 绿色便携版）
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: 系统环境 / OS Environment
+      placeholder: 例如 Windows 11 23H2 x64
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述与复现步骤 / Description & Steps to Reproduce
+      placeholder: 请描述具体现象、涉及的功能模块（红果片源 / 弹幕 / 扫码同步 / WebDAV / 本地视频）以及复现步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息 / Additional Context
+      placeholder: 可附上截图或错误提示（请勿粘贴个人账号 Cookie 或私密链接）。
+    validations:
+      required: false

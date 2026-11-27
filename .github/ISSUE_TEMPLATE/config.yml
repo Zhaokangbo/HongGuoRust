@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 下载最新版本 / Latest Releases
+    url: https://github.com/Zhaokangbo/hongguo-rust/releases/latest
+    about: 查看 Windows 安装版与绿色便携版更新日志与安装包
