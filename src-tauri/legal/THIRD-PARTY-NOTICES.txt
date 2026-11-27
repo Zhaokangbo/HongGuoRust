@@ -7,7 +7,7 @@ the M5 test candidate; it is not a complete dependency audit.
 
 HongGuoRust application
 ------------------------
-Project source: https://github.com/Zhaokangbo/HongGuoRust
+Project source: https://github.com/Zhaokangbo/hongguo-rust
 Original application code: GPL-3.0-only
 Full project license: legal/LICENSE-GPL-3.0.txt within the installer.
 For the exact candidate source revision see the m5-package-evidence
